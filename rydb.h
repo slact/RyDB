@@ -69,6 +69,10 @@ typedef struct {
   rydb_index_type_t  type;
   uint16_t           start; // start of indexable value in row
   uint16_t           len; //length of indexable data
+  union {
+    rydb_config_index_hashtable_t hashtable;
+  }                  type_config;
+  unsigned           unique:1;
 } rydb_config_index_t;
 
 typedef struct {
