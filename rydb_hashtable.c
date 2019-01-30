@@ -1,5 +1,5 @@
-#include "cbdb.h"
-#include "cbdb_hashtable.h"
+#include "rydb.h"
+#include "rydb_hashtable.h"
 
 #include <stdlib.h>
 #include <stdint.h>
