@@ -1,2 +1,4 @@
 rydb_test
 *.o
+coredump/*
+vgcore.*
