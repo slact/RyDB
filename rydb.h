@@ -11,10 +11,12 @@ typedef uint32_t rydb_rownum_t;
 #define RYDB_ROWNUM_MAX  ((rydb_rownum_t ) -1)
 #define RYDB_ROWNUM_NULL ((rydb_rownum_t ) 0)
 
-#define RYDB_ROW_LINKS_MAX 8
+#define RYDB_ROW_LINKS_MAX 32
 
 #define RYDB_INDEX_NAME_MAX_LEN 64
 #define RYDB_INDICES_MAX 32
+#define RYDB_REVISION_MAX UINT32_MAX
+#define RYDB_ROW_LEN_MAX UINT16_MAX
 
 typedef struct {
   char           *str;
@@ -35,12 +37,12 @@ typedef struct {
 } rydb_char_range_t;
 
 typedef struct {
-  int      fd;
-  FILE    *fp;
+  int               fd;
+  FILE             *fp;
   rydb_char_range_t mmap;
   rydb_char_range_t file;
   rydb_char_range_t data;
-  char    *path;
+  const char       *path;
 } rydb_file_t;
 
 typedef enum {
@@ -64,26 +66,34 @@ typedef struct {
 } rydb_config_index_hashtable_t;
 
 
+typedef union {
+  rydb_config_index_hashtable_t hashtable;
+} rydb_config_index_type_t;
+
 typedef struct {
-  char              *name;
+  const char        *name;
   rydb_index_type_t  type;
   uint16_t           start; // start of indexable value in row
   uint16_t           len; //length of indexable data
-  union {
-    rydb_config_index_hashtable_t hashtable;
-  }                  type_config;
+  rydb_config_index_type_t type_config;
   unsigned           unique:1;
 } rydb_config_index_t;
 
 typedef struct {
-  rydb_config_index_t  config;
-  rydb_file_t          data;
+  rydb_file_t          index;
+  //rydb_file_t          data;
 } rydb_index_t;
 
 typedef struct {
-  char *name;
-  char *reverse_name; //optional linked row reverse link name for doubly-linked rows
+  uint16_t next;
+  uint16_t prev;
 } rydb_row_link_t;
+
+typedef struct {
+  const char *next;
+  const char *prev;
+  unsigned    inverse:1;
+} rydb_config_row_link_t;
 
 #define RYDB_ERROR_MAX_LEN 1024
 typedef enum {
@@ -109,34 +119,47 @@ typedef struct {
   char                 str[RYDB_ERROR_MAX_LEN];
 } rydb_error_t;
 
+
+
 typedef struct {
   uint32_t revision;
   uint16_t row_len;
   uint16_t id_len; //id is part of the row, starting at row[0]
+  uint16_t link_pair_count;
+  rydb_config_row_link_t *link;
   uint16_t index_count;
+  rydb_config_index_t *index;
 } rydb_config_t;
 
 typedef struct {
-  char           *path;
-  char           *name;
+  const char     *path;
+  const char     *name;
   rydb_file_t     data;
   rydb_file_t     meta;
   rydb_config_t   config;
   rydb_index_t   *index;
   rydb_error_t    error;
+  
 } rydb_t;
 
+rydb_t *rydb_new(void);
+
+int rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len);
+int rydb_config_revision(rydb_t *db, unsigned revision);
+int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name);
+int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, unsigned unique, rydb_config_index_hashtable_t *advanced_config);
+
+int rydb_open(rydb_t *db, const char *path, const char *name);
+
+int rydb_insert(rydb_t *db, rydb_str_t *id, rydb_str_t *data);
+int rydb_find(rydb_t *db, rydb_str_t *id); //return 1 if found, 0 if not found
+int rydb_find_row(rydb_t *db, rydb_row_t *row); //id should be pre-filled
+
+void rydb_error_print(rydb_t *db);
+
+int rydb_close(rydb_t *db); //also free()s db
 
 
-rydb_t *rydb_open(char *path, char *name, rydb_config_t *cf, rydb_config_index_t *index, rydb_error_t *err);
-void rydb_close(rydb_t *rydb);
-
-int rydb_insert(rydb_t *rydb, rydb_str_t *id, rydb_str_t *data);
-int rydb_find(rydb_t *rydb, rydb_str_t *id); //return 1 if found, 0 if not found
-int rydb_find_row(rydb_t *rydb, rydb_row_t *row); //id should be pre-filled
-
-void rydb_error_print(rydb_error_t *err);
-
-
+void rydb_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
 
 #endif //_RYDB_H

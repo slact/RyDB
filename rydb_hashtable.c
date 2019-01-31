@@ -1,9 +1,9 @@
 #include "rydb.h"
 #include "rydb_hashtable.h"
-
 #include <stdlib.h>
 #include <stdint.h>
 #include <ctype.h>
+#include <string.h>
 
 
 /**
@@ -238,4 +238,89 @@ static uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k)
 #else
   return b;
 #endif
+}
+
+
+
+int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp) {
+  const char *fmt = 
+    "    hash_function: %32s\n"
+    "    store_value: %hu\n"
+    "    direct_mapping: %hu\n";
+  
+  char      hash_func_buf[32];
+  uint16_t  store_value;
+  uint16_t  direct_mapping;
+  
+  int rc = fscanf(fp, fmt, hash_func_buf, &store_value, &direct_mapping);
+  if(rc < 3 || store_value > 1 || direct_mapping > 1) {
+    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Hashtable \"%s\" specification is corrupted or invalid", idx_cf->name);
+    return 0;
+  }
+  if(strcmp("CRC32", hash_func_buf) == 0) {
+    idx_cf->type_config.hashtable.hash_function = RYDB_HASH_CRC32;
+  }
+  else if(strcmp("none", hash_func_buf) == 0) {
+    idx_cf->type_config.hashtable.hash_function = RYDB_HASH_NOHASH;
+  }
+  else if(strcmp("SipHash", hash_func_buf) == 0) {
+    idx_cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
+  }
+  else {
+    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Unsupported hash function %s for hashtable \"%s\"", hash_func_buf, idx_cf->name);
+    return 0;
+  }
+
+  return 1;
+}
+static char * hashfunction_to_str(rydb_config_index_type_t *cf) {
+  switch(cf->hashtable.hash_function) {
+    case RYDB_HASH_CRC32:
+      return "CRC32";
+    case RYDB_HASH_NOHASH:
+      return "none";
+    case RYDB_HASH_SIPHASH:
+      return "SipHash";
+  }
+  return "???";
+}
+static int hashfunction_valid(rydb_config_index_hashtable_t *acf) {
+  switch(acf->hash_function) {
+    case RYDB_HASH_CRC32:
+    case RYDB_HASH_NOHASH:
+    case RYDB_HASH_SIPHASH:
+      return 1;
+  }
+  return 0;
+}
+
+int rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp) {
+  const char *fmt = 
+    "    hash_function: %s\n"
+    "    store_value: %hu\n"
+    "    direct_mapping: %hu\n";
+  int rc;
+  rc = fprintf(fp, fmt, hashfunction_to_str(&idx_cf->type_config), (uint16_t )idx_cf->type_config.hashtable.store_value, (uint16_t )idx_cf->type_config.hashtable.direct_mapping);
+  if(rc <= 0) {
+    rydb_error(db, RYDB_ERROR_FILE_ACCESS, "failed writing hashtable \"%s\" config ", idx_cf->name);
+    return 0;
+  }
+  return 1;
+}
+
+int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, rydb_config_index_hashtable_t *advanced_config) {
+  if(!advanced_config) {
+    cf->type_config.hashtable.direct_mapping = cf->unique;
+    cf->type_config.hashtable.store_value = !cf->unique;
+    cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
+  }
+  else if(!hashfunction_valid(advanced_config)){
+    rydb_error(db, RYDB_ERROR_FILE_ACCESS, "Invalid hash function for hashtable \"%s\" config ", cf->name);
+    return 0;
+  }
+  else {
+    cf->type_config.hashtable = *advanced_config;
+  }
+  return 1;
+  
 }

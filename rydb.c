@@ -1,4 +1,5 @@
 #include "rydb.h"
+#include "rydb_hashtable.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -6,21 +7,24 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 
 #include <signal.h>
 
 #if defined _WIN32 || defined __CYGWIN__
-#define PATH_SLASH '\\'
+#define PATH_SLASH_CHAR '\\'
+#define PATH_SLASH "\\"
 #else
-#define PATH_SLASH '/'
+#define PATH_SLASH_CHAR '/'
+#define PATH_SLASH "/"
 #endif
 
 
 #define RYDB_PAGESIZE (sysconf(_SC_PAGE_SIZE))
+
+static int rydb_index_type_valid(rydb_index_type_t index_type);
+static int rydb_find_index_num(const rydb_t *db, const char *name);
 
 static int is_little_endian(void) {
   volatile union {
@@ -31,7 +35,12 @@ static int is_little_endian(void) {
   return u.c[0] == 0x04;
 }
 
-void rydb_error_print(rydb_error_t *err) {
+static int is_alphanumeric(const char *str) {
+  return strspn(str, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") == strlen(str);
+}
+
+void rydb_error_print(rydb_t *db) {
+  rydb_error_t *err = &db->error;
   if(err->errno_val != 0) {
     printf("ERROR [%d]: %s, errno [%d]: %s\n", err->code, err->str, err->errno_val, strerror(err->errno_val));
   }
@@ -40,119 +49,257 @@ void rydb_error_print(rydb_error_t *err) {
   }
 }
 
-static off_t rydb_filename(rydb_t *db, char *what, char *buf, off_t maxlen) {
-  return snprintf(buf, maxlen, "%s%c%s.%s.rydb", db->path, PATH_SLASH, db->name, what);
-}
-
-static rydb_t *rydb_alloc_memset(char *path, char *name, rydb_config_t *cf, rydb_config_index_t *index_cf) {
-  rydb_t    *db;
-  size_t     sz;
-  int        i, n=0;
-  
-  //initialize indices
-  rydb_config_index_t primary = {
-    .name = "primary", .type = RYDB_INDEX_HASHTABLE, .start = 0, .len = cf->id_len
-  };
-  
-  sz = sizeof(*db) + strlen(path) + 1 + strlen(name) + 1;
-  
-  sz += sizeof(rydb_index_t); // no need to allocate for primary index name -- see comments below.
-  if(cf) {
-    for(i=0; i<cf->index_count; i++) {
-      sz += sizeof(rydb_index_t) + strlen(index_cf[i].name)+1;
-    }
-  }
-  
-  if((db = malloc(sz)) == NULL) {
-    return NULL;
-  }
-  
-  memset(db, '\0', sz);
-  
-  db->index = (rydb_index_t *)(&db[1]);
-  char *cur = (char *)(&db->index[1]);
-  if(cf) {
-    db->config = *cf;
-    
-    //primary index, if there's a nonzero id
-    if(db->config.id_len > 0) {
-      db->index[n++].config = primary;
-      //no need to copy name, it's a static string
-      // althought it might be worth it to keep the names adjacent in memory later
-      db->config.index_count++; //just the primary index then
-    }
-    
-    
-    //and now the rest of the indices
-    for(i=0; i<cf->index_count; i++) {
-      db->index[n].config = index_cf[i];
-      db->index[n].config.name = cur;
-      strcpy(db->index[n].config.name, index_cf[i].name);
-      cur += strlen(index_cf[i].name) + 1;
-      n++;
-    }
-  }
-  db->path = cur;
-  cur += strlen(path)+1;
-  db->name = cur;
-  cur += strlen(name)+1;
-  
-  strcpy(db->path, path);
-  strcpy(db->name, name);
-  
-  sz = strlen(db->path);
-  if(sz > 0 && db->path[sz-1]==PATH_SLASH) { // remove trailing slash
-    db->path[sz-1] = '\00';
-  }
-  
-  return db;
-}
-
-static void rydb_free(rydb_t *db) {
-  free(db);
-}
-
-static void rydb_set_error(rydb_error_t *err, rydb_error_code_t code, char *error_string) {
-  if(err) {
-    err->code = code;
-    strncpy(err->str, error_string, RYDB_ERROR_MAX_LEN-1);
-    err->errno_val = errno;
-  }
-}
-
-static void rydb_set_errorf(rydb_error_t *err, rydb_error_code_t code, char *err_fmt, ...) {
-  if(err) {
-    err->code = code;
-    va_list ap;
-    va_start(ap, err_fmt);
-    vsnprintf(err->str, RYDB_ERROR_MAX_LEN-1, err_fmt, ap);
-    err->errno_val = errno;
-    va_end(ap);
-  }
-}
-
-static void rydb_error(rydb_t *db, rydb_error_code_t code, char *err_fmt, ...) {
-  /*
-  int num_args = 0;
-  
-  char *cur = err_fmt, *end = err_fmt + strlen(err_fmt);
-  while(cur <= end && cur != NULL) {
-    cur = strchr(cur, '%');
-    if(cur && cur+1 <= end && cur[1] != '%') {
-      num_args++;
-    }
-  }
-  if(num_args == 0) { //error string is plain with no format arguments
-    strncpy(db->buffer.error, err_fmt, RYDB_ERROR_MAX_LEN);
-    rydb_set_error(&db->error, code, db->buffer.error);
-    return
-  }*/
+void rydb_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...) {
   va_list ap;
   va_start(ap, err_fmt);
   vsnprintf(db->error.str, RYDB_ERROR_MAX_LEN-1, err_fmt, ap);
   db->error.code = code;
   db->error.errno_val = errno;
   va_end(ap);
+}
+
+rydb_t *rydb_new(void) {
+  rydb_t *db = malloc(sizeof(*db));
+  if(!db) {
+    return NULL;
+  }
+  memset(db, '\00', sizeof(*db));
+  db->data.fd = -1;
+  db->meta.fd = -1;
+  return db;
+}
+
+int rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len) {
+  if(row_len > RYDB_ROW_LEN_MAX) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Row length %u cannot exceed %"PRIu16, row_len, RYDB_ROW_LEN_MAX);
+    return 0;
+  }
+  if(id_len > row_len) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Row id length %u cannot exceed row length %u", id_len, row_len);
+    return 0;
+  }
+  if(row_len == 0) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Row length cannot be 0");
+    return 0;
+  }
+  db->config.row_len = row_len;
+  db->config.id_len = id_len;
+  return 1;
+}
+
+int rydb_config_revision(rydb_t *db, unsigned revision) {
+  if(revision > RYDB_REVISION_MAX) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Revision number cannot exceed %"PRIu64, RYDB_REVISION_MAX);
+    return 0;
+  }
+  return 1;
+}
+
+int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name) {
+  int            i;
+  if(strlen(link_name) == 0) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid row-link name of length 0.");
+    return 0;
+  }
+  if(strlen(reverse_link_name) == 0) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid reverse row-link name of length 0.");
+    return 0;
+  }
+  if(!is_alphanumeric(link_name)) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid row-link name, must be alphanumeric or underscores.");
+    return 0;
+  }
+  if(!is_alphanumeric(reverse_link_name)) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid reverse row-link name, must be alphanumeric or underscores.");
+    return 0;
+  }
+  if(strcmp(link_name, reverse_link_name) == 0) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link and reverse row-link cannot be the same.");
+    return 0;
+  }
+  
+  for(i=0; i < db->config.link_pair_count*2; i++) {
+    if(strcmp(link_name, db->config.link[i].next) == 0) {
+      rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link with name \"%s\" already exists.", link_name);
+      return 0;
+    }
+    if(strcmp(reverse_link_name, db->config.link[i].next) == 0) {
+      rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link with name \"%s\" already exists.", reverse_link_name);
+      return 0;
+    }
+  }
+  
+  if(db->config.link_pair_count == 0) {
+    db->config.link = malloc(sizeof(*db->config.link)*2);
+  }
+  else {
+    db->config.link = realloc(db->config.link, sizeof(*db->config.link)*(db->config.link_pair_count + 1)*2);
+  }
+  if(db->config.link == NULL) {
+    rydb_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link");
+    return 0;
+  }
+  rydb_config_row_link_t *link, *link_inverse;
+  off_t offset = db->config.link_pair_count * 2;
+  link = &db->config.link[offset];
+  link_inverse = &db->config.link[offset+1];
+  
+  link->inverse = 0;
+  link->next = strdup(link_name);
+  if(!link->next) {
+    rydb_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link");
+    return 0;
+  }
+  link->prev = strdup(reverse_link_name);
+  if(!link->prev) {
+    free((char *)link->next);
+    rydb_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link");
+    return 0;
+  }
+  
+  link_inverse->inverse = 1;
+  link_inverse->next = link->prev;
+  link_inverse->prev = link->next;
+  db->config.link_pair_count ++;
+  
+  return 1;
+}
+
+static int index_config_compare(const void *v1, const void *v2) {
+  const rydb_config_index_t *idx1 = v1;
+  const rydb_config_index_t *idx2 = v2;
+  return strcmp(idx1->name, idx2->name);
+}
+
+static int rydb_config_add_index(rydb_t *db, rydb_config_index_t *idx) {
+  if(strlen(idx->name) > RYDB_INDEX_NAME_MAX_LEN) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Index name \"%s\" too long, must be at most %i characters", idx->name, RYDB_INDEX_NAME_MAX_LEN);
+    return 0;
+  }
+  if(!is_alphanumeric(idx->name)) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Index name \"%s\" invalid: must consist of only ASCII alphanumeric characters and underscores", idx->name);
+    return 0;
+  }
+  if(!rydb_index_type_valid(idx->type)) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" type for is invalid", idx->name);
+    return 0;
+  }
+  if(idx->start > db->config.row_len) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" is out of bounds: row length is %"PRIu16", but index is set to start at %"PRIu16, idx->name, db->config.row_len, idx->start);
+    return 0;
+  }
+  if(idx->start + idx->len > db->config.row_len) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" is out of bounds: row length is %"PRIu16", but index is set to end at %"PRIu16, idx->name, db->config.row_len, idx->start + idx->len);
+    return 0;
+  }
+  if(rydb_find_index_num(db, idx->name) != -1) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" already exists");
+    return 0;
+  }
+  
+  //allocation
+  if(db->config.index_count == 0) {
+    db->config.index = malloc(sizeof(*db->config.index));
+  }
+  else {
+    db->config.index = realloc(db->config.index, sizeof(*db->config.index) * (db->config.index_count + 1));
+  }
+  if(db->config.index == NULL) {
+    rydb_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index \"%s\"", idx->name);
+    return 0;
+  }
+  rydb_config_index_t *new_idx = &db->config.index[db->config.index_count];
+  
+  *new_idx = *idx;
+  if((new_idx->name = strdup(idx->name)) == NULL) {
+    rydb_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index \"%s\" name", idx->name);
+    return 0;
+  }
+  
+  db->config.index_count++;
+  
+  qsort(db->config.index, db->config.index_count, sizeof(*db->config.index), index_config_compare);
+  
+  return 1;
+}
+
+//return array position of index if found, -1 if not found
+static int rydb_find_index_num(const rydb_t *db, const char *name) {
+  rydb_config_index_t match;
+  match.name = name;
+  rydb_config_index_t *cf_start = db->config.index, *cf;
+  cf = bsearch(&match, cf_start, db->config.index_count, sizeof(*cf_start), index_config_compare);
+  if(!cf){
+    return -1;
+  }
+  else {
+    return cf - cf_start;
+  }
+}
+
+int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, unsigned unique, rydb_config_index_hashtable_t *advanced_config) {
+  rydb_config_index_t idx;
+  idx.name = name;
+  idx.type = RYDB_INDEX_HASHTABLE;
+  idx.start = start;
+  idx.len = len;
+  idx.unique = unique;
+  
+  if(!rydb_config_index_hashtable_set_config(db, &idx, advanced_config)) {
+    return 0;
+  }
+  
+  return rydb_config_add_index(db, &idx);
+}
+
+
+static off_t rydb_filename(const rydb_t *db, const char *what, char *buf, off_t maxlen) {
+  return snprintf(buf, maxlen, "%s%s%s%s%s.rydb", 
+                  db->path, 
+                  strlen(db->path)> 0 ? PATH_SLASH : "", 
+                  db->name, 
+                  strlen(db->name)> 0 ? "." : "", 
+                  what);
+}
+
+static void rydb_free(rydb_t *db) {
+  unsigned i;
+  if(db->path) {
+    free((char *)db->path);
+    db->path = NULL;
+  }
+  if(db->name) {
+    free((char *)db->name);
+    db->name = NULL;
+  }
+  for(i=0; i<db->config.index_count; i++) {
+    if(db->config.index && db->config.index[i].name) {
+      free((char *)db->config.index[i].name);
+      db->config.index[i].name = NULL;
+    }
+  }
+  if(db->config.index) {
+    free(db->config.index);
+    db->config.index = NULL;
+  }
+  if(db->index) {
+    free(db->index);
+    db->index = NULL;
+  }
+  
+  for(i=0; i< db->config.link_pair_count*2; i++) {
+    if(db->config.link) {
+      free((char *)db->config.link[i].next);
+      db->config.link[i].next = NULL;
+      db->config.link[i].prev = NULL;
+    }
+  }
+  if(db->config.link) {
+    free(db->config.link);
+    db->config.link = NULL;
+  }
+  
+  free(db);
 }
 
 static int rydb_lock(rydb_t *db) {
@@ -190,6 +337,7 @@ static int rydb_unlock(rydb_t *db) {
   }
 }
 
+/*
 static int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz) {
   size_t current_sz = f->file.end - f->file.start;
   if(current_sz < desired_min_sz) {
@@ -204,6 +352,7 @@ static int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_
   }
   return 1;
 }
+*/
 
 static int rydb_file_getsize(rydb_t *db, int fd, off_t *sz) {
   struct stat st;
@@ -248,22 +397,21 @@ static int rydb_file_close(rydb_t *db, rydb_file_t *f) {
   f->data.end = NULL;
   
   if(f->path) {
-    free(f->path);
+    free((char *)f->path);
     f->path = NULL;
   }
   return ok;
 }
 
-static int rydb_file_open(rydb_t *db, char *what, rydb_file_t *f) {
+static int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
   off_t sz;
   char path[2048];
   rydb_filename(db, what, path, 2048);
   
-  if((f->path = malloc(strlen(path)+1)) == NULL) { //useful for debugging
+  if((f->path = strdup(path)) == NULL) { //useful for debugging
     rydb_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for file path %s", path);
     return 0;
   }
-  strcpy(f->path, path);
   
   mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP;
   if((f->fd = open(path, O_RDWR | O_CREAT, mode)) == -1) {
@@ -300,8 +448,8 @@ static int rydb_file_open(rydb_t *db, char *what, rydb_file_t *f) {
 
 static int rydb_file_open_index(rydb_t *db, int index_n) {
   char index_name[128];
-  snprintf(index_name, 128, "index.%s", db->index[index_n].config.name);
-  return rydb_file_open(db, index_name, &db->index[index_n].data);
+  snprintf(index_name, 128, "index.%s", db->config.index[index_n].name);
+  return rydb_file_open(db, index_name, &db->index[index_n].index);
 }
 
 static int rydb_index_type_valid(rydb_index_type_t index_type) {
@@ -327,51 +475,7 @@ static const char *rydb_index_type_str(rydb_index_type_t index_type) {
   return "???";
 }
 
-static off_t rydb_data_header_write(rydb_t *db) {
-  FILE     *fp = db->data.fp;
-  int       rc, i;
-  int       total_written = 0;
-  rydb_config_index_t *idxcf;
-  
-  if(fseek(fp, 0, SEEK_SET) == -1) {
-    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Failed seeking to start of data file %s", db->data.path);
-    return 0;
-  }
-  
-  const char *fmt = 
-    "rydb\n"
-    "format revision: %i\n"
-    "database revision: %"PRIu32"\n"
-    "endianness: %s\n"
-    "row_len: %"PRIu16"\n"
-    "id_len: %"PRIu16"\n"
-    "indexes: %"PRIu16"\n";
-  rc = fprintf(fp, fmt, RYDB_FORMAT_VERSION, db->config.revision, is_little_endian() ? "little" : "big", db->config.row_len, db->config.id_len, db->config.index_count);
-  if(rc <= 0) {
-    rydb_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to data file %s", db->data.path);
-    return 0;
-  }
-  total_written += rc;
-  
-  const char *index_fmt = 
-    "  - name: %s\n"
-    "    type: %s\n"
-    "    start: %"PRIu16"\n"
-    "    len: %"PRIu16"\n";
-    
-  for(i=0; i<db->config.index_count; i++) {
-    idxcf = &db->index[i].config;
-    rc = fprintf(fp, index_fmt, idxcf->name, rydb_index_type_str(idxcf->type), idxcf->start, idxcf->len);
-    if(rc <= 0){
-      rydb_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to data file %s", db->data.path);
-      return 0;
-    }
-    total_written += rc;
-  }
-  return total_written;
-}
-
-static rydb_index_type_t rydb_index_type(char *str) {
+static rydb_index_type_t rydb_index_type(const char *str) {
   if(strcmp(str, "hashtable") == 0) {
     return RYDB_INDEX_HASHTABLE;
   }
@@ -383,254 +487,392 @@ static rydb_index_type_t rydb_index_type(char *str) {
   }
 }
 
+static int rydb_meta_save(rydb_t *db) {
+  FILE     *fp = db->meta.fp;
+  int       rc, i;
+  int       total_written = 0;
+  rydb_config_index_t *idxcf;
+  
+  if(fseek(fp, 0, SEEK_SET) == -1) {
+    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Failed seeking to start of meta file %s", db->meta.path);
+    return 0;
+  }
+  
+  const char *fmt = 
+    "--- #rydb\n"
+    "format_revision: %i\n"
+    "database_revision: %"PRIu32"\n"
+    "endianness: %s\n"
+    "row_len: %"PRIu16"\n"
+    "id_len: %"PRIu16"\n"
+    "index_count: %"PRIu16"\n"
+    "%s";
+  rc = fprintf(fp, fmt, RYDB_FORMAT_VERSION, db->config.revision, is_little_endian() ? "little" : "big", db->config.row_len, db->config.id_len, db->config.index_count, db->config.index_count > 0 ? "index:" : "");
+  if(rc <= 0) {
+    rydb_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to meta file %s", db->meta.path);
+    return 0;
+  }
+  total_written += rc;
+  
+  const char *index_fmt = "\n"
+    "  - name: %s\n"
+    "    type: %s\n"
+    "    start: %"PRIu16"\n"
+    "    len: %"PRIu16"\n"
+    "    unique: %"PRIu16"\n";
+  
+  for(i=0; i<db->config.index_count; i++) {
+    idxcf = &db->config.index[i];
+    rc = fprintf(fp, index_fmt, idxcf->name, rydb_index_type_str(idxcf->type), idxcf->start, idxcf->len, (uint16_t )idxcf->unique);
+    if(rc <= 0){
+      rydb_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to meta file %s", db->meta.path);
+      return 0;
+    }
+    total_written += rc;
+    switch(idxcf->type) {
+      case RYDB_INDEX_HASHTABLE:
+        rc = rydb_meta_save_index_hashtable(db, idxcf, fp);
+        break;
+      case RYDB_INDEX_BTREE:
+      case RYDB_INDEX_INVALID:
+        rydb_error(db, RYDB_ERROR_UNSPECIFIED, "Unsupported index type");
+        return 0;
+    }
+    total_written += rc;
+    if(rc <= 0) {
+      return 0;
+    }
+  }
+  
+  //now links
+  rc = fprintf(fp, "link_pair_count: %"PRIu16"\n%s", db->config.link_pair_count, db->config.link_pair_count > 0 ? "link_pair:\n" : "");
+  if(rc <= 0) {
+    rydb_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to meta file %s", db->meta.path);
+    return 0;
+  }
+  total_written += rc;
+
+  for(i=0; i < db->config.link_pair_count*2; i++) {
+    if(!db->config.link[i].inverse) {
+      rc = fprintf(fp, "  - [ %s , %s ]\n", db->config.link[i].next, db->config.link[i].prev);
+      if(rc <= 0) {
+        rydb_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to meta file %s", db->meta.path);
+        return 0;
+      }
+      total_written += rc;
+    }
+  }
+  
+  return total_written;
+}
+
+
+
 #define QUOTE(str) #str
 #define EXPAND_AND_QUOTE(str) QUOTE(str)
 #define RYDB_INDEX_NAME_MAX_LEN_STR EXPAND_AND_QUOTE(RYDB_INDEX_NAME_MAX_LEN)
 
-static off_t rydb_data_header_read(rydb_t *db, rydb_config_t *cf, rydb_config_index_t *index_cf, char *buf, off_t buflen) {
-  char     *cur = buf;
-  uint16_t  rydb_version;
-  int       i, n;
-  FILE     *fp = db->data.fp;
-  char     *buf_end = &buf[buflen];
-  char      index_type_buf[32];
+static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
+  unsigned  i;
+  FILE     *fp = ryf->fp;
   char      endianness_buf[16];
   int       little_endian;
-  rydb_config_index_t idx;
+  uint16_t  rydb_format_version, db_revision, row_len, id_len, index_count;
   if(fseek(fp, 0, SEEK_SET) == -1) {
     rydb_error(db, RYDB_ERROR_FILE_INVALID, "Failed seeking to start of data file");
     return 0;
   }
   
   const char *fmt = 
-    "rydb\n"
-    "format revision: %hu\n"
-    "database revision: %u\n"
+    "--- #rydb\n"
+    "format_revision: %hu\n"
+    "database_revision: %hu\n"
     "endianness: %15s\n"
     "row_len: %hu\n"
     "id_len: %hu\n"
-    "indexes: %hu\n";
-  int rc = fscanf(fp, fmt, &rydb_version, &cf->revision, endianness_buf, &cf->row_len, &cf->id_len, &cf->index_count);
+    "index_count: %hu\n";
+  int rc = fscanf(fp, fmt, &rydb_format_version, &db_revision, endianness_buf, &row_len, &id_len, &index_count);
   if(rc < 6){
-    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Data file is not a rydb file or is corrupted");
+    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Not a RyDB file or is corrupted");
+    return 0;
+  }
+  if(rydb_format_version != RYDB_FORMAT_VERSION) {
+    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Format version mismatch, expected %i, loaded %"PRIu16, RYDB_FORMAT_VERSION, rydb_format_version);
+    return 0;
+  }
+  if(index_count > RYDB_INDICES_MAX) {
+    rydb_error(db, RYDB_ERROR_FILE_INVALID, "File invalid, too many indices defined");
     return 0;
   }
   
-  if(rydb_version != RYDB_FORMAT_VERSION) {
-    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Data format version mismatch, expected %i, loaded %"PRIu16, RYDB_FORMAT_VERSION, rydb_version);
+  if(!rydb_config_row(db, row_len, id_len))
     return 0;
-  }
   
-  if(cf->index_count > RYDB_INDICES_MAX) {
-    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Data file invalid: too many indices defined");
+  if(!rydb_config_revision(db, db_revision))
     return 0;
-  }
   
-  if(strcmp(endianness_buf, "big") == 0) {
+  if(strcmp(endianness_buf, "big") == 0)
     little_endian = 0;
-  }
-  else if(strcmp(endianness_buf, "little") == 0) {
+  else if(strcmp(endianness_buf, "little") == 0)
     little_endian = 1;
-  }
   else {
-    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Data file invalid: unexpected endianness %s", endianness_buf);
+    rydb_error(db, RYDB_ERROR_FILE_INVALID, "File invalid, unexpected endianness %s", endianness_buf);
     return 0;
   }
   
   if(is_little_endian() != little_endian) {
     //TODO: convert data to host endianness
-    rydb_error(db, RYDB_ERROR_WRONG_ENDIANNESS, "Data file has wrong endianness");
+    rydb_error(db, RYDB_ERROR_WRONG_ENDIANNESS, "File has wrong endianness");
     return 0;
   }
   
-  const char *index_fmt = "  - name: %" RYDB_INDEX_NAME_MAX_LEN_STR "s\n"
+  const char *index_fmt = "\n"
+    "  - name: %" RYDB_INDEX_NAME_MAX_LEN_STR "s\n"
     "    type: %32s\n"
     "    start: %hu\n"
-    "    len: %hu\n";
-    
-  for(i=0, n=1; i<cf->index_count; i++) {
-    if(buf_end - cur < RYDB_INDEX_NAME_MAX_LEN) {
-      rydb_error(db, RYDB_ERROR_FILE_INVALID, "Data file invalid: not enough space to read index names");
+    "    len: %hu\n"
+    "    unique: %hu\n";
+  
+  char                      index_name_buf[RYDB_INDEX_NAME_MAX_LEN];
+  char                      index_type_buf[32];
+  uint16_t                  index_unique;
+  rydb_config_index_t       idx_cf;
+  
+  if(index_count > 0) {
+    if(fscanf(fp, "index:") < 0) {
+      rydb_error(db, RYDB_ERROR_FILE_INVALID, "index specification is corrupted or invalid");
       return 0;
     }
-    rc = fscanf(fp, index_fmt, cur, index_type_buf, &idx.start, &idx.len);
-    idx.name = cur;
-    cur += strlen(idx.name)+1;
-    if(rc < 4){
-      rydb_error(db, RYDB_ERROR_FILE_INVALID, "Data file invalid: index specification is invalid");
-      return 0;
-    }
-    if((idx.type = rydb_index_type(index_type_buf)) == RYDB_INDEX_INVALID) {
-      rydb_error(db, RYDB_ERROR_FILE_INVALID, "Data file invalid: index \"%s\" type is invalid", idx.name);
-      return 0;
-    }
-    if(strcmp(idx.name, "primary") == 0) {
-      index_cf[0] = idx;
-    }
-    else {
-      index_cf[n] = idx;
-      n++;
+    for(i=0; i<index_count; i++) {
+      rc = fscanf(fp, index_fmt, index_name_buf, index_type_buf, &idx_cf.start, &idx_cf.len, &index_unique);
+      if(rc < 5){
+        rydb_error(db, RYDB_ERROR_FILE_INVALID, "index specification is corrupted or invalid");
+        return 0;
+      }
+      if(index_unique > 1) {
+        rydb_error(db, RYDB_ERROR_FILE_INVALID, "index \"%s\" uniqueness value is invalid", index_name_buf);
+        return 0;
+      }
+      idx_cf.type = rydb_index_type(index_type_buf);
+      idx_cf.name = index_name_buf;
+      idx_cf.unique = index_unique;
+      switch(idx_cf.type) {
+        case RYDB_INDEX_HASHTABLE:
+          if(!rydb_meta_load_index_hashtable(db, &idx_cf, fp)) {
+            return 0;
+          }
+          break;
+        case RYDB_INDEX_BTREE:
+          rydb_error(db, RYDB_ERROR_FILE_INVALID, "index \"%s\" type btree is not supported", index_name_buf);
+          return 0;
+        case RYDB_INDEX_INVALID:
+          rydb_error(db, RYDB_ERROR_FILE_INVALID, "index \"%s\" type is invalid", index_name_buf);
+          return 0;
+      }
+      if(!rydb_config_add_index(db, &idx_cf)) {
+        return 0;
+      }
     }
   }
   
-  off_t pos = ftell(fp);
-  if(pos == -1) {
-    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Data file invalid: unable to ftell() header size");
+  //now let's do the row links
+  uint16_t                  linkpairs_count;
+  char                      link_next_buf[RYDB_INDEX_NAME_MAX_LEN], link_prev_buf[RYDB_INDEX_NAME_MAX_LEN];
+  rc = fscanf(fp, "link_pair_count: %hu\n", &linkpairs_count);
+  if(rc < 1 || linkpairs_count*2 > RYDB_ROW_LINKS_MAX) {
+    rydb_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
     return 0;
   }
-  return pos;
+  if(linkpairs_count > 0) {
+    if(fscanf(fp, "link_pair:\n") < 0) {
+      rydb_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
+      return 0;
+    }
+    for(i=0; i < linkpairs_count; i++) {
+      rc = fscanf(fp, "  - [ %" RYDB_INDEX_NAME_MAX_LEN_STR "s , %" RYDB_INDEX_NAME_MAX_LEN_STR "s ]\n", link_next_buf, link_prev_buf);
+      if(rc < 2) {
+        rydb_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
+        return 0;
+      }
+      if(!rydb_config_add_row_link(db, link_next_buf, link_prev_buf)) {
+        return 0;
+      }
+    }
+  }
+  
+  //ok, that's everything
+  return 1;
 }
 
-static int rydb_config_match(rydb_t *db, rydb_config_t *loaded_cf, rydb_config_index_t *loaded_index_cf) {
+static int rydb_config_match(rydb_t *db, const rydb_t *db2, const char *db_lbl, const char *db2_lbl) {
   int i;
   //see if the loaded config and the one passed in are the same
-  if(loaded_cf->revision != db->config.revision) {
-    rydb_error(db, RYDB_ERROR_REVISION_MISMATCH, "Wrong revision number: expected %"PRIu32", loaded %"PRIu32, db->config.revision, loaded_cf->revision);
+  if(db->config.revision != db2->config.revision) {
+    rydb_error(db, RYDB_ERROR_REVISION_MISMATCH, "Wrong revision number: %s %"PRIu32", %s %"PRIu32, db_lbl, db->config.revision, db2_lbl, db2->config.revision);
     return 0;
   }
-  if(loaded_cf->row_len != db->config.row_len) {
-    rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong row length: expected %"PRIu16", loaded %"PRIu32, db->config.row_len, loaded_cf->row_len);
+  if(db->config.row_len != db2->config.row_len) {
+    rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong row length: %s %"PRIu16", %s %"PRIu32, db_lbl, db->config.row_len, db2_lbl, db2->config.row_len);
     return 0;
   }
-  if(loaded_cf->id_len != db->config.id_len) {
-    rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong id length: expected %"PRIu16", loaded %"PRIu16, db->config.id_len, loaded_cf->id_len);
+  if(db->config.id_len != db2->config.id_len) {
+    rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong id length: %s %"PRIu16", %s %"PRIu16, db_lbl, db->config.id_len, db2_lbl, db2->config.id_len);
     return 0;
   }
-  if(loaded_cf->index_count != db->config.index_count) {
-    rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index count: expected %"PRIu16", loaded %"PRIu16, db->config.index_count, loaded_cf->index_count);
+  if(db->config.index_count != db2->config.index_count) {
+    rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index count: %s %"PRIu16", %s %"PRIu16, db_lbl, db->config.index_count, db2_lbl, db2->config.index_count);
     return 0;
   }
       
   //compare indices
   rydb_config_index_t *expected_index_cf;
-  for(i=0; i<loaded_cf->index_count; i++) {
-    expected_index_cf = &db->index[i].config;
-    if(strcmp(expected_index_cf->name, loaded_index_cf[i].name) != 0) {
-      rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i name: expected %s, loaded %s", i, expected_index_cf->name, loaded_index_cf[i].name);
+  for(i=0; i<db2->config.index_count; i++) {
+    expected_index_cf = &db->config.index[i];
+    if(strcmp(expected_index_cf->name, db2->config.index[i].name) != 0) {
+      rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i name: expected %s, loaded %s", i, expected_index_cf->name, db2->config.index[i].name);
       return 0;
     }
-    if(expected_index_cf->type != loaded_index_cf[i].type) {
-      rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i type: expected %s, loaded %s", i, rydb_index_type_str(expected_index_cf->type), rydb_index_type_str(loaded_index_cf[i].type));
+    if(expected_index_cf->type != db2->config.index[i].type) {
+      rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i type: expected %s, loaded %s", i, rydb_index_type_str(expected_index_cf->type), rydb_index_type_str(db2->config.index[i].type));
       return 0;
     }
-    if(expected_index_cf->start != loaded_index_cf[i].start) {
-      rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i start: expected %"PRIu16", loaded %"PRIu16, i, expected_index_cf->start, loaded_index_cf[i].start);
+    if(expected_index_cf->start != db2->config.index[i].start) {
+      rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i start: expected %"PRIu16", loaded %"PRIu16, i, expected_index_cf->start, db2->config.index[i].start);
       return 0;
     }
-    if(expected_index_cf->len != loaded_index_cf[i].len) {
-      rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i length: expected %"PRIu16", loaded %"PRIu16, i, expected_index_cf->len, loaded_index_cf[i].len);
+    if(expected_index_cf->len != db2->config.index[i].len) {
+      rydb_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i length: expected %"PRIu16", loaded %"PRIu16, i, expected_index_cf->len, db2->config.index[i].len);
       return 0;
     }
   }
   return 1;
 }
 
-static int rydb_data_file_exists(rydb_t *db) {
+static int rydb_data_file_exists(const rydb_t *db) {
   char path[1024];
   rydb_filename(db, "data", path, 1024);
   return access(path, F_OK) != -1;
 }
 
-static rydb_t *rydb_open_abort(rydb_t *db, rydb_error_t *err) {
-  if(err) {
-    *err = db->error;
-  }
-  rydb_close(db);
-  return NULL;
-}
-
-rydb_t *rydb_open(char *path, char *name, rydb_config_t *cf, rydb_config_index_t *index_cf, rydb_error_t *err) {
-  rydb_t       *db;
-  int           new_db = 0, i;
-  
-  if(index_cf && !cf) {
-    rydb_set_error(err, RYDB_ERROR_BAD_CONFIG, "Cannot call rydb_open with index_cf but without cf");
-    return NULL;
-  }
-  if(index_cf) {
-    for(i=0; i < cf->index_count; i++) {
-      if(strlen(index_cf[i].name) > RYDB_INDEX_NAME_MAX_LEN) {
-        rydb_set_errorf(err, RYDB_ERROR_BAD_CONFIG, "Index name \"%s\" too long, must be at most %i characters", index_cf[i].name, RYDB_INDEX_NAME_MAX_LEN);
-      }
-      if(strspn(index_cf[i].name, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != strlen(index_cf[i].name)) {
-        rydb_set_errorf(err, RYDB_ERROR_BAD_CONFIG, "Index name \"%s\" invalid: must consist of only ASCII alphanumeric characters and underscores", index_cf[i].name);
-        return NULL;
-      }
-      if(!rydb_index_type_valid(index_cf[i].type)) {
-        rydb_set_errorf(err, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" type for is invalid", index_cf[i].name);
-        return NULL;
-      }
-      if(index_cf[i].start > cf->row_len) {
-        rydb_set_errorf(err, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" is out of bounds: row length is %"PRIu16", but index is set to start at %"PRIu16, index_cf[i].name, cf->row_len, index_cf[i].start);
-        return NULL;
-      }
-      if(index_cf[i].start + cf->row_len > cf->row_len) {
-        rydb_set_errorf(err, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" is out of bounds: row length is %"PRIu16", but index is set to end at %"PRIu16, index_cf[i].name, cf->row_len, index_cf[i].start + cf->row_len);
-        return NULL;
-      }
+static void rydb_close_nofree(rydb_t *db) {
+  int i;
+  rydb_file_close(db, &db->data);
+  rydb_file_close(db, &db->meta);
+  if(db->index) {
+    for(i = 0; i<db->config.index_count; i++) {
+      rydb_file_close(db, &db->index[i].index);
+      //rydb_file_close(db, &db->index[i].data);
     }
   }
+}
+
+static int rydb_open_abort(rydb_t *db) {
+  rydb_close_nofree(db);
+  return 0;
+}
+
+
+
+int rydb_open(rydb_t *db, const char *path, const char *name) {
+  int           new_db = 0, i;
+  char         *dup_path = strdup(path);
   
-  db = rydb_alloc_memset(path, name, cf, index_cf);
-  
-  if(db == NULL) {
-    rydb_set_error(err, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for rydb struct");
-    return NULL;
+  size_t pathlen = strlen(dup_path);
+  if(pathlen > 0 && dup_path[pathlen-1]==PATH_SLASH_CHAR) { // remove trailing slash
+    dup_path[pathlen-1] = '\00';
   }
   
+  db->name = strdup(name);
+  db->path = dup_path;
+  
   if(!rydb_lock(db)) {
-    return rydb_open_abort(db, err);
+    return rydb_open_abort(db);
+  }
+  
+  if(!db->name || !db->path) {
+    rydb_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory to open RyDB");
+  }
+
+  //add primary index if it's not already defined
+  if(db->config.id_len > 0 && rydb_find_index_num(db, "primary") == -1) {
+    if(!rydb_config_add_index_hashtable(db, "primary", 0, db->config.id_len, 1, NULL)) {
+      return rydb_open_abort(db);
+    }
   }
   
   new_db = !rydb_data_file_exists(db);
   
   if(!rydb_file_open(db, "data", &db->data)) {
-    return rydb_open_abort(db, err);
+    return rydb_open_abort(db);
+  }
+  if(!rydb_file_open(db, "meta", &db->meta)) {
+    return rydb_open_abort(db);
   }
   
-  if(!new_db) {
-    rydb_config_t         loaded_cf;
-    rydb_config_index_t   loaded_index_cf[RYDB_INDICES_MAX];
-    off_t                 header_len;
-    char                  buf[(RYDB_INDEX_NAME_MAX_LEN + 1) * RYDB_INDICES_MAX];
-    if((header_len = rydb_data_header_read(db, &loaded_cf, loaded_index_cf, buf, (RYDB_INDEX_NAME_MAX_LEN + 1) * RYDB_INDICES_MAX)) == 0) {
-      return rydb_open_abort(db, err);
+  if(new_db) {
+    if(db->config.row_len == 0) {//row length was never set. can't do anything
+      rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Cannot create new unconfigured database: row length not set");
+      return rydb_open_abort(db);
     }
-    if(!cf) {
-      //try again with the loaded config
-      rydb_t *loaded_db = rydb_open(path, name, &loaded_cf, loaded_index_cf, err);
-      rydb_close(db); //close the one we tried to open
-      return loaded_db;
+    rydb_meta_save(db);
+  }
+  else {
+    if(db->config.row_len == 0) { //unconfigured db
+      if(!rydb_meta_load(db, &db->meta)) {
+        return rydb_open_abort(db);
+      }
     }
     else {
+      //need to compare intialized and loaded configs
+      rydb_t *loaded_db = rydb_new();
+      if(!loaded_db) {
+        rydb_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory to load RyDB");
+        return rydb_open_abort(db);
+      }
+      
+      if(!rydb_meta_load(loaded_db, &db->meta)) {
+        rydb_error(db, loaded_db->error.code, "Failed to load database: %s", loaded_db->error.str);
+        rydb_close(loaded_db);
+        return rydb_open_abort(db);
+      }
+      
       //compare configs
-      if(rydb_config_match(db, &loaded_cf, loaded_index_cf) == 0) {
-        return rydb_open_abort(db, err);
+      if(!rydb_config_match(db, loaded_db, "configured", "loaded")) {
+        rydb_close(loaded_db);
+        return rydb_open_abort(db);
       }
       //ok, everything matches
+      rydb_close(loaded_db);
     }
   }
+  
+  //create index file array
+  db->index = malloc(sizeof(*db->index) * db->config.index_count);
+  if(!db->index) {
+    rydb_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index files");
+    return rydb_open_abort(db);
+  }
+  
   for(i=0; i<db->config.index_count; i++) {
     if(!rydb_file_open_index(db, i)) {
-      return rydb_open_abort(db, err);
+      return rydb_open_abort(db);
     }
   }
   
   if(new_db) {
-    rydb_data_header_write(db);
+    rydb_meta_save(db);
   }
   
-  return db;
+  return 1;
 }
 
-void rydb_close(rydb_t *db) {
-  int i;
-  
-  rydb_file_close(db, &db->data);
-  rydb_file_close(db, &db->meta);
-  for(i=0; i<db->config.index_count; i++) {
-    rydb_file_close(db, &db->index[i].data);
+int rydb_close(rydb_t *db) {
+  rydb_close_nofree(db);
+  if(db->name && db->path) {
+    rydb_unlock(db);
   }
-  rydb_unlock(db);
   rydb_free(db);
+  return 1;
 }
+
+
