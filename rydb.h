@@ -81,7 +81,7 @@ typedef struct {
 
 typedef struct {
   rydb_file_t          index;
-  //rydb_file_t          data;
+  rydb_file_t          data;
 } rydb_index_t;
 
 typedef struct {
@@ -159,7 +159,5 @@ void rydb_error_print(rydb_t *db);
 
 int rydb_close(rydb_t *db); //also free()s db
 
-
-void rydb_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
 
 #endif //_RYDB_H

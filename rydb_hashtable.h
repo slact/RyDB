@@ -2,6 +2,8 @@
 #define _RYDB_HASHTABLE_H
 #include "rydb.h"
 
+int rydb_index_hashtable_open(rydb_t *db, off_t indexnum);
+
 int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
 int rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
 

@@ -254,49 +254,36 @@ int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start
 
 
 static off_t rydb_filename(const rydb_t *db, const char *what, char *buf, off_t maxlen) {
-  return snprintf(buf, maxlen, "%s%s%s%s%s.rydb", 
+  return snprintf(buf, maxlen, "%s%srydb.%s%s%s", 
                   db->path, 
                   strlen(db->path)> 0 ? PATH_SLASH : "", 
                   db->name, 
                   strlen(db->name)> 0 ? "." : "", 
                   what);
 }
+static void rydb_subfree(const void *ptr) {
+  if(ptr) {
+    free((void *)ptr);
+  }
+}
 
 static void rydb_free(rydb_t *db) {
   unsigned i;
-  if(db->path) {
-    free((char *)db->path);
-    db->path = NULL;
-  }
-  if(db->name) {
-    free((char *)db->name);
-    db->name = NULL;
-  }
+  rydb_subfree(db->path);
+  rydb_subfree(db->name);
   for(i=0; i<db->config.index_count; i++) {
-    if(db->config.index && db->config.index[i].name) {
-      free((char *)db->config.index[i].name);
-      db->config.index[i].name = NULL;
+    if(db->config.index) {
+      rydb_subfree(db->config.index[i].name);
     }
   }
-  if(db->config.index) {
-    free(db->config.index);
-    db->config.index = NULL;
-  }
-  if(db->index) {
-    free(db->index);
-    db->index = NULL;
-  }
+  rydb_subfree(db->config.index);
+  rydb_subfree(db->index);
   
-  for(i=0; i< db->config.link_pair_count*2; i++) {
-    if(db->config.link) {
-      free((char *)db->config.link[i].next);
-      db->config.link[i].next = NULL;
-      db->config.link[i].prev = NULL;
-    }
-  }
   if(db->config.link) {
-    free(db->config.link);
-    db->config.link = NULL;
+    for(i=0; i< db->config.link_pair_count*2; i++) {
+      rydb_subfree(db->config.link[i].next);
+    }
+    rydb_subfree(db->config.link);
   }
   
   free(db);
@@ -403,7 +390,7 @@ static int rydb_file_close(rydb_t *db, rydb_file_t *f) {
   return ok;
 }
 
-static int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
+int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
   off_t sz;
   char path[2048];
   rydb_filename(db, what, path, 2048);
@@ -446,10 +433,15 @@ static int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
   return 1;
 }
 
-static int rydb_file_open_index(rydb_t *db, int index_n) {
+int rydb_file_open_index(rydb_t *db, int index_n) {
   char index_name[128];
   snprintf(index_name, 128, "index.%s", db->config.index[index_n].name);
   return rydb_file_open(db, index_name, &db->index[index_n].index);
+}
+int rydb_file_open_index_data(rydb_t *db, int index_n) {
+  char index_name[128];
+  snprintf(index_name, 128, "index.%s.data", db->config.index[index_n].name);
+  return rydb_file_open(db, index_name, &db->index[index_n].data);
 }
 
 static int rydb_index_type_valid(rydb_index_type_t index_type) {
@@ -761,7 +753,7 @@ static void rydb_close_nofree(rydb_t *db) {
   if(db->index) {
     for(i = 0; i<db->config.index_count; i++) {
       rydb_file_close(db, &db->index[i].index);
-      //rydb_file_close(db, &db->index[i].data);
+      rydb_file_close(db, &db->index[i].data);
     }
   }
 }
@@ -774,12 +766,12 @@ static int rydb_open_abort(rydb_t *db) {
 
 
 int rydb_open(rydb_t *db, const char *path, const char *name) {
-  int           new_db = 0, i;
+  int           new_db = 0, i, rc;
   char         *dup_path = strdup(path);
   
-  size_t pathlen = strlen(dup_path);
-  if(pathlen > 0 && dup_path[pathlen-1]==PATH_SLASH_CHAR) { // remove trailing slash
-    dup_path[pathlen-1] = '\00';
+  size_t sz = strlen(dup_path);
+  if(sz > 0 && dup_path[sz-1]==PATH_SLASH_CHAR) { // remove trailing slash
+    dup_path[sz-1] = '\00';
   }
   
   db->name = strdup(name);
@@ -847,14 +839,29 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   }
   
   //create index file array
-  db->index = malloc(sizeof(*db->index) * db->config.index_count);
+  
+  sz = sizeof(*db->index) * db->config.index_count;
+  db->index = malloc(sz);
   if(!db->index) {
     rydb_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index files");
     return rydb_open_abort(db);
   }
+  memset(db->index, '\00', sz);
   
   for(i=0; i<db->config.index_count; i++) {
-    if(!rydb_file_open_index(db, i)) {
+    db->index[i].index.fd = -1;
+    db->index[i].data.fd = -1;
+    switch(db->config.index[i].type) {
+      case RYDB_INDEX_INVALID:
+      case RYDB_INDEX_BTREE:
+        rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Tried opening unsupported index \"%s\" type", db->config.index[i].name);
+        rc = 0;
+        break;
+      case RYDB_INDEX_HASHTABLE:
+        rc = rydb_index_hashtable_open(db, i);
+        break;
+    }
+    if(!rc) {
       return rydb_open_abort(db);
     }
   }
@@ -869,7 +876,9 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
 int rydb_close(rydb_t *db) {
   rydb_close_nofree(db);
   if(db->name && db->path) {
-    rydb_unlock(db);
+    if(!rydb_unlock(db)) {
+      return 0;
+    }
   }
   rydb_free(db);
   return 1;

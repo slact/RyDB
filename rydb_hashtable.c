@@ -1,9 +1,10 @@
-#include "rydb.h"
+#include "rydb_internal.h"
 #include "rydb_hashtable.h"
 #include <stdlib.h>
 #include <stdint.h>
 #include <ctype.h>
 #include <string.h>
+#include <assert.h>
 
 
 /**
@@ -322,5 +323,22 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
     cf->type_config.hashtable = *advanced_config;
   }
   return 1;
+}
+
+int rydb_index_hashtable_open(rydb_t *db, off_t i) {
+  rydb_config_index_t  *cf = &db->config.index[i];
+  rydb_index_t         *idx = &db->index[i];
   
+  assert(cf->type == RYDB_INDEX_HASHTABLE);
+  if(!rydb_file_open_index(db, i)) {
+    return 0;
+  }
+  
+  if(!cf->type_config.hashtable.direct_mapping) {
+    if(!rydb_file_open_index_data(db, i)) {
+      return 0;
+    }
+  }
+  
+  return 1;
 }
