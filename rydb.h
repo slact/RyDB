@@ -71,6 +71,25 @@ typedef union {
   rydb_config_index_hashtable_t hashtable;
 } rydb_config_index_type_t;
 
+
+typedef struct {
+  struct {
+    rydb_rownum_t numrows;
+    uint8_t       bucket_bits;
+    uint8_t       bucket_lazy_bits;
+  }             base;
+  struct {
+    rydb_rownum_t buckets;
+    uint8_t       load_factor;
+    size_t        datasize;
+  }             derived;
+  uint64_t    (*hash_function)(const char *data, size_t data_len);
+} rydb_index_state_hashtable_t;
+
+typedef union {
+  rydb_index_state_hashtable_t hashtable;
+} rydb_index_state_t;
+
 typedef struct {
   const char        *name;
   rydb_index_type_t  type;
@@ -83,6 +102,7 @@ typedef struct {
 typedef struct {
   rydb_file_t          index;
   rydb_file_t          data;
+  rydb_index_state_t   state;
 } rydb_index_t;
 
 typedef struct {

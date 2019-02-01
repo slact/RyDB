@@ -82,10 +82,8 @@ static inline uint_fast32_t crc_update(uint_fast32_t crc, const void *data, size
   return crc & 0xffffffff;
 }
 
-static uint32_t crc32(const char *data, size_t data_len) {
-  uint_fast32_t crc = 0;
-  crc_update(crc, data, data_len);
-  return crc;
+static uint64_t crc32(const char *data, size_t data_len) {
+  return (uint64_t )crc_update(0, data, data_len);
 }
 
 
@@ -341,4 +339,27 @@ int rydb_index_hashtable_open(rydb_t *db, off_t i) {
   }
   
   return 1;
+}
+
+static const uint64_t btrim64_mask[65] = {
+  0xffffffffffffffff, 0x7fffffffffffffff, 0x3fffffffffffffff, 0x1fffffffffffffff, 
+  0x0fffffffffffffff, 0x07ffffffffffffff, 0x03ffffffffffffff, 0x01ffffffffffffff, 
+  0x00ffffffffffffff, 0x007fffffffffffff, 0x003fffffffffffff, 0x001fffffffffffff, 
+  0x000fffffffffffff, 0x0007ffffffffffff, 0x0003ffffffffffff, 0x0001ffffffffffff, 
+  0x0000ffffffffffff, 0x00007fffffffffff, 0x00003fffffffffff, 0x00001fffffffffff, 
+  0x00000fffffffffff, 0x000007ffffffffff, 0x000003ffffffffff, 0x000001ffffffffff, 
+  0x000000ffffffffff, 0x0000007fffffffff, 0x0000003fffffffff, 0x0000001fffffffff, 
+  0x0000000fffffffff, 0x00000007ffffffff, 0x00000003ffffffff, 0x00000001ffffffff, 
+  0x00000000ffffffff, 0x000000007fffffff, 0x000000003fffffff, 0x000000001fffffff, 
+  0x000000000fffffff, 0x0000000007ffffff, 0x0000000003ffffff, 0x0000000001ffffff, 
+  0x0000000000ffffff, 0x00000000007fffff, 0x00000000003fffff, 0x00000000001fffff, 
+  0x00000000000fffff, 0x000000000007ffff, 0x000000000003ffff, 0x000000000001ffff, 
+  0x000000000000ffff, 0x0000000000007fff, 0x0000000000003fff, 0x0000000000001fff, 
+  0x0000000000000fff, 0x00000000000007ff, 0x00000000000003ff, 0x00000000000001ff, 
+  0x00000000000000ff, 0x000000000000007f, 0x000000000000003f, 0x000000000000001f, 
+  0x000000000000000f, 0x0000000000000007, 0x0000000000000003, 0x0000000000000001, 0
+};
+//bitwise trim of a 64-bit uint from the big end
+static inline uint64_t btrim64(uint64_t val, uint8_t bits) {
+  return val & btrim64_mask[bits];
 }
