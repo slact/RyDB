@@ -255,7 +255,7 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
   
   int rc = fscanf(fp, fmt, hash_func_buf, &store_value, &direct_mapping);
   if(rc < 3 || store_value > 1 || direct_mapping > 1) {
-    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Hashtable \"%s\" specification is corrupted or invalid", idx_cf->name);
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Hashtable \"%s\" specification is corrupted or invalid", idx_cf->name);
     return 0;
   }
   if(strcmp("CRC32", hash_func_buf) == 0) {
@@ -268,7 +268,7 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
     idx_cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
   }
   else {
-    rydb_error(db, RYDB_ERROR_FILE_INVALID, "Unsupported hash function %s for hashtable \"%s\"", hash_func_buf, idx_cf->name);
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Unsupported hash function %s for hashtable \"%s\"", hash_func_buf, idx_cf->name);
     return 0;
   }
 
@@ -303,7 +303,7 @@ int rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
   int rc;
   rc = fprintf(fp, fmt, hashfunction_to_str(&idx_cf->type_config), (uint16_t )idx_cf->type_config.hashtable.store_value, (uint16_t )idx_cf->type_config.hashtable.direct_mapping);
   if(rc <= 0) {
-    rydb_error(db, RYDB_ERROR_FILE_ACCESS, "failed writing hashtable \"%s\" config ", idx_cf->name);
+    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "failed writing hashtable \"%s\" config ", idx_cf->name);
     return 0;
   }
   return 1;
@@ -317,7 +317,7 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
     cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
   }
   else if(!hashfunction_valid(advanced_config)){
-    rydb_error(db, RYDB_ERROR_FILE_ACCESS, "Invalid hash function for hashtable \"%s\" config ", cf->name);
+    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Invalid hash function for hashtable \"%s\" config ", cf->name);
     return 0;
   }
   else {

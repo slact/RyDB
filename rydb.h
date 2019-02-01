@@ -134,16 +134,21 @@ typedef struct {
   rydb_config_index_t *index;
 } rydb_config_t;
 
-typedef struct {
+typedef struct rydb_s rydb_t;
+struct rydb_s {
   const char     *path;
   const char     *name;
   rydb_file_t     data;
   rydb_file_t     meta;
   rydb_config_t   config;
   rydb_index_t   *index;
+  struct {
+    void        (*function)(rydb_t *db, rydb_error_t *err, void *pd);
+    void         *privdata;
+  }               error_handler;
   rydb_error_t    error;
   
-} rydb_t;
+};// rydb_t
 
 rydb_t *rydb_new(void);
 
@@ -152,13 +157,19 @@ int rydb_config_revision(rydb_t *db, unsigned revision);
 int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name);
 int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, uint8_t flags, rydb_config_index_hashtable_t *advanced_config);
 
+int rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void*), void *pd);
+
 int rydb_open(rydb_t *db, const char *path, const char *name);
 
 int rydb_insert(rydb_t *db, rydb_str_t *id, rydb_str_t *data);
 int rydb_find(rydb_t *db, rydb_str_t *id); //return 1 if found, 0 if not found
 int rydb_find_row(rydb_t *db, rydb_row_t *row); //id should be pre-filled
 
-void rydb_error_print(rydb_t *db);
+rydb_error_t *rydb_error(const rydb_t *db);
+int rydb_error_print(const rydb_t *db);
+int rydb_error_fprint(const rydb_t *db, FILE *file);
+int rydb_error_snprint(const rydb_t *db, char *buf, size_t buflen);
+void rydb_error_clear(rydb_t *db);
 
 int rydb_close(rydb_t *db); //also free()s db
 
