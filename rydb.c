@@ -581,11 +581,12 @@ static int rydb_meta_save(rydb_t *db) {
     "format_revision: %i\n"
     "database_revision: %"PRIu32"\n"
     "endianness: %s\n"
+    "rownum_width: %"PRIu16"\n"
     "row_len: %"PRIu16"\n"
     "id_len: %"PRIu16"\n"
     "index_count: %"PRIu16"\n"
     "%s";
-  rc = fprintf(fp, fmt, RYDB_FORMAT_VERSION, db->config.revision, is_little_endian() ? "little" : "big", db->config.row_len, db->config.id_len, db->config.index_count, db->config.index_count > 0 ? "index:" : "");
+  rc = fprintf(fp, fmt, RYDB_FORMAT_VERSION, db->config.revision, is_little_endian() ? "little" : "big", (uint16_t)sizeof(rydb_rownum_t), db->config.row_len, db->config.id_len, db->config.index_count, db->config.index_count > 0 ? "index:" : "");
   if(rc <= 0) {
     rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to meta file %s", db->meta.path);
     return 0;
@@ -651,11 +652,10 @@ static int rydb_meta_save(rydb_t *db) {
 #define RYDB_NAME_MAX_LEN_STR EXPAND_AND_QUOTE(RYDB_NAME_MAX_LEN)
 
 static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
-  unsigned  i;
   FILE     *fp = ryf->fp;
   char      endianness_buf[16];
   int       little_endian;
-  uint16_t  rydb_format_version, db_revision, row_len, id_len, index_count;
+  uint16_t  rydb_format_version, db_revision, rownum_width, row_len, id_len, index_count;
   if(fseek(fp, 0, SEEK_SET) == -1) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Failed seeking to start of data file");
     return 0;
@@ -663,14 +663,15 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   
   const char *fmt = 
     "--- #rydb\n"
-    "format_revision: %hu\n"
-    "database_revision: %hu\n"
+    "format_revision: %"SCNu16"\n"
+    "database_revision: %"SCNu16"\n"
     "endianness: %15s\n"
-    "row_len: %hu\n"
-    "id_len: %hu\n"
-    "index_count: %hu\n";
-  int rc = fscanf(fp, fmt, &rydb_format_version, &db_revision, endianness_buf, &row_len, &id_len, &index_count);
-  if(rc < 6){
+    "rownum_width: %"SCNu16"\n"
+    "row_len: %"SCNu16"\n"
+    "id_len: %"SCNu16"\n"
+    "index_count: %"SCNu16"\n";
+  int rc = fscanf(fp, fmt, &rydb_format_version, &db_revision, endianness_buf, &rownum_width, &row_len, &id_len, &index_count);
+  if(rc < 7){
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Not a RyDB file or is corrupted");
     return 0;
   }
@@ -678,6 +679,29 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Format version mismatch, expected %i, loaded %"PRIu16, RYDB_FORMAT_VERSION, rydb_format_version);
     return 0;
   }
+  
+  if(strcmp(endianness_buf, "big") == 0) {
+    little_endian = 0;
+  }
+  else if(strcmp(endianness_buf, "little") == 0) {
+    little_endian = 1;
+  }
+  else {
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "File unreadable, unexpected endianness %s", endianness_buf);
+    return 0;
+  }
+  if(is_little_endian() != little_endian) {
+    //TODO: convert data to host endianness
+    rydb_set_error(db, RYDB_ERROR_WRONG_ENDIANNESS, "File has wrong endianness");
+    return 0;
+  }
+  
+  if(rownum_width != sizeof(rydb_rownum_t)) {
+    //TODO: convert data to host rownum size
+    rydb_set_error(db, RYDB_ERROR_WRONG_ENDIANNESS, "File rownum is a %" PRIu16"-bit integer, expected %i-bit", rownum_width*8, sizeof(rydb_rownum_t)*8);
+    return 0;
+  }
+  
   if(index_count > RYDB_INDICES_MAX) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "File invalid, too many indices defined");
     return 0;
@@ -689,39 +713,26 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   if(!rydb_config_revision(db, db_revision))
     return 0;
   
-  if(strcmp(endianness_buf, "big") == 0)
-    little_endian = 0;
-  else if(strcmp(endianness_buf, "little") == 0)
-    little_endian = 1;
-  else {
-    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "File invalid, unexpected endianness %s", endianness_buf);
-    return 0;
-  }
-  
-  if(is_little_endian() != little_endian) {
-    //TODO: convert data to host endianness
-    rydb_set_error(db, RYDB_ERROR_WRONG_ENDIANNESS, "File has wrong endianness");
-    return 0;
-  }
-  
-  const char *index_fmt = "\n"
-    "  - name: %" RYDB_NAME_MAX_LEN_STR "s\n"
-    "    type: %32s\n"
-    "    start: %hu\n"
-    "    len: %hu\n"
-    "    unique: %hu\n";
-  
-  char                      index_name_buf[RYDB_NAME_MAX_LEN];
-  char                      index_type_buf[32];
-  uint16_t                  index_unique;
-  rydb_config_index_t       idx_cf;
+
   
   if(index_count > 0) {
+    const char *index_fmt = "\n"
+      "  - name: %" RYDB_NAME_MAX_LEN_STR "s\n"
+      "    type: %32s\n"
+      "    start: %"SCNu16"\n"
+      "    len: %"SCNu16"\n"
+      "    unique: %"SCNu16"\n";
+    
+    char                      index_name_buf[RYDB_NAME_MAX_LEN];
+    char                      index_type_buf[32];
+    uint16_t                  index_unique;
+    rydb_config_index_t       idx_cf;
+    
     if(fscanf(fp, "index:") < 0) {
       rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "index specification is corrupted or invalid");
       return 0;
     }
-    for(i=0; i<index_count; i++) {
+    for(int i=0; i<index_count; i++) {
       rc = fscanf(fp, index_fmt, index_name_buf, index_type_buf, &idx_cf.start, &idx_cf.len, &index_unique);
       if(rc < 5){
         rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "index specification is corrupted or invalid");
@@ -757,19 +768,19 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   }
   
   //now let's do the row links
-  uint16_t                  linkpairs_count;
-  char                      link_next_buf[RYDB_NAME_MAX_LEN], link_prev_buf[RYDB_NAME_MAX_LEN];
+  uint16_t           linkpairs_count;
   rc = fscanf(fp, "link_pair_count: %hu\n", &linkpairs_count);
   if(rc < 1 || linkpairs_count > RYDB_ROW_LINK_PAIRS_MAX) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
     return 0;
   }
   if(linkpairs_count > 0) {
+    char             link_next_buf[RYDB_NAME_MAX_LEN], link_prev_buf[RYDB_NAME_MAX_LEN];
     if(fscanf(fp, "link_pair:\n") < 0) {
       rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
       return 0;
     }
-    for(i=0; i < linkpairs_count; i++) {
+    for(int i=0; i < linkpairs_count; i++) {
       rc = fscanf(fp, "  - [ %" RYDB_NAME_MAX_LEN_STR "s , %" RYDB_NAME_MAX_LEN_STR "s ]\n", link_next_buf, link_prev_buf);
       if(rc < 2) {
         rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
