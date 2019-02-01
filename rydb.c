@@ -129,8 +129,33 @@ int rydb_config_revision(rydb_t *db, unsigned revision) {
   return 1;
 }
 
+static inline int row_link_config_compare(const void *v1, const void *v2) {
+  const rydb_config_row_link_t *idx1 = v1;
+  const rydb_config_row_link_t *idx2 = v2;
+  return strcmp(idx1->next, idx2->next);
+}
+
+static int rydb_find_row_link_num(rydb_t *db, const char *next_name) {
+  rydb_config_row_link_t match = {.next = next_name };;
+  rydb_config_row_link_t *start = db->config.link, *found;
+  if(!start) {
+   return -1; 
+  }
+  found = bsearch(&match, start, db->config.link_pair_count * 2, sizeof(*start), row_link_config_compare);
+  if(!found){
+    return -1;
+  }
+  else {
+    return found - start;
+  }
+}
+
 int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name) {
-  int            i;
+
+  if(db->config.link_pair_count >= RYDB_ROW_LINK_PAIRS_MAX) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Cannot exceed %i row-link pairs per database.", RYDB_ROW_LINK_PAIRS_MAX);
+    return 0;
+  }
   if(strlen(link_name) == 0) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid row-link name of length 0.");
     return 0;
@@ -139,28 +164,34 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid reverse row-link name of length 0.");
     return 0;
   }
+  if(strlen(link_name) > RYDB_NAME_MAX_LEN) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link name is too long, must be at most %i", RYDB_NAME_MAX_LEN);
+    return 0;
+  }
+  if(strlen(reverse_link_name) > RYDB_NAME_MAX_LEN) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Reverse row-link name is too long, must be at most %i", RYDB_NAME_MAX_LEN);
+    return 0;
+  }
   if(!is_alphanumeric(link_name)) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid row-link name, must be alphanumeric or underscores.");
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid row-link name \"%s\", must be alphanumeric or underscores.", link_name);
     return 0;
   }
   if(!is_alphanumeric(reverse_link_name)) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid reverse row-link name, must be alphanumeric or underscores.");
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid reverse row-link name \"%s\", must be alphanumeric or underscores.", reverse_link_name);
     return 0;
   }
   if(strcmp(link_name, reverse_link_name) == 0) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link and reverse row-link cannot be the same.");
     return 0;
   }
-  
-  for(i=0; i < db->config.link_pair_count*2; i++) {
-    if(strcmp(link_name, db->config.link[i].next) == 0) {
-      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link with name \"%s\" already exists.", link_name);
-      return 0;
-    }
-    if(strcmp(reverse_link_name, db->config.link[i].next) == 0) {
-      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link with name \"%s\" already exists.", reverse_link_name);
-      return 0;
-    }
+
+  if(rydb_find_row_link_num(db, link_name) != -1) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link with name \"%s\" already exists.", link_name);
+    return 0;
+  }
+  if(rydb_find_row_link_num(db, reverse_link_name) != -1) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link with name \"%s\" already exists.", reverse_link_name);
+    return 0;
   }
   
   if(db->config.link_pair_count == 0) {
@@ -194,20 +225,26 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
   link_inverse->inverse = 1;
   link_inverse->next = link->prev;
   link_inverse->prev = link->next;
+  
   db->config.link_pair_count ++;
+  qsort(db->config.link, db->config.link_pair_count*2, sizeof(*db->config.link), row_link_config_compare);
   
   return 1;
 }
 
-static int index_config_compare(const void *v1, const void *v2) {
+static inline int index_config_compare(const void *v1, const void *v2) {
   const rydb_config_index_t *idx1 = v1;
   const rydb_config_index_t *idx2 = v2;
   return strcmp(idx1->name, idx2->name);
 }
 
 static int rydb_config_add_index(rydb_t *db, rydb_config_index_t *idx) {
-  if(strlen(idx->name) > RYDB_INDEX_NAME_MAX_LEN) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Index name \"%s\" too long, must be at most %i characters", idx->name, RYDB_INDEX_NAME_MAX_LEN);
+  if(db->config.index_count >= RYDB_INDICES_MAX) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Cannot exceed %i indices per database.", RYDB_INDICES_MAX);
+    return 0;
+  }
+  if(strlen(idx->name) > RYDB_NAME_MAX_LEN) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Index name \"%s\" too long, must be at most %i characters", idx->name, RYDB_NAME_MAX_LEN);
     return 0;
   }
   if(!is_alphanumeric(idx->name)) {
@@ -611,7 +648,7 @@ static int rydb_meta_save(rydb_t *db) {
 
 #define QUOTE(str) #str
 #define EXPAND_AND_QUOTE(str) QUOTE(str)
-#define RYDB_INDEX_NAME_MAX_LEN_STR EXPAND_AND_QUOTE(RYDB_INDEX_NAME_MAX_LEN)
+#define RYDB_NAME_MAX_LEN_STR EXPAND_AND_QUOTE(RYDB_NAME_MAX_LEN)
 
 static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   unsigned  i;
@@ -668,13 +705,13 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   }
   
   const char *index_fmt = "\n"
-    "  - name: %" RYDB_INDEX_NAME_MAX_LEN_STR "s\n"
+    "  - name: %" RYDB_NAME_MAX_LEN_STR "s\n"
     "    type: %32s\n"
     "    start: %hu\n"
     "    len: %hu\n"
     "    unique: %hu\n";
   
-  char                      index_name_buf[RYDB_INDEX_NAME_MAX_LEN];
+  char                      index_name_buf[RYDB_NAME_MAX_LEN];
   char                      index_type_buf[32];
   uint16_t                  index_unique;
   rydb_config_index_t       idx_cf;
@@ -721,9 +758,9 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   
   //now let's do the row links
   uint16_t                  linkpairs_count;
-  char                      link_next_buf[RYDB_INDEX_NAME_MAX_LEN], link_prev_buf[RYDB_INDEX_NAME_MAX_LEN];
+  char                      link_next_buf[RYDB_NAME_MAX_LEN], link_prev_buf[RYDB_NAME_MAX_LEN];
   rc = fscanf(fp, "link_pair_count: %hu\n", &linkpairs_count);
-  if(rc < 1 || linkpairs_count*2 > RYDB_ROW_LINKS_MAX) {
+  if(rc < 1 || linkpairs_count > RYDB_ROW_LINK_PAIRS_MAX) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
     return 0;
   }
@@ -733,7 +770,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
       return 0;
     }
     for(i=0; i < linkpairs_count; i++) {
-      rc = fscanf(fp, "  - [ %" RYDB_INDEX_NAME_MAX_LEN_STR "s , %" RYDB_INDEX_NAME_MAX_LEN_STR "s ]\n", link_next_buf, link_prev_buf);
+      rc = fscanf(fp, "  - [ %" RYDB_NAME_MAX_LEN_STR "s , %" RYDB_NAME_MAX_LEN_STR "s ]\n", link_next_buf, link_prev_buf);
       if(rc < 2) {
         rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
         return 0;
@@ -749,46 +786,67 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
 }
 
 static int rydb_config_match(rydb_t *db, const rydb_t *db2, const char *db_lbl, const char *db2_lbl) {
-  int i;
   //see if the loaded config and the one passed in are the same
   if(db->config.revision != db2->config.revision) {
-    rydb_set_error(db, RYDB_ERROR_REVISION_MISMATCH, "Wrong revision number: %s %"PRIu32", %s %"PRIu32, db_lbl, db->config.revision, db2_lbl, db2->config.revision);
+    rydb_set_error(db, RYDB_ERROR_REVISION_MISMATCH, "Mismatching revision number: %s %"PRIu32", %s %"PRIu32, db_lbl, db->config.revision, db2_lbl, db2->config.revision);
     return 0;
   }
   if(db->config.row_len != db2->config.row_len) {
-    rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong row length: %s %"PRIu16", %s %"PRIu32, db_lbl, db->config.row_len, db2_lbl, db2->config.row_len);
+    rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching row length: %s %"PRIu16", %s %"PRIu32, db_lbl, db->config.row_len, db2_lbl, db2->config.row_len);
     return 0;
   }
   if(db->config.id_len != db2->config.id_len) {
-    rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong id length: %s %"PRIu16", %s %"PRIu16, db_lbl, db->config.id_len, db2_lbl, db2->config.id_len);
+    rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching id length: %s %"PRIu16", %s %"PRIu16, db_lbl, db->config.id_len, db2_lbl, db2->config.id_len);
     return 0;
   }
+  
   if(db->config.index_count != db2->config.index_count) {
-    rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index count: %s %"PRIu16", %s %"PRIu16, db_lbl, db->config.index_count, db2_lbl, db2->config.index_count);
+    rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching index count: %s %"PRIu16", %s %"PRIu16, db_lbl, db->config.index_count, db2_lbl, db2->config.index_count);
     return 0;
   }
-      
   //compare indices
-  rydb_config_index_t *expected_index_cf;
-  for(i=0; i<db2->config.index_count; i++) {
-    expected_index_cf = &db->config.index[i];
-    if(strcmp(expected_index_cf->name, db2->config.index[i].name) != 0) {
-      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i name: expected %s, loaded %s", i, expected_index_cf->name, db2->config.index[i].name);
+  for(int i=0; i<db2->config.index_count; i++) {
+    rydb_config_index_t *idx1 = &db->config.index[i];
+    rydb_config_index_t *idx2 = &db2->config.index[i];
+    if(strcmp(idx1->name, idx2->name) != 0) {
+      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching index %i name: expected %s, loaded %s", i, idx1->name, idx2->name);
       return 0;
     }
-    if(expected_index_cf->type != db2->config.index[i].type) {
-      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i type: expected %s, loaded %s", i, rydb_index_type_str(expected_index_cf->type), rydb_index_type_str(db2->config.index[i].type));
+    if(idx1->type != idx2->type) {
+      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching index %i type: expected %s, loaded %s", i, rydb_index_type_str(idx1->type), rydb_index_type_str(idx2->type));
       return 0;
     }
-    if(expected_index_cf->start != db2->config.index[i].start) {
-      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i start: expected %"PRIu16", loaded %"PRIu16, i, expected_index_cf->start, db2->config.index[i].start);
+    if(idx1->start != idx2->start) {
+      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching index %i start: expected %"PRIu16", loaded %"PRIu16, i, idx1->start, idx2->start);
       return 0;
     }
-    if(expected_index_cf->len != db2->config.index[i].len) {
-      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Wrong index %i length: expected %"PRIu16", loaded %"PRIu16, i, expected_index_cf->len, db2->config.index[i].len);
+    if(idx1->len != idx2->len) {
+      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching index %i length: expected %"PRIu16", loaded %"PRIu16, i, idx1->len, idx2->len);
       return 0;
     }
   }
+  
+  //compare row-links
+  if(db->config.link_pair_count != db2->config.link_pair_count) {
+    rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching row-link pair count: %s %"PRIu16", %s %"PRIu16, db_lbl, db->config.link_pair_count, db2_lbl, db2->config.link_pair_count);
+    return 0;
+  }
+  for(int i=0; i<db2->config.link_pair_count*2; i++) {
+    rydb_config_row_link_t *link1 = &db->config.link[i];
+    rydb_config_row_link_t *link2 = &db2->config.link[i];
+    if(strcmp(link1->next, link2->next) != 0 || strcmp(link1->prev, link2->prev) != 0) {
+      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching row-link pair %i: %s [%s, %s], %s [%s, %s]", i, db_lbl, link1->next, link1->prev, db2_lbl, link2->next, link2->prev);
+      return 0;
+    }
+    if(link1->inverse != link2->inverse) {
+      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching row-link pair %i: %s [%s, %s], %s [%s, %s]", i, 
+                     db_lbl, link1->inverse ? link1->prev : link1->next, link1->inverse ? link1->next : link1->prev, 
+                     db2_lbl, link2->inverse ? link2->prev : link2->next, link2->inverse ? link2->next : link2->prev
+      );
+      return 0;
+    }
+  }
+  
   return 1;
 }
 

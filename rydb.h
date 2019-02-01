@@ -11,9 +11,9 @@ typedef uint32_t rydb_rownum_t;
 #define RYDB_ROWNUM_MAX  ((rydb_rownum_t ) -1)
 #define RYDB_ROWNUM_NULL ((rydb_rownum_t ) 0)
 
-#define RYDB_ROW_LINKS_MAX 32
+#define RYDB_ROW_LINK_PAIRS_MAX 16
 
-#define RYDB_INDEX_NAME_MAX_LEN 64
+#define RYDB_NAME_MAX_LEN 64
 #define RYDB_INDICES_MAX 32
 #define RYDB_REVISION_MAX UINT32_MAX
 #define RYDB_ROW_LEN_MAX UINT16_MAX
@@ -28,10 +28,8 @@ typedef struct {
 
 typedef struct {
   rydb_rownum_t   n;
-  
   rydb_str_t      id;
   rydb_str_t      data;
-  rydb_rownum_t   link[RYDB_ROW_LINKS_MAX];
 } rydb_row_t;
 
 typedef struct {
