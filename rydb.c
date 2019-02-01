@@ -40,10 +40,10 @@ static int is_alphanumeric(const char *str) {
 }
 
 #define RETURN_ERROR_PRINTF(err, func, ...) \
-  if(err->errno_val != 0)            \
+  if(err->errno_val != 0) {            \
     return func(__VA_ARGS__ "ERROR [%d]: %s, errno [%d]: %s\n", err->code, err->str, err->errno_val, strerror(err->errno_val));\
-  else                               \
-    return func(__VA_ARGS__ "ERROR [%d]: %s\n", err->code, err->str)
+  } \
+  return func(__VA_ARGS__ "ERROR [%d]: %s\n", err->code, err->str)
 
 int rydb_error_print(const rydb_t *db) {
   const rydb_error_t *err = &db->error;
@@ -63,9 +63,7 @@ rydb_error_t *rydb_error(const rydb_t *db) {
   if(db->error.code != RYDB_NO_ERROR) {
     return (rydb_error_t *)&db->error;
   }
-  else {
-    return NULL;
-  }
+  return NULL;
 }
 
 void rydb_error_clear(rydb_t *db) {
@@ -145,9 +143,7 @@ static int rydb_find_row_link_num(rydb_t *db, const char *next_name) {
   if(!found){
     return -1;
   }
-  else {
-    return found - start;
-  }
+  return found - start;
 }
 
 int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name) {
@@ -306,9 +302,7 @@ static int rydb_find_index_num(const rydb_t *db, const char *name) {
   if(!cf){
     return -1;
   }
-  else {
-    return cf - cf_start;
-  }
+  return cf - cf_start;
 }
 
 static int rydb_config_index_check_flags(rydb_t *db, const rydb_config_index_t *idx) {
@@ -354,10 +348,9 @@ static void rydb_subfree(const void *ptr) {
 }
 
 static void rydb_free(rydb_t *db) {
-  unsigned i;
   rydb_subfree(db->path);
   rydb_subfree(db->name);
-  for(i=0; i<db->config.index_count; i++) {
+  for(int i=0; i<db->config.index_count; i++) {
     if(db->config.index) {
       rydb_subfree(db->config.index[i].name);
     }
@@ -366,7 +359,7 @@ static void rydb_free(rydb_t *db) {
   rydb_subfree(db->index);
   
   if(db->config.link) {
-    for(i=0; i< db->config.link_pair_count*2; i++) {
+    for(int i=0; i< db->config.link_pair_count*2; i++) {
       rydb_subfree(db->config.link[i].next);
     }
     rydb_subfree(db->config.link);
@@ -381,19 +374,12 @@ static int rydb_lock(rydb_t *db) {
   mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP;
   int fd = open(buf, O_CREAT | O_EXCL, mode);
   if(fd == -1) {
-    if(errno == EEXIST) {
-      rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Database is already locked");
-    }
-    else {
-      rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Can't lock database");
-    }
+    rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, errno == EEXIST ? "Database is already locked" : "Can't lock database");
     return 0;
   }
-  else {
-    //lock file created, i don't think we need to keep its fd open
-    close(fd);
-    return 1;
-  }
+  //lock file created, i don't think we need to keep its fd open
+  close(fd);
+  return 1;
 }
 
 static int rydb_unlock(rydb_t *db) {
@@ -405,9 +391,7 @@ static int rydb_unlock(rydb_t *db) {
   if(remove(buf) == 0) {
     return 1;
   }
-  else {
-    return 0;
-  }
+  return 0;
 }
 
 /*
@@ -557,17 +541,15 @@ static rydb_index_type_t rydb_index_type(const char *str) {
   if(strcmp(str, "hashtable") == 0) {
     return RYDB_INDEX_HASHTABLE;
   }
-  else if(strcmp(str, "B-tree") == 0) {
+  if(strcmp(str, "B-tree") == 0) {
     return RYDB_INDEX_BTREE;
   }
-  else {
-    return RYDB_INDEX_INVALID;
-  }
+  return RYDB_INDEX_INVALID;
 }
 
 static int rydb_meta_save(rydb_t *db) {
   FILE     *fp = db->meta.fp;
-  int       rc, i;
+  int       rc;
   int       total_written = 0;
   rydb_config_index_t *idxcf;
   
@@ -600,7 +582,7 @@ static int rydb_meta_save(rydb_t *db) {
     "    len: %"PRIu16"\n"
     "    unique: %"PRIu16"\n";
   
-  for(i=0; i<db->config.index_count; i++) {
+  for(int i=0; i<db->config.index_count; i++) {
     idxcf = &db->config.index[i];
     rc = fprintf(fp, index_fmt, idxcf->name, rydb_index_type_str(idxcf->type), idxcf->start, idxcf->len, (uint16_t )(idxcf->flags & RYDB_INDEX_UNIQUE));
     if(rc <= 0){
@@ -631,7 +613,7 @@ static int rydb_meta_save(rydb_t *db) {
   }
   total_written += rc;
 
-  for(i=0; i < db->config.link_pair_count*2; i++) {
+  for(int i=0; i < db->config.link_pair_count*2; i++) {
     if(!db->config.link[i].inverse) {
       rc = fprintf(fp, "  - [ %s , %s ]\n", db->config.link[i].next, db->config.link[i].prev);
       if(rc <= 0) {
@@ -707,12 +689,12 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     return 0;
   }
   
-  if(!rydb_config_row(db, row_len, id_len))
+  if(!rydb_config_row(db, row_len, id_len)) {
     return 0;
-  
-  if(!rydb_config_revision(db, db_revision))
+  }
+  if(!rydb_config_revision(db, db_revision)) {
     return 0;
-  
+  }
 
   
   if(index_count > 0) {
@@ -769,7 +751,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   
   //now let's do the row links
   uint16_t           linkpairs_count;
-  rc = fscanf(fp, "link_pair_count: %hu\n", &linkpairs_count);
+  rc = fscanf(fp, "link_pair_count: %"SCNu16"\n", &linkpairs_count);
   if(rc < 1 || linkpairs_count > RYDB_ROW_LINK_PAIRS_MAX) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
     return 0;
@@ -868,11 +850,10 @@ static int rydb_data_file_exists(const rydb_t *db) {
 }
 
 static void rydb_close_nofree(rydb_t *db) {
-  int i;
   rydb_file_close(db, &db->data);
   rydb_file_close(db, &db->meta);
   if(db->index) {
-    for(i = 0; i<db->config.index_count; i++) {
+    for(int i = 0; i<db->config.index_count; i++) {
       rydb_file_close(db, &db->index[i].index);
       rydb_file_close(db, &db->index[i].data);
     }
@@ -887,7 +868,7 @@ static int rydb_open_abort(rydb_t *db) {
 
 
 int rydb_open(rydb_t *db, const char *path, const char *name) {
-  int           new_db = 0, i;
+  int           new_db = 0;
   char         *dup_path = strdup(path);
   
   size_t sz = strlen(dup_path);
@@ -901,9 +882,8 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   if(!rydb_lock(db)) {
     return rydb_open_abort(db);
   }
-  else {
-    db->lock_acquired = 1;
-  }
+  
+  db->lock_acquired = 1;
   
   if(!db->name || !db->path) {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory to open RyDB");
@@ -963,30 +943,31 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   }
   
   //create index file array
-  
-  sz = sizeof(*db->index) * db->config.index_count;
-  db->index = malloc(sz);
-  if(!db->index) {
-    rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index files");
-    return rydb_open_abort(db);
-  }
-  memset(db->index, '\00', sz);
-  
-  for(i=0; i<db->config.index_count; i++) {
-    db->index[i].index.fd = -1;
-    db->index[i].data.fd = -1;
-    switch(db->config.index[i].type) {
-      case RYDB_INDEX_INVALID:
-      case RYDB_INDEX_BTREE:
-        rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Tried opening unsupported index \"%s\" type", db->config.index[i].name);
-        return rydb_open_abort(db);
-      case RYDB_INDEX_HASHTABLE:
-        if(!rydb_index_hashtable_open(db, i)) {
-          return rydb_open_abort(db);
-        }
-        break;
+  if(db->config.index_count > 0) {
+    sz = sizeof(*db->index) * db->config.index_count;
+    db->index = malloc(sz);
+    if(!db->index) {
+      rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index files");
+      return rydb_open_abort(db);
     }
+    memset(db->index, '\00', sz);
     
+    for(int i=0; i<db->config.index_count; i++) {
+      db->index[i].index.fd = -1;
+      db->index[i].data.fd = -1;
+      switch(db->config.index[i].type) {
+        case RYDB_INDEX_INVALID:
+        case RYDB_INDEX_BTREE:
+          rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Tried opening unsupported index \"%s\" type", db->config.index[i].name);
+          return rydb_open_abort(db);
+        case RYDB_INDEX_HASHTABLE:
+          if(!rydb_index_hashtable_open(db, i)) {
+            return rydb_open_abort(db);
+          }
+          break;
+      }
+      
+    }
   }
   
   if(new_db) {
