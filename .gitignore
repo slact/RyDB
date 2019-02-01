@@ -3,3 +3,5 @@ rydb_test
 coredump/*
 vgcore.*
 .compiler_flags
+callgrind*.out
+compile_commands.json
