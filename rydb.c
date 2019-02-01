@@ -228,6 +228,9 @@ static int rydb_find_index_num(const rydb_t *db, const char *name) {
   rydb_config_index_t match;
   match.name = name;
   rydb_config_index_t *cf_start = db->config.index, *cf;
+  if(!cf_start) {
+   return -1; 
+  }
   cf = bsearch(&match, cf_start, db->config.index_count, sizeof(*cf_start), index_config_compare);
   if(!cf){
     return -1;
@@ -237,13 +240,25 @@ static int rydb_find_index_num(const rydb_t *db, const char *name) {
   }
 }
 
-int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, unsigned unique, rydb_config_index_hashtable_t *advanced_config) {
+static int rydb_config_index_check_flags(rydb_t *db, const rydb_config_index_t *idx) {
+  if((idx->flags & ~(RYDB_INDEX_UNIQUE)) > 0) {
+    rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Unknown flags set for index \"%s\"", idx->name);
+    return 0;
+  }
+  return 1;
+}
+
+int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, uint8_t flags, rydb_config_index_hashtable_t *advanced_config) {
   rydb_config_index_t idx;
   idx.name = name;
   idx.type = RYDB_INDEX_HASHTABLE;
   idx.start = start;
   idx.len = len;
-  idx.unique = unique;
+  idx.flags = flags;
+  
+  if(!rydb_config_index_check_flags(db, &idx)) {
+    return 0;
+  }
   
   if(!rydb_config_index_hashtable_set_config(db, &idx, advanced_config)) {
     return 0;
@@ -515,7 +530,7 @@ static int rydb_meta_save(rydb_t *db) {
   
   for(i=0; i<db->config.index_count; i++) {
     idxcf = &db->config.index[i];
-    rc = fprintf(fp, index_fmt, idxcf->name, rydb_index_type_str(idxcf->type), idxcf->start, idxcf->len, (uint16_t )idxcf->unique);
+    rc = fprintf(fp, index_fmt, idxcf->name, rydb_index_type_str(idxcf->type), idxcf->start, idxcf->len, (uint16_t )(idxcf->flags & RYDB_INDEX_UNIQUE));
     if(rc <= 0){
       rydb_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to meta file %s", db->meta.path);
       return 0;
@@ -647,7 +662,10 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
       }
       idx_cf.type = rydb_index_type(index_type_buf);
       idx_cf.name = index_name_buf;
-      idx_cf.unique = index_unique;
+      idx_cf.flags = 0;
+      if(index_unique) {
+        idx_cf.flags |= RYDB_INDEX_UNIQUE;
+      }
       switch(idx_cf.type) {
         case RYDB_INDEX_HASHTABLE:
           if(!rydb_meta_load_index_hashtable(db, &idx_cf, fp)) {
@@ -766,7 +784,7 @@ static int rydb_open_abort(rydb_t *db) {
 
 
 int rydb_open(rydb_t *db, const char *path, const char *name) {
-  int           new_db = 0, i, rc;
+  int           new_db = 0, i;
   char         *dup_path = strdup(path);
   
   size_t sz = strlen(dup_path);
@@ -855,15 +873,15 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
       case RYDB_INDEX_INVALID:
       case RYDB_INDEX_BTREE:
         rydb_error(db, RYDB_ERROR_BAD_CONFIG, "Tried opening unsupported index \"%s\" type", db->config.index[i].name);
-        rc = 0;
-        break;
+        return rydb_open_abort(db);
       case RYDB_INDEX_HASHTABLE:
-        rc = rydb_index_hashtable_open(db, i);
+        printf("opening hashtable %s %i\n", db->config.index[i].name, i);
+        if(!rydb_index_hashtable_open(db, i)) {
+          return rydb_open_abort(db);
+        }
         break;
     }
-    if(!rc) {
-      return rydb_open_abort(db);
-    }
+    
   }
   
   if(new_db) {

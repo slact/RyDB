@@ -310,9 +310,10 @@ int rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
 }
 
 int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, rydb_config_index_hashtable_t *advanced_config) {
+  unsigned unique = cf->flags & RYDB_INDEX_UNIQUE;
   if(!advanced_config) {
-    cf->type_config.hashtable.direct_mapping = cf->unique;
-    cf->type_config.hashtable.store_value = !cf->unique;
+    cf->type_config.hashtable.direct_mapping = unique;
+    cf->type_config.hashtable.store_value = !unique;
     cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
   }
   else if(!hashfunction_valid(advanced_config)){
@@ -327,7 +328,6 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
 
 int rydb_index_hashtable_open(rydb_t *db, off_t i) {
   rydb_config_index_t  *cf = &db->config.index[i];
-  rydb_index_t         *idx = &db->index[i];
   
   assert(cf->type == RYDB_INDEX_HASHTABLE);
   if(!rydb_file_open_index(db, i)) {

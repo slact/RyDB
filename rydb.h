@@ -18,6 +18,9 @@ typedef uint32_t rydb_rownum_t;
 #define RYDB_REVISION_MAX UINT32_MAX
 #define RYDB_ROW_LEN_MAX UINT16_MAX
 
+#define RYDB_INDEX_DEFAULT  0x0
+#define RYDB_INDEX_UNIQUE   0x1
+
 typedef struct {
   char           *str;
   uint16_t        len;
@@ -76,7 +79,7 @@ typedef struct {
   uint16_t           start; // start of indexable value in row
   uint16_t           len; //length of indexable data
   rydb_config_index_type_t type_config;
-  unsigned           unique:1;
+  uint8_t            flags;
 } rydb_config_index_t;
 
 typedef struct {
@@ -147,7 +150,7 @@ rydb_t *rydb_new(void);
 int rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len);
 int rydb_config_revision(rydb_t *db, unsigned revision);
 int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name);
-int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, unsigned unique, rydb_config_index_hashtable_t *advanced_config);
+int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, uint8_t flags, rydb_config_index_hashtable_t *advanced_config);
 
 int rydb_open(rydb_t *db, const char *path, const char *name);
 

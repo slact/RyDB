@@ -9,9 +9,9 @@ int main(void) {
   rydb_config_revision(db, 0);
   rydb_config_add_row_link(db, "next", "prev");
   rydb_config_add_row_link(db, "src", "dst");
-  rydb_config_add_index_hashtable(db, "zebra", 1, 4, 0, NULL);
-  rydb_config_add_index_hashtable(db, "beepus", 4, 11, 1, NULL);
-  rydb_config_add_index_hashtable(db, "anthill", 45, 4, 0, NULL);
+  rydb_config_add_index_hashtable(db, "zebra", 1, 4, RYDB_INDEX_DEFAULT, NULL);
+  rydb_config_add_index_hashtable(db, "beepus", 4, 11, RYDB_INDEX_UNIQUE, NULL);
+  rydb_config_add_index_hashtable(db, "anthill", 45, 4, RYDB_INDEX_DEFAULT, NULL);
   if(rydb_open(db, "db/" ,"foo")) {
     printf("opened ok\n");
     rydb_close(db);
