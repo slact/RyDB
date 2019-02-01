@@ -26,6 +26,7 @@ void print_trace() {
 
 static void rydb_error_handler(rydb_t *db, rydb_error_t *err, void *pd) {
   UNUSED(err);
+  //raise(SIGSTOP);
   int *error_found = pd;
   rydb_error_fprint(db, stderr);
   if(geteuid()==0) {//root 
@@ -43,10 +44,14 @@ int main(void) {
   rydb_set_error_handler(db, rydb_error_handler, &error_found);
   rydb_config_row(db, 50, 10);
   rydb_config_revision(db, 0);
-  rydb_config_add_row_link(db, "next", "prev");
   rydb_config_add_row_link(db, "src", "dst");
-  rydb_config_add_row_link(db, "aft", "zaft");
-  rydb_config_add_row_link(db, "aledft", "____");
+  rydb_config_add_row_link(db, "next", "prev");
+  rydb_config_add_row_link(db, "fwd", "aft");
+  rydb_config_add_row_link(db, "forwards", "backwards");
+  rydb_config_add_row_link(db, "always", "twirling");
+  rydb_config_add_row_link(db, "ahoy", "so_long");
+  
+
   rydb_config_add_index_hashtable(db, "zebra", 1, 4, RYDB_INDEX_DEFAULT, NULL);
   rydb_config_add_index_hashtable(db, "beepus", 4, 11, RYDB_INDEX_UNIQUE, NULL);
   rydb_config_add_index_hashtable(db, "anthill", 45, 4, RYDB_INDEX_DEFAULT, NULL);
