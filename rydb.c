@@ -909,7 +909,6 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
         rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Tried opening unsupported index \"%s\" type", db->config.index[i].name);
         return rydb_open_abort(db);
       case RYDB_INDEX_HASHTABLE:
-        printf("opening hashtable %s %i\n", db->config.index[i].name, i);
         if(!rydb_index_hashtable_open(db, i)) {
           return rydb_open_abort(db);
         }
