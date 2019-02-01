@@ -142,6 +142,7 @@ struct rydb_s {
   rydb_file_t     meta;
   rydb_config_t   config;
   rydb_index_t   *index;
+  unsigned        lock_acquired:1;
   struct {
     void        (*function)(rydb_t *db, rydb_error_t *err, void *pd);
     void         *privdata;

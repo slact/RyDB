@@ -832,6 +832,9 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   if(!rydb_lock(db)) {
     return rydb_open_abort(db);
   }
+  else {
+    db->lock_acquired = 1;
+  }
   
   if(!db->name || !db->path) {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory to open RyDB");
@@ -926,7 +929,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
 
 int rydb_close(rydb_t *db) {
   rydb_close_nofree(db);
-  if(db->name && db->path) {
+  if(db->name && db->path && db->lock_acquired) {
     if(!rydb_unlock(db)) {
       return 0;
     }
