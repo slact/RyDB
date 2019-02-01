@@ -1,7 +1,9 @@
 TARGET = rydb_test
 LIBS = 
+LDEXTRAFLAGS=-rdynamic
 CC = clang
-CFLAGS = -ggdb -O1 -Wall -Wextra -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare
+O=0
+CFLAGS =-ggdb -O${O} -Wall -Wextra -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare
 VALGRIND_FLAGS = --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
 SANITIZE_FLAGS = -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum
 .PHONY: default all clean force test
@@ -20,7 +22,7 @@ $(OBJECTS): .compiler_flags
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(OBJECTS) -Wall $(LIBS) -o $@
+	$(CC) $(OBJECTS) -Wall $(LIBS) $(LDEXTRAFLAGS) -o $@
 
 clean:
 	-rm -f *.o
@@ -30,11 +32,11 @@ clean:
 	@echo '$(CC) $(CFLAGS)' | cmp -s - $@ || echo '$(CC) $(CFLAGS)' > $@
 
 gcc5:
-	@$(MAKE) CC=gcc-5 CFLAGS="$(CFLAGS) -fvar-tracking-assignments"
+	$(MAKE) CC=gcc-5 CFLAGS="$(CFLAGS) -fvar-tracking-assignments"
 gcc:
-	@$(MAKE) CC=gcc CFLAGS="$(CFLAGS) -fvar-tracking-assignments"
+	$(MAKE) CC=gcc CFLAGS="$(CFLAGS) -fvar-tracking-assignments"
 clang:
-	@$(MAKE) CC=clang
+	$(MAKE) CC=clang
 analyze:
 	scan-build --view -stats $(MAKE)
 sanitize:
