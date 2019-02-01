@@ -12,15 +12,16 @@ void print_trace() {
   char pid_buf[30];
   sprintf(pid_buf, "%d", getpid());
   char name_buf[512];
-  name_buf[readlink("/proc/self/exe", name_buf, 511)]=0;
+  name_buf[readlink("/proc/self/exe", name_buf, 511)] = 0;
   int child_pid = fork();
-  if (!child_pid) {           
-    dup2(2,1); // redirect output to stderr
+  if(!child_pid) {
+    dup2(2, 1); // redirect output to stderr
     //fprintf(stdout,"stack trace for %s pid=%s\n",name_buf,pid_buf);
     execlp("gdb", "gdb", "--batch", "-n", "-ex", "bt", name_buf, pid_buf, NULL);
     abort(); /* If gdb failed to start */
-  } else {
-    waitpid(child_pid,NULL,0);
+  }
+  else {
+    waitpid(child_pid, NULL, 0);
   }
 }
 
@@ -29,9 +30,10 @@ static void rydb_error_handler(rydb_t *db, rydb_error_t *err, void *pd) {
   //raise(SIGSTOP);
   int *error_found = pd;
   rydb_error_fprint(db, stderr);
-  if(geteuid()==0) {//root 
+  if(geteuid() == 0) { //root
     print_trace();
-  }else {
+  }
+  else {
     fprintf(stderr, "  run as root for stack trace\n");
   }
   *error_found = 1;
@@ -51,11 +53,11 @@ int main(void) {
   rydb_config_add_row_link(db, "always", "twirling");
   rydb_config_add_row_link(db, "ahoy", "so_long");
   
-
+  
   rydb_config_add_index_hashtable(db, "zebra", 1, 4, RYDB_INDEX_DEFAULT, NULL);
   rydb_config_add_index_hashtable(db, "beepus", 4, 11, RYDB_INDEX_UNIQUE, NULL);
   rydb_config_add_index_hashtable(db, "anthill", 45, 4, RYDB_INDEX_DEFAULT, NULL);
-  if(rydb_open(db, "db/" ,"foo")) {
+  if(rydb_open(db, "db/", "foo")) {
     printf("opened ok\n");
   }
   else {

@@ -242,11 +242,11 @@ static uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k)
 
 
 int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp) {
-  const char *fmt = 
+  const char *fmt =
     "    hash_function: %32s\n"
     "    store_value: %hu\n"
     "    direct_mapping: %hu\n";
-  
+    
   char      hash_func_buf[32];
   uint16_t  store_value;
   uint16_t  direct_mapping;
@@ -269,10 +269,10 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Unsupported hash function %s for hashtable \"%s\"", hash_func_buf, idx_cf->name);
     return 0;
   }
-
+  
   return 1;
 }
-static char * hashfunction_to_str(rydb_config_index_type_t *cf) {
+static char *hashfunction_to_str(rydb_config_index_type_t *cf) {
   switch(cf->hashtable.hash_function) {
     case RYDB_HASH_CRC32:
       return "CRC32";
@@ -294,7 +294,7 @@ static int hashfunction_valid(rydb_config_index_hashtable_t *acf) {
 }
 
 int rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp) {
-  const char *fmt = 
+  const char *fmt =
     "    hash_function: %s\n"
     "    store_value: %hu\n"
     "    direct_mapping: %hu\n";
@@ -314,7 +314,7 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
     cf->type_config.hashtable.store_value = !unique;
     cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
   }
-  else if(!hashfunction_valid(advanced_config)){
+  else if(!hashfunction_valid(advanced_config)) {
     rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Invalid hash function for hashtable \"%s\" config ", cf->name);
     return 0;
   }
@@ -342,21 +342,21 @@ int rydb_index_hashtable_open(rydb_t *db, off_t i) {
 }
 
 static const uint64_t btrim64_mask[65] = {
-  0xffffffffffffffff, 0x7fffffffffffffff, 0x3fffffffffffffff, 0x1fffffffffffffff, 
-  0x0fffffffffffffff, 0x07ffffffffffffff, 0x03ffffffffffffff, 0x01ffffffffffffff, 
-  0x00ffffffffffffff, 0x007fffffffffffff, 0x003fffffffffffff, 0x001fffffffffffff, 
-  0x000fffffffffffff, 0x0007ffffffffffff, 0x0003ffffffffffff, 0x0001ffffffffffff, 
-  0x0000ffffffffffff, 0x00007fffffffffff, 0x00003fffffffffff, 0x00001fffffffffff, 
-  0x00000fffffffffff, 0x000007ffffffffff, 0x000003ffffffffff, 0x000001ffffffffff, 
-  0x000000ffffffffff, 0x0000007fffffffff, 0x0000003fffffffff, 0x0000001fffffffff, 
-  0x0000000fffffffff, 0x00000007ffffffff, 0x00000003ffffffff, 0x00000001ffffffff, 
-  0x00000000ffffffff, 0x000000007fffffff, 0x000000003fffffff, 0x000000001fffffff, 
-  0x000000000fffffff, 0x0000000007ffffff, 0x0000000003ffffff, 0x0000000001ffffff, 
-  0x0000000000ffffff, 0x00000000007fffff, 0x00000000003fffff, 0x00000000001fffff, 
-  0x00000000000fffff, 0x000000000007ffff, 0x000000000003ffff, 0x000000000001ffff, 
-  0x000000000000ffff, 0x0000000000007fff, 0x0000000000003fff, 0x0000000000001fff, 
-  0x0000000000000fff, 0x00000000000007ff, 0x00000000000003ff, 0x00000000000001ff, 
-  0x00000000000000ff, 0x000000000000007f, 0x000000000000003f, 0x000000000000001f, 
+  0xffffffffffffffff, 0x7fffffffffffffff, 0x3fffffffffffffff, 0x1fffffffffffffff,
+  0x0fffffffffffffff, 0x07ffffffffffffff, 0x03ffffffffffffff, 0x01ffffffffffffff,
+  0x00ffffffffffffff, 0x007fffffffffffff, 0x003fffffffffffff, 0x001fffffffffffff,
+  0x000fffffffffffff, 0x0007ffffffffffff, 0x0003ffffffffffff, 0x0001ffffffffffff,
+  0x0000ffffffffffff, 0x00007fffffffffff, 0x00003fffffffffff, 0x00001fffffffffff,
+  0x00000fffffffffff, 0x000007ffffffffff, 0x000003ffffffffff, 0x000001ffffffffff,
+  0x000000ffffffffff, 0x0000007fffffffff, 0x0000003fffffffff, 0x0000001fffffffff,
+  0x0000000fffffffff, 0x00000007ffffffff, 0x00000003ffffffff, 0x00000001ffffffff,
+  0x00000000ffffffff, 0x000000007fffffff, 0x000000003fffffff, 0x000000001fffffff,
+  0x000000000fffffff, 0x0000000007ffffff, 0x0000000003ffffff, 0x0000000001ffffff,
+  0x0000000000ffffff, 0x00000000007fffff, 0x00000000003fffff, 0x00000000001fffff,
+  0x00000000000fffff, 0x000000000007ffff, 0x000000000003ffff, 0x000000000001ffff,
+  0x000000000000ffff, 0x0000000000007fff, 0x0000000000003fff, 0x0000000000001fff,
+  0x0000000000000fff, 0x00000000000007ff, 0x00000000000003ff, 0x00000000000001ff,
+  0x00000000000000ff, 0x000000000000007f, 0x000000000000003f, 0x000000000000001f,
   0x000000000000000f, 0x0000000000000007, 0x0000000000000003, 0x0000000000000001, 0
 };
 //bitwise trim of a 64-bit uint from the big end

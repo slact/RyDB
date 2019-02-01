@@ -69,10 +69,10 @@ rydb_error_t *rydb_error(const rydb_t *db) {
 void rydb_error_clear(rydb_t *db) {
   db->error.code = RYDB_NO_ERROR;
   db->error.errno_val = 0;
-  db->error.str[0]='\00';
+  db->error.str[0] = '\00';
 }
 
-int rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void*), void *pd) {
+int rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void *), void *pd) {
   db->error_handler.function = fn;
   db->error_handler.privdata = pd;
   return 1;
@@ -81,7 +81,7 @@ int rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void
 void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...) {
   va_list ap;
   va_start(ap, err_fmt);
-  vsnprintf(db->error.str, RYDB_ERROR_MAX_LEN-1, err_fmt, ap);
+  vsnprintf(db->error.str, RYDB_ERROR_MAX_LEN - 1, err_fmt, ap);
   db->error.code = code;
   db->error.errno_val = errno;
   va_end(ap);
@@ -137,10 +137,10 @@ static int rydb_find_row_link_num(rydb_t *db, const char *next_name) {
   rydb_config_row_link_t match = {.next = next_name };;
   rydb_config_row_link_t *start = db->config.link, *found;
   if(!start) {
-   return -1; 
+    return -1;
   }
   found = bsearch(&match, start, db->config.link_pair_count * 2, sizeof(*start), row_link_config_compare);
-  if(!found){
+  if(!found) {
     return -1;
   }
   return found - start;
@@ -180,7 +180,7 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link and reverse row-link cannot be the same.");
     return 0;
   }
-
+  
   if(rydb_find_row_link_num(db, link_name) != -1) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link with name \"%s\" already exists.", link_name);
     return 0;
@@ -191,10 +191,10 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
   }
   
   if(db->config.link_pair_count == 0) {
-    db->config.link = malloc(sizeof(*db->config.link)*2);
+    db->config.link = malloc(sizeof(*db->config.link) * 2);
   }
   else {
-    db->config.link = realloc(db->config.link, sizeof(*db->config.link)*(db->config.link_pair_count + 1)*2);
+    db->config.link = realloc(db->config.link, sizeof(*db->config.link) * (db->config.link_pair_count + 1) * 2);
   }
   if(db->config.link == NULL) {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link");
@@ -203,7 +203,7 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
   rydb_config_row_link_t *link, *link_inverse;
   off_t offset = db->config.link_pair_count * 2;
   link = &db->config.link[offset];
-  link_inverse = &db->config.link[offset+1];
+  link_inverse = &db->config.link[offset + 1];
   
   link->inverse = 0;
   link->next = strdup(link_name);
@@ -223,7 +223,7 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
   link_inverse->prev = link->next;
   
   db->config.link_pair_count ++;
-  qsort(db->config.link, db->config.link_pair_count*2, sizeof(*db->config.link), row_link_config_compare);
+  qsort(db->config.link, db->config.link_pair_count * 2, sizeof(*db->config.link), row_link_config_compare);
   
   return 1;
 }
@@ -296,10 +296,10 @@ static int rydb_find_index_num(const rydb_t *db, const char *name) {
   match.name = name;
   rydb_config_index_t *cf_start = db->config.index, *cf;
   if(!cf_start) {
-   return -1; 
+    return -1;
   }
   cf = bsearch(&match, cf_start, db->config.index_count, sizeof(*cf_start), index_config_compare);
-  if(!cf){
+  if(!cf) {
     return -1;
   }
   return cf - cf_start;
@@ -334,11 +334,11 @@ int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start
 
 
 static off_t rydb_filename(const rydb_t *db, const char *what, char *buf, off_t maxlen) {
-  return snprintf(buf, maxlen, "%s%srydb.%s%s%s", 
-                  db->path, 
-                  strlen(db->path)> 0 ? PATH_SLASH : "", 
-                  db->name, 
-                  strlen(db->name)> 0 ? "." : "", 
+  return snprintf(buf, maxlen, "%s%srydb.%s%s%s",
+                  db->path,
+                  strlen(db->path) > 0 ? PATH_SLASH : "",
+                  db->name,
+                  strlen(db->name) > 0 ? "." : "",
                   what);
 }
 static void rydb_subfree(const void *ptr) {
@@ -350,7 +350,7 @@ static void rydb_subfree(const void *ptr) {
 static void rydb_free(rydb_t *db) {
   rydb_subfree(db->path);
   rydb_subfree(db->name);
-  for(int i=0; i<db->config.index_count; i++) {
+  for(int i = 0; i < db->config.index_count; i++) {
     if(db->config.index) {
       rydb_subfree(db->config.index[i].name);
     }
@@ -359,7 +359,7 @@ static void rydb_free(rydb_t *db) {
   rydb_subfree(db->index);
   
   if(db->config.link) {
-    for(int i=0; i< db->config.link_pair_count*2; i++) {
+    for(int i = 0; i < db->config.link_pair_count * 2; i++) {
       rydb_subfree(db->config.link[i].next);
     }
     rydb_subfree(db->config.link);
@@ -383,9 +383,9 @@ static int rydb_lock(rydb_t *db) {
 }
 
 static int rydb_unlock(rydb_t *db) {
-    char buf[1024];
+  char buf[1024];
   rydb_filename(db, "lock", buf, 1024);
-  if(access(buf, F_OK) == -1){ //no lock present, nothing to unlock
+  if(access(buf, F_OK) == -1) { //no lock present, nothing to unlock
     return 1;
   }
   if(remove(buf) == 0) {
@@ -431,7 +431,7 @@ static int rydb_file_close(rydb_t *db, rydb_file_t *f) {
   }
   if(f->fp) {
     if(fclose(f->fp) == EOF && ok) {
-       //failed to close file
+      //failed to close file
       ok = 0;
       rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to close file pointer for %s", f->path);
     }
@@ -482,7 +482,7 @@ int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
     rydb_file_close(db, f);
   }
   
-  sz = RYDB_PAGESIZE*10;
+  sz = RYDB_PAGESIZE * 10;
   f->mmap.start = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
   if(f->mmap.start == MAP_FAILED) {
     rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to mmap file %s", path);
@@ -558,7 +558,7 @@ static int rydb_meta_save(rydb_t *db) {
     return 0;
   }
   
-  const char *fmt = 
+  const char *fmt =
     "--- #rydb\n"
     "format_revision: %i\n"
     "database_revision: %"PRIu32"\n"
@@ -575,17 +575,18 @@ static int rydb_meta_save(rydb_t *db) {
   }
   total_written += rc;
   
-  const char *index_fmt = "\n"
+  const char *index_fmt =
+    "\n"
     "  - name: %s\n"
     "    type: %s\n"
     "    start: %"PRIu16"\n"
     "    len: %"PRIu16"\n"
     "    unique: %"PRIu16"\n";
-  
-  for(int i=0; i<db->config.index_count; i++) {
+    
+  for(int i = 0; i < db->config.index_count; i++) {
     idxcf = &db->config.index[i];
     rc = fprintf(fp, index_fmt, idxcf->name, rydb_index_type_str(idxcf->type), idxcf->start, idxcf->len, (uint16_t )(idxcf->flags & RYDB_INDEX_UNIQUE));
-    if(rc <= 0){
+    if(rc <= 0) {
       rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to meta file %s", db->meta.path);
       return 0;
     }
@@ -612,8 +613,8 @@ static int rydb_meta_save(rydb_t *db) {
     return 0;
   }
   total_written += rc;
-
-  for(int i=0; i < db->config.link_pair_count*2; i++) {
+  
+  for(int i = 0; i < db->config.link_pair_count * 2; i++) {
     if(!db->config.link[i].inverse) {
       rc = fprintf(fp, "  - [ %s , %s ]\n", db->config.link[i].next, db->config.link[i].prev);
       if(rc <= 0) {
@@ -643,7 +644,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     return 0;
   }
   
-  const char *fmt = 
+  const char *fmt =
     "--- #rydb\n"
     "format_revision: %"SCNu16"\n"
     "database_revision: %"SCNu16"\n"
@@ -653,7 +654,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     "id_len: %"SCNu16"\n"
     "index_count: %"SCNu16"\n";
   int rc = fscanf(fp, fmt, &rydb_format_version, &db_revision, endianness_buf, &rownum_width, &row_len, &id_len, &index_count);
-  if(rc < 7){
+  if(rc < 7) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Not a RyDB file or is corrupted");
     return 0;
   }
@@ -680,7 +681,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   
   if(rownum_width != sizeof(rydb_rownum_t)) {
     //TODO: convert data to host rownum size
-    rydb_set_error(db, RYDB_ERROR_WRONG_ENDIANNESS, "File rownum is a %" PRIu16"-bit integer, expected %i-bit", rownum_width*8, sizeof(rydb_rownum_t)*8);
+    rydb_set_error(db, RYDB_ERROR_WRONG_ENDIANNESS, "File rownum is a %" PRIu16"-bit integer, expected %i-bit", rownum_width * 8, sizeof(rydb_rownum_t) * 8);
     return 0;
   }
   
@@ -695,16 +696,17 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   if(!rydb_config_revision(db, db_revision)) {
     return 0;
   }
-
+  
   
   if(index_count > 0) {
-    const char *index_fmt = "\n"
+    const char *index_fmt =
+      "\n"
       "  - name: %" RYDB_NAME_MAX_LEN_STR "s\n"
       "    type: %32s\n"
       "    start: %"SCNu16"\n"
       "    len: %"SCNu16"\n"
       "    unique: %"SCNu16"\n";
-    
+      
     char                      index_name_buf[RYDB_NAME_MAX_LEN];
     char                      index_type_buf[32];
     uint16_t                  index_unique;
@@ -714,9 +716,9 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
       rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "index specification is corrupted or invalid");
       return 0;
     }
-    for(int i=0; i<index_count; i++) {
+    for(int i = 0; i < index_count; i++) {
       rc = fscanf(fp, index_fmt, index_name_buf, index_type_buf, &idx_cf.start, &idx_cf.len, &index_unique);
-      if(rc < 5){
+      if(rc < 5) {
         rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "index specification is corrupted or invalid");
         return 0;
       }
@@ -762,7 +764,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
       rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
       return 0;
     }
-    for(int i=0; i < linkpairs_count; i++) {
+    for(int i = 0; i < linkpairs_count; i++) {
       rc = fscanf(fp, "  - [ %" RYDB_NAME_MAX_LEN_STR "s , %" RYDB_NAME_MAX_LEN_STR "s ]\n", link_next_buf, link_prev_buf);
       if(rc < 2) {
         rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
@@ -798,7 +800,7 @@ static int rydb_config_match(rydb_t *db, const rydb_t *db2, const char *db_lbl, 
     return 0;
   }
   //compare indices
-  for(int i=0; i<db2->config.index_count; i++) {
+  for(int i = 0; i < db2->config.index_count; i++) {
     rydb_config_index_t *idx1 = &db->config.index[i];
     rydb_config_index_t *idx2 = &db2->config.index[i];
     if(strcmp(idx1->name, idx2->name) != 0) {
@@ -824,7 +826,7 @@ static int rydb_config_match(rydb_t *db, const rydb_t *db2, const char *db_lbl, 
     rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching row-link pair count: %s %"PRIu16", %s %"PRIu16, db_lbl, db->config.link_pair_count, db2_lbl, db2->config.link_pair_count);
     return 0;
   }
-  for(int i=0; i<db2->config.link_pair_count*2; i++) {
+  for(int i = 0; i < db2->config.link_pair_count * 2; i++) {
     rydb_config_row_link_t *link1 = &db->config.link[i];
     rydb_config_row_link_t *link2 = &db2->config.link[i];
     if(strcmp(link1->next, link2->next) != 0 || strcmp(link1->prev, link2->prev) != 0) {
@@ -832,8 +834,8 @@ static int rydb_config_match(rydb_t *db, const rydb_t *db2, const char *db_lbl, 
       return 0;
     }
     if(link1->inverse != link2->inverse) {
-      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching row-link pair %i: %s [%s, %s], %s [%s, %s]", i, 
-                     db_lbl, link1->inverse ? link1->prev : link1->next, link1->inverse ? link1->next : link1->prev, 
+      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching row-link pair %i: %s [%s, %s], %s [%s, %s]", i,
+                     db_lbl, link1->inverse ? link1->prev : link1->next, link1->inverse ? link1->next : link1->prev,
                      db2_lbl, link2->inverse ? link2->prev : link2->next, link2->inverse ? link2->next : link2->prev
       );
       return 0;
@@ -853,7 +855,7 @@ static void rydb_close_nofree(rydb_t *db) {
   rydb_file_close(db, &db->data);
   rydb_file_close(db, &db->meta);
   if(db->index) {
-    for(int i = 0; i<db->config.index_count; i++) {
+    for(int i = 0; i < db->config.index_count; i++) {
       rydb_file_close(db, &db->index[i].index);
       rydb_file_close(db, &db->index[i].data);
     }
@@ -872,8 +874,8 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   char         *dup_path = strdup(path);
   
   size_t sz = strlen(dup_path);
-  if(sz > 0 && dup_path[sz-1]==PATH_SLASH_CHAR) { // remove trailing slash
-    dup_path[sz-1] = '\00';
+  if(sz > 0 && dup_path[sz - 1] == PATH_SLASH_CHAR) { // remove trailing slash
+    dup_path[sz - 1] = '\00';
   }
   
   db->name = strdup(name);
@@ -888,7 +890,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   if(!db->name || !db->path) {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory to open RyDB");
   }
-
+  
   //add primary index if it's not already defined
   if(db->config.id_len > 0 && rydb_find_index_num(db, "primary") == -1) {
     if(!rydb_config_add_index_hashtable(db, "primary", 0, db->config.id_len, 1, NULL)) {
@@ -952,7 +954,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
     }
     memset(db->index, '\00', sz);
     
-    for(int i=0; i<db->config.index_count; i++) {
+    for(int i = 0; i < db->config.index_count; i++) {
       db->index[i].index.fd = -1;
       db->index[i].data.fd = -1;
       switch(db->config.index[i].type) {

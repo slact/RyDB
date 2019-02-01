@@ -1,0 +1,14 @@
+--indent-switches
+--indent-cases
+--indent-labels
+--pad-oper
+--unpad-paren
+--fill-empty-lines
+-y
+--add-brackets
+--keep-one-line-blocks
+--indent=spaces=2
+-A2
+--align-pointer=name
+--align-reference=name
+--mode=c

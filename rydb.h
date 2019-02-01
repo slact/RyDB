@@ -47,9 +47,9 @@ typedef struct {
 } rydb_file_t;
 
 typedef enum {
-  RYDB_INDEX_INVALID=0,
-  RYDB_INDEX_HASHTABLE=1,
-  RYDB_INDEX_BTREE=2
+  RYDB_INDEX_INVALID = 0,
+  RYDB_INDEX_HASHTABLE = 1,
+  RYDB_INDEX_BTREE = 2
 } rydb_index_type_t;
 
 typedef struct {
@@ -60,10 +60,10 @@ typedef struct {
   }            hash_function;
   
   //storing the value in the hashtable prevents extra datafile reads at the cost of possibly much larger hashtable entries
-  unsigned     store_value:1;
+  unsigned     store_value: 1;
   
   //direct mapping uses open-address linear probing, ideal for a 1-to-1 unique primary index. <2 reads avg.
-  unsigned     direct_mapping:1;
+  unsigned     direct_mapping: 1;
 } rydb_config_index_hashtable_t;
 
 
@@ -113,7 +113,7 @@ typedef struct {
 typedef struct {
   const char *next;
   const char *prev;
-  unsigned    inverse:1;
+  unsigned    inverse: 1;
 } rydb_config_row_link_t;
 
 #define RYDB_ERROR_MAX_LEN 1024
@@ -127,10 +127,10 @@ typedef enum {
   RYDB_ERROR_FILE_ACCESS    = 6,
   RYDB_ERROR_FILE_INVALID   = 7,
   RYDB_ERROR_FILE_SIZE      = 8,
-  RYDB_ERROR_CONFIG_MISMATCH= 9,
-  RYDB_ERROR_VERSION_MISMATCH= 11,
-  RYDB_ERROR_REVISION_MISMATCH= 12,
-  RYDB_ERROR_BAD_CONFIG= 13,
+  RYDB_ERROR_CONFIG_MISMATCH = 9,
+  RYDB_ERROR_VERSION_MISMATCH = 11,
+  RYDB_ERROR_REVISION_MISMATCH = 12,
+  RYDB_ERROR_BAD_CONFIG = 13,
   RYDB_ERROR_WRONG_ENDIANNESS = 14
 } rydb_error_code_t;
 
@@ -160,7 +160,7 @@ struct rydb_s {
   rydb_file_t     meta;
   rydb_config_t   config;
   rydb_index_t   *index;
-  unsigned        lock_acquired:1;
+  unsigned        lock_acquired: 1;
   struct {
     void        (*function)(rydb_t *db, rydb_error_t *err, void *pd);
     void         *privdata;
@@ -176,7 +176,7 @@ int rydb_config_revision(rydb_t *db, unsigned revision);
 int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name);
 int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, uint8_t flags, rydb_config_index_hashtable_t *advanced_config);
 
-int rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void*), void *pd);
+int rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void *), void *pd);
 
 int rydb_open(rydb_t *db, const char *path, const char *name);
 
