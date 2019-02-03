@@ -26,11 +26,23 @@ typedef struct {
   uint16_t        len;
 } rydb_str_t;
 
+
 typedef struct {
+  struct {
+    uint8_t     type;
+    uint8_t     flags;
+    //the reason the transaction number isn't a separate struct is to guarantee that the row struct has no holes and can be used directly on mmapped rows straight from disk
+    uint16_t tx_hi; //hugh 16 bits of transaction number
+    uint32_t tx_lo; //low 32 bits of transaction number
+  }       header;
+  char    data[]; //cool c99 bro
+} rydb_row_t;
+
+/*typedef struct {
   rydb_rownum_t   n;
   rydb_str_t      id;
   rydb_str_t      data;
-} rydb_row_t;
+} rydb_row_t;*/
 
 typedef struct {
   char *start;
@@ -180,7 +192,19 @@ int rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void
 
 int rydb_open(rydb_t *db, const char *path, const char *name);
 
+
+rydb_row_t *rydb_row_new(rydb_t *db);
+rydb_row_t *rydb_row_alloca(rydb_t *db);
+int rydb_row_safe_to_write_directly_check(rydb_t *db, rydb_row_t *row, off_t start, size_t len);
+int rydb_row_insert(rydb_t *db, rydb_row_t *row);
+int rydb_row_delete(rydb_t *db, rydb_row_t *row);
+int rydb_row_update(rydb_t *db, rydb_row_t *row, off_t start, size_t len);
+
+
+
 int rydb_insert(rydb_t *db, rydb_str_t *id, rydb_str_t *data);
+
+
 int rydb_find(rydb_t *db, rydb_str_t *id); //return 1 if found, 0 if not found
 int rydb_find_row(rydb_t *db, rydb_row_t *row); //id should be pre-filled
 

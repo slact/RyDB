@@ -1,6 +1,7 @@
 #include "rydb_internal.h"
 #include "rydb_hashtable.h"
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -394,22 +395,26 @@ static int rydb_unlock(rydb_t *db) {
   return 0;
 }
 
-/*
-static int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz) {
+int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz) {
   size_t current_sz = f->file.end - f->file.start;
-  if(current_sz < desired_min_sz) {
-    if(lseek(f->fd, desired_min_sz - current_sz, SEEK_END) == -1) {
-      rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to seek to end of file");
-      return 0;
-    }
-    if(write(f->fd, "\00", 1) == -1) {
-      rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to grow file");
-      return 0;
-    }
+  if(current_sz < desired_min_sz && ftruncate(f->fd, desired_min_sz) == -1) {
+    rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed grow file to size %zu", desired_min_sz);
+    return 0;
   }
   return 1;
 }
-*/
+int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, size_t sz) {
+  char *end = (char *)addr + sz;
+  if(end > f->file.end) {
+    if(ftruncate(f->fd, (size_t )((char *)end - (char *)f->file.start)) == -1) {
+      rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed grow file to size %zu", (size_t )((char *)end - (char *)f->file.end));
+      return 0;
+    }
+    f->file.end = end;
+  }
+  
+  return 1;
+}
 
 static int rydb_file_getsize(rydb_t *db, int fd, off_t *sz) {
   struct stat st;
@@ -562,13 +567,37 @@ static int rydb_meta_save(rydb_t *db) {
     "--- #rydb\n"
     "format_revision: %i\n"
     "database_revision: %"PRIu32"\n"
-    "endianness: %s\n"
-    "rownum_width: %"PRIu16"\n"
+    "storage_info:\n"
+    "  endianness: %s\n"
+    "  row_format:\n"
+    "    header_size: %zu\n"
+    "    type_offset: %i\n"
+    "    flags_offset: %i\n"
+    "    tx_hi_offset: %i\n"
+    "    tx_lo_offset: %i\n"
+    "    tx_data_offset: %i\n"
+    "  rownum_width: %"PRIu16"\n"
     "row_len: %"PRIu16"\n"
     "id_len: %"PRIu16"\n"
     "index_count: %"PRIu16"\n"
     "%s";
-  rc = fprintf(fp, fmt, RYDB_FORMAT_VERSION, db->config.revision, is_little_endian() ? "little" : "big", (uint16_t)sizeof(rydb_rownum_t), db->config.row_len, db->config.id_len, db->config.index_count, db->config.index_count > 0 ? "index:" : "");
+  rc = fprintf(fp, fmt, 
+               RYDB_FORMAT_VERSION,
+               db->config.revision,
+               is_little_endian() ? "little" : "big",
+               //storage info
+               sizeof(rydb_row_t),
+               offsetof(rydb_row_t, header.type),
+               offsetof(rydb_row_t, header.flags),
+               offsetof(rydb_row_t, header.tx_hi),
+               offsetof(rydb_row_t, header.tx_lo),
+               offsetof(rydb_row_t, data),
+               (uint16_t)sizeof(rydb_rownum_t),
+               db->config.row_len,
+               db->config.id_len,
+               db->config.index_count,
+               db->config.index_count > 0 ? "index:" : ""
+  );
   if(rc <= 0) {
     rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed writing header to meta file %s", db->meta.path);
     return 0;
@@ -644,22 +673,61 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     return 0;
   }
   
+  struct {
+    uint16_t  sz;
+    uint16_t  type_off;
+    uint16_t  flags_off;
+    uint16_t  tx_hi_off;
+    uint16_t  tx_lo_off;
+    uint16_t  data_off;
+  } rowformat;
+  
   const char *fmt =
     "--- #rydb\n"
     "format_revision: %"SCNu16"\n"
     "database_revision: %"SCNu16"\n"
-    "endianness: %15s\n"
-    "rownum_width: %"SCNu16"\n"
+    "storage_info:\n"
+    "  endianness: %15s\n"
+    "  row_format:\n"
+    "    header_size: %"SCNu16"\n"
+    "    type_offset: %"SCNu16"\n"
+    "    flags_offset: %"SCNu16"\n"
+    "    tx_hi_offset: %"SCNu16"\n"
+    "    tx_lo_offset: %"SCNu16"\n"
+    "    tx_data_offset: %"SCNu16"\n"
+    "  rownum_width: %"SCNu16"\n"
     "row_len: %"SCNu16"\n"
     "id_len: %"SCNu16"\n"
     "index_count: %"SCNu16"\n";
-  int rc = fscanf(fp, fmt, &rydb_format_version, &db_revision, endianness_buf, &rownum_width, &row_len, &id_len, &index_count);
-  if(rc < 7) {
+  int rc = fscanf(fp, fmt,
+                  &rydb_format_version,
+                  &db_revision,
+                  endianness_buf,
+                  &rowformat.sz,
+                  &rowformat.type_off,
+                  &rowformat.flags_off,
+                  &rowformat.tx_hi_off,
+                  &rowformat.tx_lo_off,
+                  &rowformat.data_off,
+                  &rownum_width,
+                  &row_len,
+                  &id_len,
+                  &index_count
+  );
+  
+  if(rc < 13) {
+    
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Not a RyDB file or is corrupted");
     return 0;
   }
   if(rydb_format_version != RYDB_FORMAT_VERSION) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Format version mismatch, expected %i, loaded %"PRIu16, RYDB_FORMAT_VERSION, rydb_format_version);
+    return 0;
+  }
+  
+  if(rowformat.sz != sizeof(rydb_row_t) || rowformat.type_off != offsetof(rydb_row_t, header.type) || rowformat.flags_off != offsetof(rydb_row_t, header.flags) || rowformat.tx_hi_off != offsetof(rydb_row_t, header.tx_hi) || rowformat.tx_lo_off != offsetof(rydb_row_t, header.tx_lo) || rowformat.data_off != offsetof(rydb_row_t, data)) {
+    //TODO: format conversions
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Row format mismatch");
     return 0;
   }
   
