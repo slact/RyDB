@@ -11,8 +11,19 @@
 #define ry_align_ptr(p, a)                                                   \
     (u_char *) (((uintptr_t) (p) + ((uintptr_t) a - 1)) & ~((uintptr_t) a - 1))
 
-#define RYDB_DATAROW_TYPE_ROW     'R'
-#define RYDB_DATAROW_TYPE_FOOTER  'F'
+#define RYDB_ROW_EMPTY       '\00'
+#define RYDB_ROW_DATA        '='
+
+#define RYDB_ROW_TX_INSERT   '+'
+#define RYDB_ROW_TX_REPLACE  'R'
+#define RYDB_ROW_TX_UPDATE   'U' //uint16_t start, uint16_t len, data
+//when uint16t*2+data > row_len 
+#define RYDB_ROW_TX_UPDATE1  'V' //uint16_t start, uint16_t len
+#define RYDB_ROW_TX_UPDATE2  'W' //update data
+#define RYDB_ROW_TX_DELETE   '-' //uint32_t rownum
+#define RYDB_ROW_TX_SWAP1    'S' //uint32_t rownum1, uint32_t rownum2
+#define RYDB_ROW_TX_SWAP2    'T' //rownum2 data (tmp storage for row swap)
+#define RYDB_ROW_TX_COMMIT   '!'
 
 
 int rydb_file_open_index(rydb_t *db, int index_n);

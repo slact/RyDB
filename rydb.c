@@ -570,12 +570,9 @@ static int rydb_meta_save(rydb_t *db) {
     "storage_info:\n"
     "  endianness: %s\n"
     "  row_format:\n"
-    "    header_size: %zu\n"
     "    type_offset: %i\n"
-    "    flags_offset: %i\n"
-    "    tx_hi_offset: %i\n"
-    "    tx_lo_offset: %i\n"
-    "    tx_data_offset: %i\n"
+    "    reserved_offset: %i\n"
+    "    data_offset: %i\n"
     "  rownum_width: %"PRIu16"\n"
     "row_len: %"PRIu16"\n"
     "id_len: %"PRIu16"\n"
@@ -586,11 +583,8 @@ static int rydb_meta_save(rydb_t *db) {
                db->config.revision,
                is_little_endian() ? "little" : "big",
                //storage info
-               sizeof(rydb_row_t),
-               offsetof(rydb_row_t, header.type),
-               offsetof(rydb_row_t, header.flags),
-               offsetof(rydb_row_t, header.tx_hi),
-               offsetof(rydb_row_t, header.tx_lo),
+               offsetof(rydb_row_t, type),
+               offsetof(rydb_row_t, reserved),
                offsetof(rydb_row_t, data),
                (uint16_t)sizeof(rydb_rownum_t),
                db->config.row_len,
@@ -666,6 +660,7 @@ static int rydb_meta_save(rydb_t *db) {
 static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   FILE     *fp = ryf->fp;
   char      endianness_buf[16];
+  char      rowformat_buf[32];
   int       little_endian;
   uint16_t  rydb_format_version, db_revision, rownum_width, row_len, id_len, index_count;
   if(fseek(fp, 0, SEEK_SET) == -1) {
@@ -674,11 +669,8 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   }
   
   struct {
-    uint16_t  sz;
     uint16_t  type_off;
-    uint16_t  flags_off;
-    uint16_t  tx_hi_off;
-    uint16_t  tx_lo_off;
+    uint16_t  reserved_off;
     uint16_t  data_off;
   } rowformat;
   
@@ -689,12 +681,9 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     "storage_info:\n"
     "  endianness: %15s\n"
     "  row_format:\n"
-    "    header_size: %"SCNu16"\n"
     "    type_offset: %"SCNu16"\n"
-    "    flags_offset: %"SCNu16"\n"
-    "    tx_hi_offset: %"SCNu16"\n"
-    "    tx_lo_offset: %"SCNu16"\n"
-    "    tx_data_offset: %"SCNu16"\n"
+    "    %31s %"SCNu16"\n"
+    "    data_offset: %"SCNu16"\n"
     "  rownum_width: %"SCNu16"\n"
     "row_len: %"SCNu16"\n"
     "id_len: %"SCNu16"\n"
@@ -703,11 +692,9 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
                   &rydb_format_version,
                   &db_revision,
                   endianness_buf,
-                  &rowformat.sz,
                   &rowformat.type_off,
-                  &rowformat.flags_off,
-                  &rowformat.tx_hi_off,
-                  &rowformat.tx_lo_off,
+                  rowformat_buf,
+                  &rowformat.reserved_off,
                   &rowformat.data_off,
                   &rownum_width,
                   &row_len,
@@ -715,8 +702,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
                   &index_count
   );
   
-  if(rc < 13) {
-    
+  if(rc < 11) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Not a RyDB file or is corrupted");
     return 0;
   }
@@ -725,7 +711,12 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     return 0;
   }
   
-  if(rowformat.sz != sizeof(rydb_row_t) || rowformat.type_off != offsetof(rydb_row_t, header.type) || rowformat.flags_off != offsetof(rydb_row_t, header.flags) || rowformat.tx_hi_off != offsetof(rydb_row_t, header.tx_hi) || rowformat.tx_lo_off != offsetof(rydb_row_t, header.tx_lo) || rowformat.data_off != offsetof(rydb_row_t, data)) {
+  if(strcmp("reserved_offset:", rowformat_buf) != 0) {
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Unknown row format, expected 'reserved_offset', got %s", rowformat_buf);
+    return 0;
+  }
+  
+  if(rowformat.type_off != offsetof(rydb_row_t, type) || rowformat.reserved_off != offsetof(rydb_row_t, reserved) || rowformat.data_off != offsetof(rydb_row_t, data)) {
     //TODO: format conversions
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Row format mismatch");
     return 0;
@@ -1047,6 +1038,14 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   return 1;
 }
 
+static int rydb_data_write_row(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row) {
+  //TODO
+  (void)(db);
+  (void)(rownum);
+  (void)(row);
+  return 1;
+}
+
 int rydb_close(rydb_t *db) {
   rydb_close_nofree(db);
   if(db->name && db->path && db->lock_acquired) {
@@ -1057,5 +1056,20 @@ int rydb_close(rydb_t *db) {
   rydb_free(db);
   return 1;
 }
+
+static const rydb_row_t RYDB_ROW_COMMIT = {
+  .type = RYDB_ROW_TX_COMMIT,
+  .reserved = 0
+};
+
+int rydb_row_insert(rydb_t *db, rydb_row_t *row) {
+  (void)(db);
+  row->type = RYDB_ROW_TX_INSERT;
+  const rydb_row_t *rows[2]={row, &RYDB_ROW_COMMIT};
+  //rydb_data_append_rows(db, 
+  //TODO
+  return 1;
+}
+
 
 

@@ -26,23 +26,11 @@ typedef struct {
   uint16_t        len;
 } rydb_str_t;
 
-
 typedef struct {
-  struct {
-    uint8_t     type;
-    uint8_t     flags;
-    //the reason the transaction number isn't a separate struct is to guarantee that the row struct has no holes and can be used directly on mmapped rows straight from disk
-    uint16_t tx_hi; //hugh 16 bits of transaction number
-    uint32_t tx_lo; //low 32 bits of transaction number
-  }       header;
-  char    data[]; //cool c99 bro
+  uint8_t     type;
+  uint8_t     reserved;
+  char        data[]; //cool c99 bro
 } rydb_row_t;
-
-/*typedef struct {
-  rydb_rownum_t   n;
-  rydb_str_t      id;
-  rydb_str_t      data;
-} rydb_row_t;*/
 
 typedef struct {
   char *start;
@@ -130,20 +118,20 @@ typedef struct {
 
 #define RYDB_ERROR_MAX_LEN 1024
 typedef enum {
-  RYDB_NO_ERROR             = 0,
-  RYDB_ERROR_UNSPECIFIED    = 1,
-  RYDB_ERROR_NOMEMORY       = 2,
-  RYDB_ERROR_FILE_NOT_FOUND = 3,
-  RYDB_ERROR_FILE_EXISTS    = 4,
-  RYDB_ERROR_LOCK_FAILED    = 5,
-  RYDB_ERROR_FILE_ACCESS    = 6,
-  RYDB_ERROR_FILE_INVALID   = 7,
-  RYDB_ERROR_FILE_SIZE      = 8,
-  RYDB_ERROR_CONFIG_MISMATCH = 9,
-  RYDB_ERROR_VERSION_MISMATCH = 11,
-  RYDB_ERROR_REVISION_MISMATCH = 12,
-  RYDB_ERROR_BAD_CONFIG = 13,
-  RYDB_ERROR_WRONG_ENDIANNESS = 14
+  RYDB_NO_ERROR                   = 0,
+  RYDB_ERROR_UNSPECIFIED          = 1,
+  RYDB_ERROR_NOMEMORY             = 2,
+  RYDB_ERROR_FILE_NOT_FOUND       = 3,
+  RYDB_ERROR_FILE_EXISTS          = 4,
+  RYDB_ERROR_LOCK_FAILED          = 5,
+  RYDB_ERROR_FILE_ACCESS          = 6,
+  RYDB_ERROR_FILE_INVALID         = 7,
+  RYDB_ERROR_FILE_SIZE            = 8,
+  RYDB_ERROR_CONFIG_MISMATCH      = 9,
+  RYDB_ERROR_VERSION_MISMATCH     = 10,
+  RYDB_ERROR_REVISION_MISMATCH    = 11,
+  RYDB_ERROR_BAD_CONFIG           = 12,
+  RYDB_ERROR_WRONG_ENDIANNESS     = 13
 } rydb_error_code_t;
 
 typedef struct {
@@ -151,8 +139,6 @@ typedef struct {
   int                  errno_val;
   char                 str[RYDB_ERROR_MAX_LEN];
 } rydb_error_t;
-
-
 
 typedef struct {
   uint32_t revision;
@@ -172,6 +158,7 @@ struct rydb_s {
   rydb_file_t     meta;
   rydb_config_t   config;
   rydb_index_t   *index;
+  void           *transaction; //TODO
   unsigned        lock_acquired: 1;
   struct {
     void        (*function)(rydb_t *db, rydb_error_t *err, void *pd);
@@ -193,20 +180,12 @@ int rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void
 int rydb_open(rydb_t *db, const char *path, const char *name);
 
 
-rydb_row_t *rydb_row_new(rydb_t *db);
-rydb_row_t *rydb_row_alloca(rydb_t *db);
+rydb_row_t *rydb_row_find(rydb_t *db, const char *id); //return 1 if found, 0 if not found
+
 int rydb_row_safe_to_write_directly_check(rydb_t *db, rydb_row_t *row, off_t start, size_t len);
 int rydb_row_insert(rydb_t *db, rydb_row_t *row);
 int rydb_row_delete(rydb_t *db, rydb_row_t *row);
 int rydb_row_update(rydb_t *db, rydb_row_t *row, off_t start, size_t len);
-
-
-
-int rydb_insert(rydb_t *db, rydb_str_t *id, rydb_str_t *data);
-
-
-int rydb_find(rydb_t *db, rydb_str_t *id); //return 1 if found, 0 if not found
-int rydb_find_row(rydb_t *db, rydb_row_t *row); //id should be pre-filled
 
 rydb_error_t *rydb_error(const rydb_t *db);
 int rydb_error_print(const rydb_t *db);
