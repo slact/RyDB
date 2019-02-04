@@ -244,10 +244,10 @@ static uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k)
 int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp) {
   const char *fmt =
     "    hash_function: %32s\n"
-    "    store_value: %hu\n"
-    "    direct_mapping: %hu\n";
+    "    store_value: %"SCNu16"\n"
+    "    direct_mapping: %"SCNu16"\n";
     
-  char      hash_func_buf[32];
+  char      hash_func_buf[33];
   uint16_t  store_value;
   uint16_t  direct_mapping;
   

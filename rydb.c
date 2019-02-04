@@ -659,8 +659,8 @@ static int rydb_meta_save(rydb_t *db) {
 
 static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   FILE     *fp = ryf->fp;
-  char      endianness_buf[16];
-  char      rowformat_buf[32];
+  char      endianness_buf[17];
+  char      rowformat_buf[33];
   int       little_endian;
   uint16_t  rydb_format_version, db_revision, rownum_width, row_len, id_len, index_count;
   if(fseek(fp, 0, SEEK_SET) == -1) {
@@ -756,7 +756,6 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     return 0;
   }
   
-  
   if(index_count > 0) {
     const char *index_fmt =
       "\n"
@@ -765,9 +764,9 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
       "    start: %"SCNu16"\n"
       "    len: %"SCNu16"\n"
       "    unique: %"SCNu16"\n";
-      
-    char                      index_name_buf[RYDB_NAME_MAX_LEN];
-    char                      index_type_buf[32];
+    
+    char                      index_type_buf[33];
+    char                      index_name_buf[RYDB_NAME_MAX_LEN+1];
     uint16_t                  index_unique;
     rydb_config_index_t       idx_cf;
     
@@ -818,7 +817,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     return 0;
   }
   if(linkpairs_count > 0) {
-    char             link_next_buf[RYDB_NAME_MAX_LEN], link_prev_buf[RYDB_NAME_MAX_LEN];
+    char             link_next_buf[RYDB_NAME_MAX_LEN+1], link_prev_buf[RYDB_NAME_MAX_LEN+1];
     if(fscanf(fp, "link_pair:\n") < 0) {
       rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "link specification is corrupted or invalid");
       return 0;
