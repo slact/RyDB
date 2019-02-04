@@ -5,14 +5,15 @@ CC = clang
 O=1
 CCACHE = ccache
 COLOR = always
-CFLAGS = -ggdb -O${O} -Wall -Wextra -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic
+COLOR_OPT = -fdiagnostics-color=${COLOR}
+CFLAGS = -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic
 VALGRIND_FLAGS = --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
 SANITIZE_FLAGS = -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum
 CALLGRIND_FLAGS = --tool=callgrind --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=callgrind-rydb-%p.out
 ANALYZE_FLAGS = -maxloop 10 -enable-checker alpha.clone -enable-checker alpha.core -enable-checker alpha.deadcode -enable-checker alpha.security -enable-checker alpha.unix -enable-checker nullability
 CLANG_TIDY_CHECKS = bugprone-*, readability-*, performance-*, google-*, cert-*, -cert-err34-c, -google-readability-todo, -clang-diagnostic-unused-function
 
-.PHONY: default all clean force test valgrind callgrind tidy
+.PHONY: default all clean force test valgrind callgrind tidy sanitize
 
 default: $(TARGET)
 all: default
@@ -42,11 +43,11 @@ gcc5:
 gcc:
 	$(MAKE) CC=gcc COLOR=$(color) CFLAGS="$(CFLAGS) -fvar-tracking-assignments" O=$(O)
 clang:
-	$(MAKE) CC=clang COLOR=$(color) O=$(O)
+	$(MAKE) CC=clang COLOR_OPT="" O=$(O)
 analyze: clean
 	scan-build $(ANALYZE_FLAGS) --view -stats $(MAKE) O=$(O) CC=clang CFLAGS="$(CFLAGS)" CCACHE=""
 sanitize:
-	$(MAKE) CC=clang COLOR=$(color) CFLAGS="$(CFLAGS) $(SANITIZE_FLAGS)" LDEXTRAFLAGS="-fsanitize=address" LIBS="$(LIBS) -lubsan" O=$(O)
+	$(MAKE) CC=clang COLOR_OPT="" CFLAGS="$(CFLAGS) $(SANITIZE_FLAGS)" LDEXTRAFLAGS="-fsanitize=address" LIBS="$(LIBS) -lubsan" O=$(O)
 test: default
 	./$(TARGET)
 debug: default
