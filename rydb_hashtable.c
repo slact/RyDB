@@ -86,51 +86,36 @@ static uint64_t crc32(const uint8_t *data, size_t data_len) {
   return (uint64_t )crc_update(0, data, data_len);
 }
 
-
 /*
-  SipHash reference C implementation
-
-  Copyright (c) 2012-2016 Jean-Philippe Aumasson
-  <jeanphilippe.aumasson@gmail.com>
-  Copyright (c) 2012-2014 Daniel J. Bernstein <djb@cr.yp.to>
-  Copyright (c) 2017 Salvatore Sanfilippo <antirez@gmail.com>
-
-  To the extent possible under law, the author(s) have dedicated all copyright
-  and related and neighboring rights to this software to the public domain
-  worldwide. This software is distributed without any warranty.
-
-  You should have received a copy of the CC0 Public Domain Dedication along
-  with this software. If not, see
-  <http://creativecommons.org/publicdomain/zero/1.0/>.
-
-  ----------------------------------------------------------------------------
-
-  This version was modified by Salvatore Sanfilippo <antirez@gmail.com>
-  in the following ways:
-
-  1. We use SipHash 1-2. This is not believed to be as strong as the
-    suggested 2-4 variant, but AFAIK there are not trivial attacks
-    against this reduced-rounds version, and it runs at the same speed
-    as Murmurhash2 that we used previously, why the 2-4 variant slowed
-    down Redis by a 4% figure more or less.
-  2. Hard-code rounds in the hope the compiler can optimize it more
-    in this raw from. Anyway we always want the standard 2-4 variant.
-  3. Modify the prototype and implementation so that the function directly
-    returns an uint64_t value, the hash itself, instead of receiving an
-    output buffer. This also means that the output size is set to 8 bytes
-    and the 16 bytes output code handling was removed.
-  4. Provide a case insensitive variant to be used when hashing strings that
-    must be considered identical by the hash table regardless of the case.
-    If we don't have directly a case insensitive hash function, we need to
-    perform a text transformation in some temporary buffer, which is costly.
-  5. Remove debugging code.
-  6. Modified the original test.c file to be a stand-alone function testing
-    the function in the new form (returing an uint64_t) using just the
-    relevant test vector.
-*/
-
-
-
+   SipHash reference C implementation
+   Copyright (c) 2012-2016 Jean-Philippe Aumasson
+   <jeanphilippe.aumasson@gmail.com>
+   Copyright (c) 2012-2014 Daniel J. Bernstein <djb@cr.yp.to>
+   Copyright (c) 2017 Salvatore Sanfilippo <antirez@gmail.com>
+   To the extent possible under law, the author(s) have dedicated all copyright
+   and related and neighboring rights to this software to the public domain
+   worldwide. This software is distributed without any warranty.
+   You should have received a copy of the CC0 Public Domain Dedication along
+   with this software. If not, see
+   <http://creativecommons.org/publicdomain/zero/1.0/>.
+   ----------------------------------------------------------------------------
+   This version was modified by Salvatore Sanfilippo <antirez@gmail.com>
+   in the following ways:
+   1. Hard-code 2-4 rounds in the hope the compiler can optimize it more
+      in this raw from. Anyway we always want the standard 2-4 variant.
+   2. Modify the prototype and implementation so that the function directly
+      returns an uint64_t value, the hash itself, instead of receiving an
+      output buffer. This also means that the output size is set to 8 bytes
+      and the 16 bytes output code handling was removed.
+   3. Provide a case insensitive variant to be used when hashing strings that
+      must be considered identical by the hash table regardless of the case.
+      If we don't have directly a case insensitive hash function, we need to
+      perform a text transformation in some temporary buffer, which is costly.
+   4. Remove debugging code.
+   5. Modified the original test.c file to be a stand-alone function testing
+      the function in the new form (returing an uint64_t) using just the
+      relevant test vector.
+ */
 
 /* Test of the CPU is Little Endian and supports not aligned accesses.
  * Two interesting conditions to speedup the function that happen to be
@@ -142,45 +127,54 @@ static uint64_t crc32(const uint8_t *data, size_t data_len) {
 #define ROTL(x, b) (uint64_t)(((x) << (b)) | ((x) >> (64 - (b))))
 
 #define U32TO8_LE(p, v)                                                        \
-    (p)[0] = (uint8_t)((v));                                                   \
-    (p)[1] = (uint8_t)((v) >> 8);                                              \
-    (p)[2] = (uint8_t)((v) >> 16);                                             \
-    (p)[3] = (uint8_t)((v) >> 24);
+  (p)[0] = (uint8_t)((v));                                                   \
+  (p)[1] = (uint8_t)((v) >> 8);                                              \
+  (p)[2] = (uint8_t)((v) >> 16);                                             \
+  (p)[3] = (uint8_t)((v) >> 24);
 
 #define U64TO8_LE(p, v)                                                        \
-    U32TO8_LE((p), (uint32_t)((v)));                                           \
-    U32TO8_LE((p) + 4, (uint32_t)((v) >> 32));
+  U32TO8_LE((p), (uint32_t)((v)));                                           \
+  U32TO8_LE((p) + 4, (uint32_t)((v) >> 32));
 
 #ifdef UNALIGNED_LE_CPU
 #define U8TO64_LE(p) (*((uint64_t*)(p)))
 #else
 #define U8TO64_LE(p)                                                           \
-    (((uint64_t)((p)[0])) | ((uint64_t)((p)[1]) << 8) |                        \
-     ((uint64_t)((p)[2]) << 16) | ((uint64_t)((p)[3]) << 24) |                 \
-     ((uint64_t)((p)[4]) << 32) | ((uint64_t)((p)[5]) << 40) |                 \
-     ((uint64_t)((p)[6]) << 48) | ((uint64_t)((p)[7]) << 56))
+  (((uint64_t)((p)[0])) | ((uint64_t)((p)[1]) << 8) |                        \
+    ((uint64_t)((p)[2]) << 16) | ((uint64_t)((p)[3]) << 24) |                 \
+    ((uint64_t)((p)[4]) << 32) | ((uint64_t)((p)[5]) << 40) |                 \
+    ((uint64_t)((p)[6]) << 48) | ((uint64_t)((p)[7]) << 56))
 #endif
 
+#define U8TO64_LE_NOCASE(p)                                                    \
+  (((uint64_t)(siptlw((p)[0]))) |                                           \
+    ((uint64_t)(siptlw((p)[1])) << 8) |                                      \
+    ((uint64_t)(siptlw((p)[2])) << 16) |                                     \
+    ((uint64_t)(siptlw((p)[3])) << 24) |                                     \
+    ((uint64_t)(siptlw((p)[4])) << 32) |                                              \
+    ((uint64_t)(siptlw((p)[5])) << 40) |                                              \
+    ((uint64_t)(siptlw((p)[6])) << 48) |                                              \
+    ((uint64_t)(siptlw((p)[7])) << 56))
 
 #define SIPROUND                                                               \
-    do {                                                                       \
-        v0 += v1;                                                              \
-        v1 = ROTL(v1, 13);                                                     \
-        v1 ^= v0;                                                              \
-        v0 = ROTL(v0, 32);                                                     \
-        v2 += v3;                                                              \
-        v3 = ROTL(v3, 16);                                                     \
-        v3 ^= v2;                                                              \
-        v0 += v3;                                                              \
-        v3 = ROTL(v3, 21);                                                     \
-        v3 ^= v0;                                                              \
-        v2 += v1;                                                              \
-        v1 = ROTL(v1, 17);                                                     \
-        v1 ^= v2;                                                              \
-        v2 = ROTL(v2, 32);                                                     \
-    } while (0)
+  do {                                                                       \
+    v0 += v1;                                                              \
+    v1 = ROTL(v1, 13);                                                     \
+    v1 ^= v0;                                                              \
+    v0 = ROTL(v0, 32);                                                     \
+    v2 += v3;                                                              \
+    v3 = ROTL(v3, 16);                                                     \
+    v3 ^= v2;                                                              \
+    v0 += v3;                                                              \
+    v3 = ROTL(v3, 21);                                                     \
+    v3 ^= v0;                                                              \
+    v2 += v1;                                                              \
+    v1 = ROTL(v1, 17);                                                     \
+    v1 ^= v2;                                                              \
+    v2 = ROTL(v2, 32);                                                     \
+  } while (0)
 
-static uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
+uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
 #ifndef UNALIGNED_LE_CPU
   uint64_t hash;
   uint8_t *out = (uint8_t*) &hash;
@@ -216,7 +210,7 @@ static uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k)
   case 5: b |= ((uint64_t)in[4]) << 32; /* fall-thru */
   case 4: b |= ((uint64_t)in[3]) << 24; /* fall-thru */
   case 3: b |= ((uint64_t)in[2]) << 16; /* fall-thru */
-  case 2: b |= ((uint64_t)in[1]) << 8; /* fall-thru */
+  case 2: b |= ((uint64_t)in[1]) << 8;  /* fall-thru */
   case 1: b |= ((uint64_t)in[0]); break;
   case 0: break;
   }
@@ -224,10 +218,13 @@ static uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k)
   v3 ^= b;
 
   SIPROUND;
+  SIPROUND;
 
   v0 ^= b;
   v2 ^= 0xff;
 
+  SIPROUND;
+  SIPROUND;
   SIPROUND;
   SIPROUND;
 
@@ -349,7 +346,7 @@ int rydb_index_hashtable_open(rydb_t *db, off_t i) {
 static uint64_t nohash(const char *data, const size_t len, const uint8_t trim) {
   uint64_t h = 0;
   assert(trim <= 64);
-  memcpy((char *)h, data, (len > (64-trim) ? (64-trim) : len));
+  memcpy((char *)h, data, (len > (size_t )(64-trim) ? (size_t )(64-trim) : len));
   return h;
 }
 
@@ -382,15 +379,19 @@ static inline uint64_t btrim64(uint64_t val, uint8_t bits) {
 static uint64_t hash_value(rydb_t *db, rydb_config_index_t *idx, char *data, uint8_t trim) {
   uint64_t h;
   switch(idx->type_config.hashtable.hash_function) {
-    case RYDB_HASH_INVALID:
-      return 0;
     case RYDB_HASH_CRC32:
       h = btrim64(crc32((uint8_t *)&data[idx->start], idx->len), trim);
       break;
     case RYDB_HASH_NOHASH:
       h = nohash(&data[idx->start], idx->len, trim);
+      break;
     case RYDB_HASH_SIPHASH:
       h = btrim64(siphash((uint8_t *)&data[idx->start], idx->len, db->config.hash_key), trim);
+      break;
+    default:
+    case RYDB_HASH_INVALID:
+      h=0;
+      break;
   }
   return h;
 }

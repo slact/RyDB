@@ -44,16 +44,17 @@ int main(void) {
   rydb_t *db = rydb_new();
   int error_found = 0;
   rydb_set_error_handler(db, rydb_error_handler, &error_found);
-  rydb_config_row(db, 50, 10);
-  rydb_config_revision(db, 0);
-  rydb_config_add_row_link(db, "dst", "src");
+  rydb_config_row(db, 10, 3);
+  rydb_config_revision(db, 1);
   rydb_config_add_row_link(db, "next", "prev");
-  if(rydb_open(db, "db/", "foo")) {
-    printf("opened ok\n");
-  }
-  else {
+  if(!rydb_open(db, "db/", "foo")) {
     printf("that sucked\n");
+    return 1;
   }
+  
+  rydb_row_t row = {.data="heywhatthecrap even is this"};
+  rydb_row_insert(db, &row);
+  
   rydb_close(db);
   return error_found;
   

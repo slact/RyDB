@@ -30,6 +30,27 @@ typedef struct {
   uint8_t     type;
   uint8_t     reserved;
   char        data[]; //cool c99 bro
+} rydb_stored_row_t;
+
+typedef enum {
+  RYDB_ROW_EMPTY      ='\00',
+  RYDB_ROW_DATA       ='=',
+  RYDB_ROW_TX_INSERT  ='+',
+  RYDB_ROW_TX_REPLACE ='~',
+  RYDB_ROW_TX_UPDATE  ='^', //uint16_t start, uint16_t len, data
+  //when uint16t*2+data > row_len 
+  RYDB_ROW_TX_UPDATE1 ='(', //uint16_t start, uint16_t len
+  RYDB_ROW_TX_UPDATE2 =')', //update data
+  RYDB_ROW_TX_DELETE  ='-', //uint32_t rownum
+  RYDB_ROW_TX_SWAP1   ='<', //uint32_t rownum1, uint32_t rownum2
+  RYDB_ROW_TX_SWAP2   ='>', //rownum2 data (tmp storage for row swap)
+  RYDB_ROW_TX_COMMIT  ='!',
+} rydb_row_type_t;
+
+typedef struct {
+  rydb_rownum_t   num;
+  rydb_row_type_t type;
+  char           *data;
 } rydb_row_t;
 
 typedef struct {
@@ -155,19 +176,22 @@ typedef struct {
 
 typedef struct rydb_s rydb_t;
 struct rydb_s {
-  const char     *path;
-  const char     *name;
-  rydb_file_t     data;
-  rydb_file_t     meta;
-  rydb_config_t   config;
-  rydb_index_t   *index;
-  void           *transaction; //TODO
-  unsigned        lock_acquired: 1;
+  const char         *path;
+  const char         *name;
+  uint16_t            stored_row_size;
+  rydb_stored_row_t  *data_next_row;
+  rydb_stored_row_t  *log_next_row;
+  rydb_file_t         data;
+  rydb_file_t         meta;
+  rydb_config_t       config;
+  rydb_index_t       *index;
+  void               *transaction; //TODO
+  unsigned            lock_acquired: 1;
   struct {
-    void        (*function)(rydb_t *db, rydb_error_t *err, void *pd);
-    void         *privdata;
-  }               error_handler;
-  rydb_error_t    error;
+    void              (*function)(rydb_t *db, rydb_error_t *err, void *pd);
+    void               *privdata;
+  }                   error_handler;
+  rydb_error_t        error;
   
 };// rydb_t
 
