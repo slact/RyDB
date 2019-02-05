@@ -41,7 +41,7 @@ clean:
 gcc5:
 	$(MAKE) CC=gcc-5 COLOR=$(color) CFLAGS="$(CFLAGS) -fvar-tracking-assignments" O=$(O)
 gcc:
-	$(MAKE) CC=gcc COLOR=$(color) CFLAGS="$(CFLAGS) -fvar-tracking-assignments" O=$(O)
+	$(MAKE) CC=gcc COLOR=$(color) CFLAGS="$(CFLAGS) -fvar-tracking-assignments -Wimplicit-fallthrough" O=$(O)
 clang:
 	$(MAKE) CC=clang COLOR_OPT="" O=$(O)
 analyze: clean
