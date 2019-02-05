@@ -594,6 +594,7 @@ static int rydb_meta_save(rydb_t *db) {
                db->config.revision,
                is_little_endian() ? "little" : "big",
                //storage info
+               RYDB_DATA_START_OFFSET,
                offsetof(rydb_stored_row_t, type),
                offsetof(rydb_stored_row_t, reserved),
                offsetof(rydb_stored_row_t, data),
@@ -677,7 +678,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   char      hashkey_buf[35];
   uint8_t   hashkey_quality;
   int       little_endian;
-  uint16_t  rydb_format_version, db_revision, rownum_width, row_len, id_len, index_count;
+  uint16_t  rydb_format_version, db_revision, start_offset, rownum_width, row_len, id_len, index_count;
   if(fseek(fp, 0, SEEK_SET) == -1) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Failed seeking to start of data file");
     return 0;
@@ -695,6 +696,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     "database_revision: %"SCNu16"\n"
     "storage_info:\n"
     "  endianness: %15s\n"
+    "  start_offset: %"SCNu16"\n"
     "  row_format:\n"
     "    type_offset: %"SCNu16"\n"
     "    %31s %"SCNu16"\n"
@@ -709,6 +711,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
                   &rydb_format_version,
                   &db_revision,
                   endianness_buf,
+                  &start_offset,
                   &rowformat.type_off,
                   rowformat_buf,
                   &rowformat.reserved_off,
@@ -756,10 +759,15 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     rydb_set_error(db, RYDB_ERROR_WRONG_ENDIANNESS, "File has wrong endianness");
     return 0;
   }
+  if(start_offset != RYDB_DATA_START_OFFSET) {
+    //TODO: move data to the right offset
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Wrong data offset, expected %i, got %"PRIu16, RYDB_DATA_START_OFFSET, start_offset);
+    return 0;
+  }
   
   if(rownum_width != sizeof(rydb_rownum_t)) {
     //TODO: convert data to host rownum size
-    rydb_set_error(db, RYDB_ERROR_WRONG_ENDIANNESS, "File rownum is a %" PRIu16"-bit integer, expected %i-bit", rownum_width * 8, sizeof(rydb_rownum_t) * 8);
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "File rownum is a %" PRIu16"-bit integer, expected %i-bit", rownum_width * 8, sizeof(rydb_rownum_t) * 8);
     return 0;
   }
   
