@@ -8,4 +8,6 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
 int rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
 
 int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *idx_cf, rydb_config_index_hashtable_t *advanced_config);
+
+uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k);
 #endif //_RYDB_HASHTABLE_H

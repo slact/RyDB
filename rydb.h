@@ -54,9 +54,10 @@ typedef enum {
 
 typedef struct {
   enum {
-    RYDB_HASH_CRC32 =     0,
-    RYDB_HASH_NOHASH =    1, //treat the value as if it's already a good hash
-    RYDB_HASH_SIPHASH =   2
+    RYDB_HASH_INVALID =   0,
+    RYDB_HASH_CRC32 =     1,
+    RYDB_HASH_NOHASH =    2, //treat the value as if it's already a good hash
+    RYDB_HASH_SIPHASH =   3
   }            hash_function;
   
   //storing the value in the hashtable prevents extra datafile reads at the cost of possibly much larger hashtable entries
@@ -148,6 +149,8 @@ typedef struct {
   rydb_config_row_link_t *link;
   uint16_t index_count;
   rydb_config_index_t *index;
+  uint8_t  hash_key[16];
+  uint8_t  hash_key_quality;
 } rydb_config_t;
 
 typedef struct rydb_s rydb_t;

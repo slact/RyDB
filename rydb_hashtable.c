@@ -82,7 +82,7 @@ static inline uint_fast32_t crc_update(uint_fast32_t crc, const void *data, size
   return crc & 0xffffffff;
 }
 
-static uint64_t crc32(const char *data, size_t data_len) {
+static uint64_t crc32(const uint8_t *data, size_t data_len) {
   return (uint64_t )crc_update(0, data, data_len);
 }
 
@@ -205,6 +205,7 @@ static uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k)
     v3 ^= m;
 
     SIPROUND;
+    SIPROUND;
 
     v0 ^= m;
   }
@@ -280,11 +281,15 @@ static char *hashfunction_to_str(rydb_config_index_type_t *cf) {
       return "none";
     case RYDB_HASH_SIPHASH:
       return "SipHash";
+    case RYDB_HASH_INVALID:
+      return "invalid";
   }
   return "???";
 }
 static int hashfunction_valid(rydb_config_index_hashtable_t *acf) {
   switch(acf->hash_function) {
+    case RYDB_HASH_INVALID:
+      return 0;
     case RYDB_HASH_CRC32:
     case RYDB_HASH_NOHASH:
     case RYDB_HASH_SIPHASH:
@@ -341,6 +346,15 @@ int rydb_index_hashtable_open(rydb_t *db, off_t i) {
   return 1;
 }
 
+static uint64_t nohash(const char *data, const size_t len, const uint8_t trim) {
+  uint64_t h = 0;
+  assert(trim <= 64);
+  memcpy((char *)h, data, (len > (64-trim) ? (64-trim) : len));
+  return h;
+}
+
+
+
 static const uint64_t btrim64_mask[65] = {
   0xffffffffffffffff, 0x7fffffffffffffff, 0x3fffffffffffffff, 0x1fffffffffffffff,
   0x0fffffffffffffff, 0x07ffffffffffffff, 0x03ffffffffffffff, 0x01ffffffffffffff,
@@ -362,4 +376,21 @@ static const uint64_t btrim64_mask[65] = {
 //bitwise trim of a 64-bit uint from the big end
 static inline uint64_t btrim64(uint64_t val, uint8_t bits) {
   return val & btrim64_mask[bits];
+}
+
+
+static uint64_t hash_value(rydb_t *db, rydb_config_index_t *idx, char *data, uint8_t trim) {
+  uint64_t h;
+  switch(idx->type_config.hashtable.hash_function) {
+    case RYDB_HASH_INVALID:
+      return 0;
+    case RYDB_HASH_CRC32:
+      h = btrim64(crc32((uint8_t *)&data[idx->start], idx->len), trim);
+      break;
+    case RYDB_HASH_NOHASH:
+      h = nohash(&data[idx->start], idx->len, trim);
+    case RYDB_HASH_SIPHASH:
+      h = btrim64(siphash((uint8_t *)&data[idx->start], idx->len, db->config.hash_key), trim);
+  }
+  return h;
 }

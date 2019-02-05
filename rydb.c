@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #include <signal.h>
 
@@ -485,6 +486,7 @@ int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
   if((f->fp = fdopen(f->fd, "r+")) == NULL) {
     rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to fdopen file %s", path);
     rydb_file_close(db, f);
+    return 0;
   }
   
   sz = RYDB_PAGESIZE * 10;
@@ -563,6 +565,13 @@ static int rydb_meta_save(rydb_t *db) {
     return 0;
   }
   
+  char hash_key_hexstr_buf[33];
+  for (unsigned i = 0; i < sizeof(db->config.hash_key); i ++) {
+    sprintf(&hash_key_hexstr_buf[i*2], "%02x", db->config.hash_key[i]);
+  }
+  hash_key_hexstr_buf[sizeof(db->config.hash_key)*2]='\00';
+  
+  
   const char *fmt =
     "--- #rydb\n"
     "format_revision: %i\n"
@@ -574,6 +583,8 @@ static int rydb_meta_save(rydb_t *db) {
     "    reserved_offset: %i\n"
     "    data_offset: %i\n"
     "  rownum_width: %"PRIu16"\n"
+    "hash_key: %s\n"
+    "hash_key_quality: %"PRIu8"\n"
     "row_len: %"PRIu16"\n"
     "id_len: %"PRIu16"\n"
     "index_count: %"PRIu16"\n"
@@ -587,6 +598,8 @@ static int rydb_meta_save(rydb_t *db) {
                offsetof(rydb_row_t, reserved),
                offsetof(rydb_row_t, data),
                (uint16_t)sizeof(rydb_rownum_t),
+               hash_key_hexstr_buf,
+               db->config.hash_key_quality,
                db->config.row_len,
                db->config.id_len,
                db->config.index_count,
@@ -661,6 +674,8 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   FILE     *fp = ryf->fp;
   char      endianness_buf[17];
   char      rowformat_buf[33];
+  char      hashkey_buf[35];
+  uint8_t   hashkey_quality;
   int       little_endian;
   uint16_t  rydb_format_version, db_revision, rownum_width, row_len, id_len, index_count;
   if(fseek(fp, 0, SEEK_SET) == -1) {
@@ -685,6 +700,8 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     "    %31s %"SCNu16"\n"
     "    data_offset: %"SCNu16"\n"
     "  rownum_width: %"SCNu16"\n"
+    "hash_key: %34s\n"
+    "hash_key_quality: %"SCNu8"\n"
     "row_len: %"SCNu16"\n"
     "id_len: %"SCNu16"\n"
     "index_count: %"SCNu16"\n";
@@ -697,6 +714,8 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
                   &rowformat.reserved_off,
                   &rowformat.data_off,
                   &rownum_width,
+                  hashkey_buf,
+                  &hashkey_quality,
                   &row_len,
                   &id_len,
                   &index_count
@@ -748,6 +767,27 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "File invalid, too many indices defined");
     return 0;
   }
+  
+  if(strlen(hashkey_buf) != 32) {
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Invalid hash key length");
+    return 0;
+  }
+  uint8_t hashkey[16];
+  for (int i = 15; i >= 0; i--) {
+    if(sscanf(&hashkey_buf[i*2], "%"SCNx8, &hashkey[i]) != 1) {
+      rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Invalid hash key at [%i]", i*2);
+      return 0;
+    }
+    hashkey_buf[i*2]=' ';
+  }
+  
+  if(hashkey_quality >1) {
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Invalid hash key quality");
+    return 0;
+  }
+  
+  db->config.hash_key_quality = hashkey_quality;
+  memcpy(db->config.hash_key, hashkey, sizeof(hashkey));
   
   if(!rydb_config_row(db, row_len, id_len)) {
     return 0;
@@ -851,6 +891,16 @@ static int rydb_config_match(rydb_t *db, const rydb_t *db2, const char *db_lbl, 
   if(db->config.id_len != db2->config.id_len) {
     rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching id length: %s %"PRIu16", %s %"PRIu16, db_lbl, db->config.id_len, db2_lbl, db2->config.id_len);
     return 0;
+  }
+  
+  // if db's hash key is zeroes, ignore this comparison as it is never set by the user and is only set during initialization
+  // if it's not initialized, it's not comparable.
+  // otherwise, check it.
+  if(memcmp(db->config.hash_key, "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00", 16) != 0) {
+    if(memcmp(db->config.hash_key, db2->config.hash_key, sizeof(db->config.hash_key)) != 0) {
+      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching hash keys");
+      return 0;
+    }
   }
   
   if(db->config.index_count != db2->config.index_count) {
@@ -994,6 +1044,9 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
       
       //compare configs
       if(!rydb_config_match(db, loaded_db, "configured", "loaded")) {
+        //copy over hash_key stuff
+        memcpy(db->config.hash_key, loaded_db->config.hash_key, sizeof(loaded_db->config.hash_key));
+        db->config.hash_key_quality = loaded_db->config.hash_key_quality;
         rydb_close(loaded_db);
         return rydb_open_abort(db);
       }
@@ -1031,10 +1084,48 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   }
   
   if(new_db) {
+    db->config.hash_key_quality = getrandombytes(db->config.hash_key, sizeof(db->config.hash_key));
     rydb_meta_save(db);
   }
   
   return 1;
+}
+
+
+/* "inspired" by getrandombytes() from Redis
+ * Get random bytes, attempts to get them straight from /dev/urandom.
+ * If /dev/urandom is not available, a weaker seed is used to generate the 
+ * random bytes using siphash.
+ * 
+ * returns 1 if bytes are good quality, 0 of they're shit
+ */
+int getrandombytes(unsigned char *p, size_t len) {
+  FILE *fp = fopen("/dev/urandom","r");
+  int good = 0;
+  if (fp && fread(p,len,1,fp) == 1) {
+    good = 1;
+  }
+  else {
+    //generate shitty seed from timeofday, pid, and other nonrandom crap
+    struct {
+      struct timeval tv;
+      pid_t pid;
+    } shitseed;
+    gettimeofday(&shitseed.tv,NULL);
+    shitseed.pid = getpid();
+    uint64_t rnd;
+    char *seed = "this is at least 16 bytes long";
+    rnd = siphash((uint8_t *)&shitseed, sizeof(shitseed), (uint8_t *)seed);
+    for(int n = len; n > 0; n -= 8, p+=8) {
+      memcpy(p, &rnd, n > 8 ? 8 : n);
+      rnd = siphash((uint8_t *)&rnd, sizeof(rnd), (uint8_t *)seed);
+    }
+    good = 0;
+  }
+  if(fp) {
+    fclose(fp);
+  }
+  return good;
 }
 
 static int rydb_data_write_row(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row) {
@@ -1066,6 +1157,7 @@ int rydb_row_insert(rydb_t *db, rydb_row_t *row) {
   row->type = RYDB_ROW_TX_INSERT;
   const rydb_row_t *rows[2]={row, &RYDB_ROW_COMMIT};
   //rydb_data_append_rows(db, 
+  (void)(rows);
   //TODO
   return 1;
 }
