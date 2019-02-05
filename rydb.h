@@ -179,8 +179,8 @@ struct rydb_s {
   const char         *path;
   const char         *name;
   uint16_t            stored_row_size;
-  rydb_stored_row_t  *data_next_row;
-  rydb_stored_row_t  *log_next_row;
+  rydb_stored_row_t  *data_next_row; //row after last for RYDB_ROW_DATA
+  rydb_stored_row_t  *tx_next_row; //row after last for RYDB_ROW_TX_*, also the next after the last row (of any type) in the data file
   rydb_file_t         data;
   rydb_file_t         meta;
   rydb_config_t       config;

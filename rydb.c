@@ -962,7 +962,7 @@ static int rydb_data_scan_tail(rydb_t *db) {
   uint_fast8_t  lastrow_found=0, data_lastrow_found = 0;
   for(rydb_stored_row_t *cur = last_possible_row; cur && cur >= firstrow; cur = rydb_row_next(cur, stored_row_size, -1)) {
     if(!lastrow_found && cur->type != RYDB_ROW_EMPTY) {
-      db->log_next_row = rydb_row_next(cur, stored_row_size, 1);
+      db->tx_next_row = rydb_row_next(cur, stored_row_size, 1);
       lastrow_found = 1;
     }
     if(!data_lastrow_found && cur->type == RYDB_ROW_DATA) {
@@ -972,7 +972,7 @@ static int rydb_data_scan_tail(rydb_t *db) {
     }
   }
   if(!lastrow_found) {
-    db->log_next_row = (void *)db->data.data.start;
+    db->tx_next_row = (void *)db->data.data.start;
   }
   if(!data_lastrow_found) {
     db->data_next_row = (void *)db->data.data.start;
@@ -1191,7 +1191,7 @@ static inline uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_
 
 static int rydb_data_append_rows(rydb_t *db, rydb_row_t **rows, const off_t count) {
   off_t rowsize = db->stored_row_size;
-  rydb_stored_row_t *newrows_start = db->log_next_row;
+  rydb_stored_row_t *newrows_start = db->tx_next_row;
   rydb_stored_row_t *newrows_end = rydb_row_next(newrows_start, rowsize, count);
   
   if(!rydb_file_ensure_writable_address(db, &db->data, newrows_start, ((char *)newrows_end - (char *)newrows_start))) {
