@@ -185,6 +185,8 @@ struct rydb_s {
   rydb_file_t         meta;
   rydb_config_t       config;
   rydb_index_t       *index;
+  uint8_t             unique_index_count;
+  uint8_t            *unique_index;
   void               *transaction; //TODO
   unsigned            lock_acquired: 1;
   struct {

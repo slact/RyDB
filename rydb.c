@@ -359,6 +359,7 @@ static void rydb_free(rydb_t *db) {
   }
   rydb_subfree(db->config.index);
   rydb_subfree(db->index);
+  rydb_subfree(db->unique_index);
   
   if(db->config.link) {
     for(int i = 0; i < db->config.link_pair_count * 2; i++) {
@@ -578,6 +579,7 @@ static int rydb_meta_save(rydb_t *db) {
     "database_revision: %"PRIu32"\n"
     "storage_info:\n"
     "  endianness: %s\n"
+    "  start_offset: %"PRIu16"\n"
     "  row_format:\n"
     "    type_offset: %i\n"
     "    reserved_offset: %i\n"
@@ -1107,7 +1109,12 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
     }
     memset(db->index, '\00', sz);
     
+    int unique_index_count = 0;
+    
     for(int i = 0; i < db->config.index_count; i++) {
+      if(db->config.index[i].flags & RYDB_INDEX_UNIQUE) {
+        db->unique_index_count++;
+      }
       db->index[i].index.fd = -1;
       db->index[i].data.fd = -1;
       switch(db->config.index[i].type) {
@@ -1121,7 +1128,21 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
           }
           break;
       }
-      
+    }
+    
+    //we'll be wanting to check all unique indices during row changes, so they should be made easy to locate
+    if(db->unique_index_count > 0) {
+      uint8_t n = 0;
+      db->unique_index = malloc(sizeof(db->unique_index) * db->unique_index_count);
+      if(!db->index) {
+        rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for unique indices");
+        return rydb_open_abort(db);
+      }
+      for(int i = 0; i < db->config.index_count; i++) {
+        if(db->config.index[i].flags & RYDB_INDEX_UNIQUE) {
+          db->unique_index[n++]=i;
+        }
+      }
     }
   }
   
