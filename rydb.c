@@ -1109,8 +1109,6 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
     }
     memset(db->index, '\00', sz);
     
-    int unique_index_count = 0;
-    
     for(int i = 0; i < db->config.index_count; i++) {
       if(db->config.index[i].flags & RYDB_INDEX_UNIQUE) {
         db->unique_index_count++;
