@@ -25,6 +25,9 @@
     (char *)(member_type(type, member) *){ ptr } - offsetof(type, member)))
 #endif
 
+#define RYDB_LOCK_READ    0x01
+#define RYDB_LOCK_WRITE   0x02
+#define RYDB_LOCK_CLIENT  0x04
 
 int rydb_file_open_index(rydb_t *db, int index_n);
 int rydb_file_open_index_data(rydb_t *db, int index_n);

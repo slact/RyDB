@@ -371,30 +371,38 @@ static void rydb_free(rydb_t *db) {
   free(db);
 }
 
-static int rydb_lock(rydb_t *db) {
-  char buf[1024];
-  rydb_filename(db, "lock", buf, 1024);
-  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP;
-  int fd = open(buf, O_CREAT | O_EXCL, mode);
-  if(fd == -1) {
-    rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, errno == EEXIST ? "Database is already locked" : "Can't lock database");
-    return 0;
+static int rydb_lock(rydb_t *db, uint8_t lockflags) {
+  /*lockfile layout, in bytes
+   [0]: global write lock
+   [1]: global read lock
+   [2]: global client lock
+   ...
+  */
+  volatile int8_t *writelock = (int8_t *)&db->lock.file.start[0];
+  //volatile int8_t *readlock = &db->lock.file.start[1];
+  //volatile int8_t *clientlock = &db->lock.file.start[2];
+  // we only support single-user mode for now
+  if(lockflags & RYDB_LOCK_WRITE) {
+    if(++(*writelock) > 1) {
+      (*writelock)--;
+      rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Failed to acquire write-lock");
+      return 0;
+    }
   }
-  //lock file created, i don't think we need to keep its fd open
-  close(fd);
+  //don't care about the rest for now
   return 1;
 }
 
-static int rydb_unlock(rydb_t *db) {
-  char buf[1024];
-  rydb_filename(db, "lock", buf, 1024);
-  if(access(buf, F_OK) == -1) { //no lock present, nothing to unlock
-    return 1;
+static int rydb_unlock(rydb_t *db, uint8_t lockflags) {
+  volatile int8_t *writelock = (int8_t *)&db->lock.file.start[0];
+  //volatile int8_t *readlock = &db->lock.file.start[1];
+  //volatile uint8_t *clientlock = &db->lock.file.start[2];
+  // we only support single-user mode for now
+  if(db->lock_state & lockflags & RYDB_LOCK_WRITE) {
+    *writelock--;
   }
-  if(remove(buf) == 0) {
-    return 1;
-  }
-  return 0;
+  //don't care about the rest for now
+  return 1;
 }
 
 int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz) {
@@ -467,7 +475,7 @@ static int rydb_file_close(rydb_t *db, rydb_file_t *f) {
   return ok;
 }
 
-int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
+static int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
   off_t sz;
   char path[2048];
   rydb_filename(db, what, path, 2048);
@@ -1025,11 +1033,12 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   db->name = strdup(name);
   db->path = dup_path;
   
-  if(!rydb_lock(db)) {
+  if(!rydb_file_open(db, "lock", &db->data)) {
     return rydb_open_abort(db);
   }
-  
-  db->lock_acquired = 1;
+  if(!rydb_lock(db, RYDB_LOCK_CLIENT)) {
+    return rydb_open_abort(db);
+  }
   
   if(!db->name || !db->path) {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory to open RyDB");
@@ -1156,8 +1165,8 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
 
 int rydb_close(rydb_t *db) {
   rydb_close_nofree(db);
-  if(db->name && db->path && db->lock_acquired) {
-    if(!rydb_unlock(db)) {
+  if(db->name && db->path) {
+    if(!rydb_unlock(db, RYDB_LOCK_READ | RYDB_LOCK_WRITE | RYDB_LOCK_CLIENT)) {
       return 0;
     }
   }

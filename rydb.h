@@ -183,12 +183,13 @@ struct rydb_s {
   rydb_stored_row_t  *tx_next_row; //row after last for RYDB_ROW_TX_*, also the next after the last row (of any type) in the data file
   rydb_file_t         data;
   rydb_file_t         meta;
+  rydb_file_t         lock;
   rydb_config_t       config;
   rydb_index_t       *index;
+  void               *transaction; //TODO
   uint8_t             unique_index_count;
   uint8_t            *unique_index;
-  void               *transaction; //TODO
-  unsigned            lock_acquired: 1;
+  uint8_t             lock_state;
   struct {
     void              (*function)(rydb_t *db, rydb_error_t *err, void *pd);
     void               *privdata;
