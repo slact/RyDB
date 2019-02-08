@@ -5,3 +5,5 @@ vgcore.*
 .compiler_flags
 callgrind*.out
 compile_commands.json
+librydb.a
+librydb.so
