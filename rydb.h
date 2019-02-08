@@ -36,13 +36,12 @@ typedef enum {
   RYDB_ROW_EMPTY      ='\00',
   RYDB_ROW_DATA       ='=',
   RYDB_ROW_TX_INSERT  ='+',
-  RYDB_ROW_TX_REPLACE ='~',
-  RYDB_ROW_TX_UPDATE  ='^', //uint16_t start, uint16_t len, data
+  RYDB_ROW_TX_UPDATE  ='^', //rownum, uint16_t start, uint16_t len, data
   //when uint16t*2+data > row_len 
-  RYDB_ROW_TX_UPDATE1 ='(', //uint16_t start, uint16_t len
+  RYDB_ROW_TX_UPDATE1 ='(', //rownum, uint16_t start, uint16_t len
   RYDB_ROW_TX_UPDATE2 =')', //update data
-  RYDB_ROW_TX_DELETE  ='-', //uint32_t rownum
-  RYDB_ROW_TX_SWAP1   ='<', //uint32_t rownum1, uint32_t rownum2
+  RYDB_ROW_TX_DELETE  ='-', //rownum
+  RYDB_ROW_TX_SWAP1   ='<', //rownum1, rownum2
   RYDB_ROW_TX_SWAP2   ='>', //rownum2 data (tmp storage for row swap)
   RYDB_ROW_TX_COMMIT  ='!',
 } rydb_row_type_t;
@@ -153,7 +152,11 @@ typedef enum {
   RYDB_ERROR_VERSION_MISMATCH     = 10,
   RYDB_ERROR_REVISION_MISMATCH    = 11,
   RYDB_ERROR_BAD_CONFIG           = 12,
-  RYDB_ERROR_WRONG_ENDIANNESS     = 13
+  RYDB_ERROR_WRONG_ENDIANNESS     = 13,
+  RYDB_ERROR_TRANSACTION_ACTIVE   = 14,
+  RYDB_ERROR_TRANSACTION_INACTIVE = 15,
+  RYDB_ERROR_DATA_TOO_LARGE       = 16,
+  RYDB_ERROR_ROWNUM_TOO_LARGE     = 17,
 } rydb_error_code_t;
 
 typedef struct {
@@ -186,7 +189,7 @@ struct rydb_s {
   rydb_file_t         lock;
   rydb_config_t       config;
   rydb_index_t       *index;
-  void               *transaction; //TODO
+  uint8_t             transaction;
   uint8_t             unique_index_count;
   uint8_t            *unique_index;
   uint8_t             lock_state;
@@ -212,16 +215,20 @@ int rydb_open(rydb_t *db, const char *path, const char *name);
 
 rydb_row_t *rydb_row_find(rydb_t *db, const char *id); //return 1 if found, 0 if not found
 
-int rydb_row_safe_to_write_directly_check(rydb_t *db, rydb_row_t *row, off_t start, size_t len);
-int rydb_row_insert(rydb_t *db, rydb_row_t *row);
-int rydb_row_delete(rydb_t *db, rydb_row_t *row);
-int rydb_row_update(rydb_t *db, rydb_row_t *row, off_t start, size_t len);
+int rydb_row_safe_to_write_directly_check(rydb_t *db, rydb_row_t *row, uint16_t start, uint16_t len);
+int rydb_row_insert(rydb_t *db, const char *data);
+int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum);
+int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, const char *data, uint16_t start, uint16_t len);
 
 rydb_error_t *rydb_error(const rydb_t *db);
 int rydb_error_print(const rydb_t *db);
 int rydb_error_fprint(const rydb_t *db, FILE *file);
 int rydb_error_snprint(const rydb_t *db, char *buf, size_t buflen);
 void rydb_error_clear(rydb_t *db);
+
+int rydb_transaction_start(rydb_t *db);
+int rydb_transaction_finish(rydb_t *db);
+int rydb_transaction_cancel(rydb_t *db);
 
 int rydb_close(rydb_t *db); //also free()s db
 

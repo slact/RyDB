@@ -29,6 +29,11 @@
 #define RYDB_LOCK_WRITE   0x02
 #define RYDB_LOCK_CLIENT  0x04
 
+#define RYDB_DEFAULT_MMAP_SIZE 12500000000 //100GB
+#define RYDB_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = db->data_next_row; cur < db->tx_next_row; cur = rydb_row_next(cur, db->stored_row_size, 1))
+#define RYDB_REVERSE_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = rydb_row_next(db->tx_next_row, db->stored_row_size, -1); cur >= db->data_next_row; cur = rydb_row_next(cur, db->stored_row_size, -1))
+
+
 int rydb_file_open_index(rydb_t *db, int index_n);
 int rydb_file_open_index_data(rydb_t *db, int index_n);
 int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz);
@@ -36,5 +41,13 @@ int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, si
 void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
 
 int getrandombytes(unsigned char *p, size_t len);
+
+
+//NOTE: this only works correctly if the struct is made without padding
+typedef struct {
+  rydb_rownum_t rownum;
+  uint16_t      start;
+  uint16_t      len;
+} row_tx_header_t;
 
 #endif //RYDB_INTERNAL_H

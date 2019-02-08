@@ -52,8 +52,7 @@ int main(void) {
     return 1;
   }
   
-  rydb_row_t row = {.data="heywhatthecrap even is this"};
-  rydb_row_insert(db, &row);
+  rydb_row_insert(db, "heywhatthecrap even is this");
   
   rydb_close(db);
   return error_found;
