@@ -971,8 +971,6 @@ static int rydb_config_match(rydb_t *db, const rydb_t *db2, const char *db_lbl, 
   return 1;
 }
 
-#define rydb_row_next(row, sz, n) (void *)((char *)row + sz * n)
-
 static int rydb_data_scan_tail(rydb_t *db) {
   uint16_t stored_row_size = db->stored_row_size;
   rydb_stored_row_t *firstrow = (void *)(db->data.data.start);
@@ -1188,7 +1186,7 @@ int getrandombytes(unsigned char *p, size_t len) {
     good = 1;
   }
   else {
-    //generate shitty seed from timeofday, pid, and other nonrandom crap
+    //generate shitty seed rydb_row_nextfrom timeofday, pid, and other nonrandom crap
     struct {
       struct timeval tv;
       pid_t pid;
@@ -1237,19 +1235,28 @@ static inline uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_
   }
 }
 
-static inline rydb_rownum_t rydb_last_rownum(rydb_t *db) {
+static inline rydb_rownum_t rydb_last_rownum(const rydb_t *db) {
+  //FIXME: there's an off-by-one error here
   return ((char *)db->tx_next_row - (char *)db->data.data.start)/db->stored_row_size;
 }
+static inline rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum) {
+  char *start = db->data.data.start;
+  rydb_stored_row_t *row = rydb_row_next(start, db->stored_row_size, rownum - 1);
+  if((char *)row < start || (char *)row > db->data.data.end) {
+    return NULL;
+  }
+  return row;
+}
 
-static int rydb_data_append_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
-  off_t rowsize = db->stored_row_size;
-  rydb_stored_row_t *newrows_start = db->tx_next_row;
-  rydb_stored_row_t *newrows_end = rydb_row_next(newrows_start, rowsize, count);
+static int rydb_data_append_tx_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
+  uint_fast16_t        rowsize = db->stored_row_size;
+  rydb_stored_row_t   *newrows_start = db->tx_next_row;
+  rydb_stored_row_t   *newrows_end = rydb_row_next(newrows_start, rowsize, count);
   
   if(!rydb_file_ensure_writable_address(db, &db->data, newrows_start, ((char *)newrows_end - (char *)newrows_start))) {
     return 0;
   }
-  uint_fast16_t sz;  
+  uint_fast16_t sz;
   for(rydb_stored_row_t *cur=newrows_start; cur<newrows_end; cur = rydb_row_next(cur, rowsize, 1)) {
     sz = rydb_row_data_size(db, &rows[0]);
     cur->type = rows[0].type;
@@ -1258,6 +1265,7 @@ static int rydb_data_append_rows(rydb_t *db, rydb_row_t *rows, const off_t count
     }
     rows++;
   }
+  db->tx_next_row = newrows_end;
   return 1;
 }
 
@@ -1284,8 +1292,8 @@ int rydb_transaction_cancel(rydb_t *db) {
 }
 
 static inline int rydb_tx_insert(rydb_t *db, rydb_stored_row_t *tx) {
-  rydb_stored_row_t *data_next = db->data_next_row;
-  size_t rowsz = db->stored_row_size;
+  rydb_stored_row_t   *data_next = db->data_next_row;
+  size_t               rowsz = db->stored_row_size;
   if(tx == data_next) {
     //this tx row is right after the data -- just change its type and we're set
     tx->type = RYDB_ROW_DATA;
@@ -1301,42 +1309,38 @@ static inline int rydb_tx_insert(rydb_t *db, rydb_stored_row_t *tx) {
 }
 
 static inline int rydb_tx_update(rydb_t *db, rydb_stored_row_t *tx) {
-  rydb_rownum_t num = *(rydb_rownum_t *)&tx->data[0];
-  uint16_t      start = *(uint16_t  *)&tx->data[sizeof(num)];
-  uint16_t      len = *(uint16_t  *)&tx->data[sizeof(num) + sizeof(start)];
-  char         *data = &tx->data[sizeof(num) + sizeof(start)*2];
-  rydb_stored_row_t *target_row = rydb_row_next(db->data_next_row, db->stored_row_size, num);
-  memcpy(&target_row->data[start], data, len);
+  row_tx_header_t    *header = (row_tx_header_t *)tx->data;
+  rydb_stored_row_t  *target_row = rydb_rownum_to_row(db, header->rownum);
+  
+  memcpy(&target_row->data[header->start], (char *)&header[1], header->len);
   tx->type = RYDB_ROW_EMPTY;
   return 1;
 }
 
 static inline int rydb_tx_update2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
-  rydb_rownum_t num = *(rydb_rownum_t *)&tx1->data[0];
-  uint16_t      start = *(uint16_t  *)&tx1->data[sizeof(num)];
-  uint16_t      len = *(uint16_t  *)&tx1->data[sizeof(num) + sizeof(start)];
-  char         *data = tx2->data;
-  rydb_stored_row_t *target_row = rydb_row_next(db->data_next_row, db->stored_row_size, num);
-  memcpy(&target_row->data[start], data, len);
+  row_tx_header_t    *header = (row_tx_header_t *)tx1->data;
+  rydb_stored_row_t  *target_row = rydb_rownum_to_row(db, header->rownum);
+  
+  memcpy(&target_row->data[header->start], tx2->data, header->len);
   tx1->type = RYDB_ROW_EMPTY;
   tx2->type = RYDB_ROW_EMPTY;
   return 1;
 }
 static inline int rydb_tx_delete(rydb_t *db, rydb_stored_row_t *tx) {
-  rydb_rownum_t num = *(rydb_rownum_t *)&tx->data[0];
-  rydb_stored_row_t *target_row = rydb_row_next(db->data_next_row, db->stored_row_size, num);
+  rydb_rownum_t       num = *(rydb_rownum_t *)&tx->data[0];
+  rydb_stored_row_t  *target_row = rydb_rownum_to_row(db, num);
+  
   target_row->type = RYDB_ROW_EMPTY;
   //TODO: update used row count, maybe keep track of holes in the data file?
   tx->type = RYDB_ROW_EMPTY;
   return 1;
 }
 static inline int rydb_tx_swap2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
-  rydb_rownum_t num1 = *(rydb_rownum_t *)&tx1->data[0];
-  rydb_rownum_t num2 = *(rydb_rownum_t *)&tx1->data[sizeof(num1)];
-  size_t rowsz = db->stored_row_size;
-  //tx2 contains a copy of row1
-  rydb_stored_row_t *target_row1 = rydb_row_next(db->data.data.start, rowsz, num1);
-  rydb_stored_row_t *target_row2 = rydb_row_next(db->data.data.start, rowsz, num2);
+  rydb_rownum_t       num1 = *(rydb_rownum_t *)&tx1->data[0];
+  rydb_rownum_t       num2 = *(rydb_rownum_t *)&tx1->data[sizeof(num1)];
+  rydb_stored_row_t  *target_row1 = rydb_rownum_to_row(db, num1);
+  rydb_stored_row_t  *target_row2 = rydb_rownum_to_row(db, num2);
+  size_t              rowsz = db->stored_row_size;
   
   memcpy(target_row1, target_row2, rowsz);
   memcpy(target_row2, tx2, rowsz);
@@ -1396,15 +1400,16 @@ int rydb_transaction_finish(rydb_t *db) {
 
 int rydb_row_insert(rydb_t *db, const char *data) {
   rydb_row_t rows[]={
-    {.type = RYDB_ROW_TX_DELETE, .data=data},
+    {.type = RYDB_ROW_TX_INSERT, .data=data},
     {.type = RYDB_ROW_TX_COMMIT}
   };
   if(db->transaction) {
-    if(!rydb_data_append_rows(db, rows, 1)) return 0;
+    if(!rydb_data_append_tx_rows(db, rows, 1)) return 0;
     return rydb_transaction_run(db);
   }
   else {
-    return rydb_data_append_rows(db, rows, 2);
+    if(!rydb_data_append_tx_rows(db, rows, 2)) return 0;
+    return rydb_transaction_run(db);
   }
 }
 
@@ -1429,14 +1434,14 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
     memcpy(&buf[sizeof(header)], data, len);
     rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE, data = buf};
     rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_COMMIT};
-    rc = rydb_data_append_rows(db, rows, n - db->transaction);
+    rc = rydb_data_append_tx_rows(db, rows, n - db->transaction);
     free(buf);
   }
   else {
-    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE1, data = (char *)&header};
-    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE2, data = data};
+    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE1, .data = (char *)&header};
+    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE2, .data = data};
     rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_COMMIT};
-    rc = rydb_data_append_rows(db, rows, n - db->transaction);
+    rc = rydb_data_append_tx_rows(db, rows, n - db->transaction);
   }
   
   if(db->transaction || !rc) {
@@ -1451,9 +1456,9 @@ int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum) {
     {.type = RYDB_ROW_TX_COMMIT}
   };
   if(db->transaction) {
-    return rydb_data_append_rows(db, rows, 1);
+    return rydb_data_append_tx_rows(db, rows, 1);
   }
-  if(!rydb_data_append_rows(db, rows, 2)) return 0;
+  if(!rydb_data_append_tx_rows(db, rows, 2)) return 0;
   return rydb_transaction_run(db);
 }
 
@@ -1473,9 +1478,9 @@ int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
     {.type = RYDB_ROW_TX_COMMIT}
   };
   if(db->transaction) {
-    return rydb_data_append_rows(db, rows, 2);
+    return rydb_data_append_tx_rows(db, rows, 2);
   }
-  if(!rydb_data_append_rows(db, rows, 3)) return 0;
+  if(!rydb_data_append_tx_rows(db, rows, 3)) return 0;
   return rydb_transaction_run(db);
 }
 

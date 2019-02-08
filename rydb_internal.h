@@ -50,4 +50,6 @@ typedef struct {
   uint16_t      len;
 } row_tx_header_t;
 
+#define rydb_row_next(row, sz, n) (void *)((char *)(row) + (sz) * (n))
+
 #endif //RYDB_INTERNAL_H

@@ -49,7 +49,7 @@ typedef enum {
 typedef struct {
   rydb_rownum_t   num;
   rydb_row_type_t type;
-  char           *data;
+  const char     *data;
 } rydb_row_t;
 
 typedef struct {
