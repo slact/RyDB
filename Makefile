@@ -86,3 +86,9 @@ tidy:   clean default
 	clang-tidy -checks="$(CLANG_TIDY_CHECKS)" *.c
 
 lib:	$(DNAME)
+
+test:	$(DNAME)
+	$(MAKE) -C $(TEST_DIR) run
+
+test-debug:	$(DNAME)
+	$(MAKE) -C $(TEST_DIR) debug
