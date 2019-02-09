@@ -7,6 +7,8 @@ LDLIBS_S		:= -lcriterion
 LDFLAGS = $(LDFLAGS_D)
 LDLIBS = $(LDLIBS_D)
 
+RYDB_MAKE_RULE = all
+
 CC = clang
 O=0
 CCACHE = ccache
@@ -15,7 +17,6 @@ COLOR_OPT = -fdiagnostics-color=${COLOR}
 CFLAGS = -I../ -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic
 VALGRIND_FLAGS = --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
 CALLGRIND_FLAGS = --tool=callgrind --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=callgrind-rydb-%p.out
-TEST_DIR = ./tests
 
 .PHONY: default all clean force run 
 
@@ -32,8 +33,12 @@ $(OBJECTS): .compiler_flags
 
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
+$(TARGET): rydb
 $(TARGET): $(OBJECTS)
 	$(CCACHE) $(CC) $(OBJECTS) $(LDFLAGS) $(LDLIBS) -o $@
+
+rydb:
+	$(MAKE) -C ../ $(RYDB_MAKE_RULE)
 
 clean:
 	-rm -f *.o
@@ -63,3 +68,9 @@ valgrind: gcc5
 
 callgrind: default
 	valgrind $(CALLGRIND_FLAGS)  ./$(TARGET)
+
+coverage: CFLAGS += -fprofile-arcs -ftest-coverage
+coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
+coverage: RYDB_MAKE_RULE = coverage
+coverage: default
+	

@@ -90,5 +90,9 @@ lib:	$(DNAME)
 test:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR) run
 
+coverage: CFLAGS += -fprofile-arcs -ftest-coverage
+coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
+coverage: default
+
 test-debug:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR) debug
