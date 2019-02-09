@@ -1,6 +1,6 @@
 #!/bin/zsh
 target=$1
-program_name=rydb_test
+program_name=tests/test
 core_dir="./coredump"
 if [ -z $target ]; then
   target=$(realpath ./$program_name)
