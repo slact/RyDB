@@ -165,6 +165,9 @@ static uint64_t crc32(const uint8_t *data, size_t data_len) {
     v2 = ROTL(v2, 32);                                                     \
   } while (0)
 
+#define SWITCHLEFT_CASE(n, b, in) \
+  case n: b |= ((uint64_t)in[n-1]) << (8*(n-1))
+
 uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
 #ifndef UNALIGNED_LE_CPU
   uint64_t hash;
@@ -196,14 +199,14 @@ uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
   }
 
   switch (left) {
-  case 7: b |= ((uint64_t)in[6]) << 48; // fall-thru
-  case 6: b |= ((uint64_t)in[5]) << 40; // fall-thru
-  case 5: b |= ((uint64_t)in[4]) << 32; // fall-thru
-  case 4: b |= ((uint64_t)in[3]) << 24; // fall-thru
-  case 3: b |= ((uint64_t)in[2]) << 16; // fall-thru
-  case 2: b |= ((uint64_t)in[1]) << 8;  // fall-thru
-  case 1: b |= ((uint64_t)in[0]); break;
-  case 0: break;
+    SWITCHLEFT_CASE(7, b, in); // fall-thru
+    SWITCHLEFT_CASE(6, b, in); // fall-thru
+    SWITCHLEFT_CASE(5, b, in); // fall-thru
+    SWITCHLEFT_CASE(4, b, in); // fall-thru
+    SWITCHLEFT_CASE(3, b, in); // fall-thru
+    SWITCHLEFT_CASE(2, b, in); // fall-thru
+    case 1: b |= ((uint64_t)in[0]); break;
+    case 0: break;
   }
 
   v3 ^= b;
