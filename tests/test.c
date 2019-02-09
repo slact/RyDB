@@ -50,3 +50,100 @@ Test(hash, siphash_2_4) {
     cr_assert_eq(memcmp(out, vectors_sip64[i], 8), 0, "mismatch at test vector %i", i);
   }
 }
+
+static void cr_assert_db_ok(rydb_t *db, int cmd_rc) {
+  char buf[1024];
+  if(rydb_error(db)) {
+    rydb_error_snprint(db, buf, 1024);
+  }
+  cr_assert_eq(cmd_rc, 1, "%s", buf);
+}
+static void cr_assert_db_fail(rydb_t *db, int cmd_rc, rydb_error_code_t expected_error) {
+  char buf[1024];
+  rydb_error_t *err = rydb_error(db);
+  if(err) {
+    rydb_error_snprint(db, buf, 1024);
+  }
+  cr_assert_eq(cmd_rc, 0, "Expected to fail with error %s [%i], but succeeded instead", rydb_error_code_str(expected_error), expected_error);
+  cr_assert_eq(err->code, expected_error, "Expected to fail with error code %s [%i], but got %s", rydb_error_code_str(expected_error), expected_error, buf);
+  rydb_error_clear(db);
+}
+
+static void cr_assert_db(rydb_t *db) {
+  char buf[1024];
+  cr_assert_neq(db, NULL, "rydb struct pointer cannot be NULL");
+  rydb_error_t *err = rydb_error(db);
+  if(err) {
+    rydb_error_snprint(db, buf, 1024);
+  }
+  cr_assert_eq(err, NULL, "Expected no error, got %s", buf);
+}
+
+Test(db_init, config_row) {
+  rydb_t *db = rydb_new();
+  cr_assert_db(db);
+  cr_assert_db_fail(db, rydb_config_row(db, 10, 20), RYDB_ERROR_BAD_CONFIG);
+  cr_assert_db_fail(db, rydb_config_row(db, 0, 0), RYDB_ERROR_BAD_CONFIG);
+  cr_assert_db_fail(db, rydb_config_row(db, RYDB_ROW_LEN_MAX+1, 0), RYDB_ERROR_BAD_CONFIG);
+  cr_assert_db_ok(db,   rydb_config_row(db, 10, 5));
+  cr_assert_eq(db->config.row_len, 10);
+  cr_assert_eq(db->config.id_len, 5);
+  rydb_close(db);
+}
+
+Test(db_init, row_link) {
+  rydb_t *db = rydb_new();
+  cr_assert_db(db);
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "", "meh"), RYDB_ERROR_BAD_CONFIG);
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "meh", ""), RYDB_ERROR_BAD_CONFIG);
+  
+  char bigname[RYDB_NAME_MAX_LEN+10];
+  memset(bigname, 'z', sizeof(bigname));
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, bigname, "meh"), RYDB_ERROR_BAD_CONFIG);
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "meh", bigname), RYDB_ERROR_BAD_CONFIG);
+  
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "non-alphanum!", "meh"), RYDB_ERROR_BAD_CONFIG);
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "meh", "non-alphanum!"), RYDB_ERROR_BAD_CONFIG);
+  
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "same", "same"), RYDB_ERROR_BAD_CONFIG);
+  
+  cr_assert_db_ok(db, rydb_config_add_row_link(db, "next", "prev"));
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "next", "meh"), RYDB_ERROR_BAD_CONFIG);
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "meh", "next"), RYDB_ERROR_BAD_CONFIG);
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "prev", "meh"), RYDB_ERROR_BAD_CONFIG);
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "meh", "prev"), RYDB_ERROR_BAD_CONFIG);
+  rydb_close(db);
+  db = rydb_new();
+  cr_assert_db(db);
+  for(int i=0; i<RYDB_ROW_LINK_PAIRS_MAX; i++) {
+    char prevname[32], nextname[32];
+    sprintf(prevname, "prev%i", i);
+    sprintf(nextname, "next%i", i);
+    cr_assert_db_ok(db, rydb_config_add_row_link(db, nextname, prevname));
+  }
+  
+  //too many links
+  cr_assert_db_fail(db, rydb_config_add_row_link(db, "next1000", "prev1000"), RYDB_ERROR_BAD_CONFIG);
+  
+  cr_assert_eq(db->config.link_pair_count, RYDB_ROW_LINK_PAIRS_MAX);
+  
+  const char *cur = NULL, *prev="\00";
+  char cpy[32];
+  rydb_config_row_link_t *links = db->config.link;
+  for(int i=0; i<RYDB_ROW_LINK_PAIRS_MAX * 2; i++) {
+    cur = links[i].next;
+    strcpy(cpy, cur);
+
+    memcpy(cpy, cur[0]=='n' ? "prev" : "next", 4);
+    cr_expect_gt(strcmp(cur, prev), 0, "row links are supposed to be sorted");
+    cr_expect_eq(strcmp(links[i].prev, cpy), 0);
+    cr_expect_eq(links[i].inverse, cur[0]=='n' ? 0 : 1);
+    
+    prev = cur;
+  }
+  
+  
+
+  rydb_close(db);
+}
+
