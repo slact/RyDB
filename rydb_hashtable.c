@@ -120,6 +120,7 @@ static uint64_t crc32(const uint8_t *data, size_t data_len) {
 /* Test of the CPU is Little Endian and supports not aligned accesses.
  * Two interesting conditions to speedup the function that happen to be
  * in most of x86 servers. */
+
 #if defined(__X86_64__) || defined(__x86_64__) || defined (__i386__)
 #define UNALIGNED_LE_CPU
 #endif
@@ -145,16 +146,6 @@ static uint64_t crc32(const uint8_t *data, size_t data_len) {
     ((uint64_t)((p)[4]) << 32) | ((uint64_t)((p)[5]) << 40) |                 \
     ((uint64_t)((p)[6]) << 48) | ((uint64_t)((p)[7]) << 56))
 #endif
-
-#define U8TO64_LE_NOCASE(p)                                                    \
-  (((uint64_t)(siptlw((p)[0]))) |                                           \
-    ((uint64_t)(siptlw((p)[1])) << 8) |                                      \
-    ((uint64_t)(siptlw((p)[2])) << 16) |                                     \
-    ((uint64_t)(siptlw((p)[3])) << 24) |                                     \
-    ((uint64_t)(siptlw((p)[4])) << 32) |                                              \
-    ((uint64_t)(siptlw((p)[5])) << 40) |                                              \
-    ((uint64_t)(siptlw((p)[6])) << 48) |                                              \
-    ((uint64_t)(siptlw((p)[7])) << 56))
 
 #define SIPROUND                                                               \
   do {                                                                       \
@@ -205,12 +196,12 @@ uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
   }
 
   switch (left) {
-  case 7: b |= ((uint64_t)in[6]) << 48; /* fall-thru */
-  case 6: b |= ((uint64_t)in[5]) << 40; /* fall-thru */
-  case 5: b |= ((uint64_t)in[4]) << 32; /* fall-thru */
-  case 4: b |= ((uint64_t)in[3]) << 24; /* fall-thru */
-  case 3: b |= ((uint64_t)in[2]) << 16; /* fall-thru */
-  case 2: b |= ((uint64_t)in[1]) << 8;  /* fall-thru */
+  case 7: b |= ((uint64_t)in[6]) << 48; // fall-thru
+  case 6: b |= ((uint64_t)in[5]) << 40; // fall-thru
+  case 5: b |= ((uint64_t)in[4]) << 32; // fall-thru
+  case 4: b |= ((uint64_t)in[3]) << 24; // fall-thru
+  case 3: b |= ((uint64_t)in[2]) << 16; // fall-thru
+  case 2: b |= ((uint64_t)in[1]) << 8;  // fall-thru
   case 1: b |= ((uint64_t)in[0]); break;
   case 0: break;
   }
@@ -236,8 +227,6 @@ uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
   return b;
 #endif
 }
-
-
 
 int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp) {
   const char *fmt =
