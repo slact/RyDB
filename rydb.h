@@ -158,6 +158,7 @@ typedef enum {
   RYDB_ERROR_DATA_TOO_LARGE       = 16,
   RYDB_ERROR_ROWNUM_TOO_LARGE     = 17,
 } rydb_error_code_t;
+const char *rydb_error_code_str(rydb_error_code_t code);
 
 typedef struct {
   rydb_error_code_t    code;

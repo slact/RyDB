@@ -41,11 +41,53 @@ static int is_alphanumeric(const char *str) {
   return strspn(str, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") == strlen(str);
 }
 
+const char *rydb_error_code_str(rydb_error_code_t code) {
+  switch(code) {
+  case RYDB_NO_ERROR:
+    return "RYDB_NO_ERROR";
+  case RYDB_ERROR_UNSPECIFIED:
+    return "RYDB_ERROR_UNSPECIFIED";
+  case RYDB_ERROR_NOMEMORY:
+    return "RYDB_ERROR_NOMEMORY";
+  case RYDB_ERROR_FILE_NOT_FOUND:
+    return "RYDB_ERROR_FILE_NOT_FOUND";
+  case RYDB_ERROR_FILE_EXISTS:
+    return "RYDB_ERROR_FILE_EXISTS";
+  case RYDB_ERROR_LOCK_FAILED:
+    return "RYDB_ERROR_LOCK_FAILED";
+  case RYDB_ERROR_FILE_ACCESS:
+    return "RYDB_ERROR_FILE_ACCESS";
+  case RYDB_ERROR_FILE_INVALID:
+    return "RYDB_ERROR_FILE_INVALID";
+  case RYDB_ERROR_FILE_SIZE:
+    return "RYDB_ERROR_FILE_SIZE";
+  case RYDB_ERROR_CONFIG_MISMATCH:
+    return "RYDB_ERROR_CONFIG_MISMATCH";
+  case RYDB_ERROR_VERSION_MISMATCH:
+    return "RYDB_ERROR_VERSION_MISMATCH";
+  case RYDB_ERROR_REVISION_MISMATCH:
+    return "RYDB_ERROR_REVISION_MISMATCH";
+  case RYDB_ERROR_BAD_CONFIG:
+    return "RYDB_ERROR_BAD_CONFIG";
+  case RYDB_ERROR_WRONG_ENDIANNESS:
+    return "RYDB_ERROR_WRONG_ENDIANNESS";
+  case RYDB_ERROR_TRANSACTION_ACTIVE:
+    return "RYDB_ERROR_TRANSACTION_ACTIVE";
+  case RYDB_ERROR_TRANSACTION_INACTIVE:
+    return "RYDB_ERROR_TRANSACTION_INACTIVE";
+  case RYDB_ERROR_DATA_TOO_LARGE:
+    return "RYDB_ERROR_DATA_TOO_LARGE";
+  case RYDB_ERROR_ROWNUM_TOO_LARGE:
+    return "RYDB_ERROR_ROWNUM_TOO_LARGE";
+  }
+  return "???";
+}
+
 #define RETURN_ERROR_PRINTF(err, func, ...) \
   if(err->errno_val != 0) {            \
-    return func(__VA_ARGS__ "ERROR [%d]: %s, errno [%d]: %s\n", err->code, err->str, err->errno_val, strerror(err->errno_val));\
+    return func(__VA_ARGS__ "%s [%d]: %s, errno [%d]: %s\n", rydb_error_code_str(err->code), err->code, err->str, err->errno_val, strerror(err->errno_val));\
   } \
-  return func(__VA_ARGS__ "ERROR [%d]: %s\n", err->code, err->str)
+  return func(__VA_ARGS__ "%s [%d]: %s\n", rydb_error_code_str(err->code), err->code, err->str)
 
 int rydb_error_print(const rydb_t *db) {
   const rydb_error_t *err = &db->error;
