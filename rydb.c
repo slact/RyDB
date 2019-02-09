@@ -13,6 +13,7 @@
 #include <sys/time.h>
 
 #include <signal.h>
+#include <assert.h>
 
 #if defined _WIN32 || defined __CYGWIN__
 #define PATH_SLASH_CHAR '\\'
@@ -1180,7 +1181,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
     //we'll be wanting to check all unique indices during row changes, so they should be made easy to locate
     if(db->unique_index_count > 0) {
       uint8_t n = 0;
-      db->unique_index = malloc(sizeof(db->unique_index) * db->unique_index_count);
+      db->unique_index = malloc(sizeof(*db->unique_index) * (off_t )db->unique_index_count);
       if(!db->index) {
         rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for unique indices");
         return rydb_open_abort(db);
@@ -1259,12 +1260,14 @@ static inline uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_
     case RYDB_ROW_TX_INSERT:
       return db->config.row_len;
     case RYDB_ROW_TX_UPDATE:
+      assert(row->data);
       return sizeof(rydb_rownum_t) + sizeof(uint16_t) + sizeof(uint16_t) +
         *(uint16_t *)&((char *)row->data)[sizeof(rydb_rownum_t) + sizeof(uint16_t)];
     case RYDB_ROW_TX_UPDATE1:
       return sizeof(rydb_rownum_t) + sizeof(uint16_t) + sizeof(uint16_t);
     case RYDB_ROW_TX_UPDATE2:
       row--;
+      assert(row->data);
       return *(uint16_t *)&((char *)row->data)[sizeof(rydb_rownum_t) + sizeof(uint16_t)];
     case RYDB_ROW_TX_DELETE:
       return sizeof(rydb_rownum_t);
@@ -1275,6 +1278,7 @@ static inline uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_
     case RYDB_ROW_TX_COMMIT:
       return 0;
   }
+  return 0;
 }
 
 static inline rydb_rownum_t rydb_last_rownum(const rydb_t *db) {
@@ -1299,13 +1303,14 @@ static int rydb_data_append_tx_rows(rydb_t *db, rydb_row_t *rows, const off_t co
     return 0;
   }
   uint_fast16_t sz;
-  for(rydb_stored_row_t *cur=newrows_start; cur<newrows_end; cur = rydb_row_next(cur, rowsize, 1)) {
-    sz = rydb_row_data_size(db, &rows[0]);
-    cur->type = rows[0].type;
-    if(sz > 0) {
-      memcpy(&cur->data, rows[0].data, sz);
+  rydb_stored_row_t *cur = newrows_start;
+  for(int i=0; i<count; i++) {
+    sz = rydb_row_data_size(db, &rows[i]);
+    cur->type = rows[i].type;
+    if(sz > 0 && rows[i].data) {
+      memcpy(&cur->data, rows[i].data, sz);
     }
-    rows++;
+    cur = rydb_row_next(cur, rowsize, 1);
   }
   db->tx_next_row = newrows_end;
   return 1;
@@ -1351,7 +1356,7 @@ static inline int rydb_tx_insert(rydb_t *db, rydb_stored_row_t *tx) {
 }
 
 static inline int rydb_tx_update(rydb_t *db, rydb_stored_row_t *tx) {
-  row_tx_header_t    *header = (row_tx_header_t *)tx->data;
+  row_tx_header_t    *header = (row_tx_header_t *)(void *)tx->data;
   rydb_stored_row_t  *target_row = rydb_rownum_to_row(db, header->rownum);
   
   memcpy(&target_row->data[header->start], (char *)&header[1], header->len);
@@ -1360,7 +1365,8 @@ static inline int rydb_tx_update(rydb_t *db, rydb_stored_row_t *tx) {
 }
 
 static inline int rydb_tx_update2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
-  row_tx_header_t    *header = (row_tx_header_t *)tx1->data;
+  assert(tx1 && tx2);
+  row_tx_header_t    *header = (row_tx_header_t *)(void *)tx1->data;
   rydb_stored_row_t  *target_row = rydb_rownum_to_row(db, header->rownum);
   
   memcpy(&target_row->data[header->start], tx2->data, header->len);
@@ -1378,6 +1384,7 @@ static inline int rydb_tx_delete(rydb_t *db, rydb_stored_row_t *tx) {
   return 1;
 }
 static inline int rydb_tx_swap2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
+  assert(tx1 && tx2);
   rydb_rownum_t       num1 = *(rydb_rownum_t *)&tx1->data[0];
   rydb_rownum_t       num2 = *(rydb_rownum_t *)&tx1->data[sizeof(num1)];
   rydb_stored_row_t  *target_row1 = rydb_rownum_to_row(db, num1);
@@ -1472,7 +1479,7 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
   
   if(len < max_sz_for_1cmd_update) {
     char  *buf = malloc(sizeof(header) + len);
-    *(row_tx_header_t *)buf = header;
+    memcpy(buf, &header, sizeof(header));
     memcpy(&buf[sizeof(header)], data, len);
     rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE, data = buf};
     rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_COMMIT};

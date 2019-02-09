@@ -335,7 +335,7 @@ int rydb_index_hashtable_open(rydb_t *db, off_t i) {
 static uint64_t nohash(const char *data, const size_t len, const uint8_t trim) {
   uint64_t h = 0;
   assert(trim <= 64);
-  memcpy((char *)h, data, (len > (size_t )(64-trim) ? (size_t )(64-trim) : len));
+  memcpy((char *)&h, data, (len > (size_t )(64-trim) ? (size_t )(64-trim) : len));
   return h;
 }
 
