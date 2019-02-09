@@ -69,6 +69,7 @@ valgrind: gcc5
 callgrind: default
 	valgrind $(CALLGRIND_FLAGS)  ./$(TARGET)
 
+coverage: O = 0
 coverage: CC = gcc
 coverage: CFLAGS += -fprofile-arcs -ftest-coverage
 coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
