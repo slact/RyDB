@@ -46,6 +46,10 @@ $(DNAME): $(OBJECTS)
 
 clean:
 	-rm -f *.o
+	-rm -f *.gcda
+	-rm -f *.gcno
+	-rm -f tests/*.gcda
+	-rm -f tests/*.gcno
 	-rm -f $(BINARY)
 	-rm -f $(SNAME)
 	-rm -f $(DNAME)
@@ -94,7 +98,12 @@ coverage: O = 0
 coverage: CC = gcc
 coverage: CFLAGS += -fprofile-arcs -ftest-coverage
 coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
-coverage: default
+coverage: $(DNAME)
+coverage:
+	$(MAKE) -C $(TEST_DIR) coverage
+	./$(TEST_DIR)/test
+	gcovr --html-details -o coverage.html
+	xdg-open ./coverage.html
 
 test-debug:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR) debug

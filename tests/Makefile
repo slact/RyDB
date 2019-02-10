@@ -33,7 +33,7 @@ $(OBJECTS): .compiler_flags
 
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
-$(TARGET): rydb
+$(TARGET): 
 $(TARGET): $(OBJECTS)
 	$(CCACHE) $(CC) $(OBJECTS) $(LDFLAGS) $(LDLIBS) -o $@
 
@@ -75,4 +75,3 @@ coverage: CFLAGS += -fprofile-arcs -ftest-coverage
 coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
 coverage: RYDB_MAKE_RULE = coverage
 coverage: default
-	

@@ -7,3 +7,6 @@ callgrind*.out
 compile_commands.json
 librydb.a
 librydb.so
+*.gcda
+*.gcno
+coverage.*
