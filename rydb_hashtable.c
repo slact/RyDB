@@ -315,7 +315,7 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
     cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
   }
   else if(!hashfunction_valid(advanced_config)) {
-    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Invalid hash function for hashtable \"%s\" config ", cf->name);
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid hash function for hashtable \"%s\" config ", cf->name);
     return 0;
   }
   else {
