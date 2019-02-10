@@ -167,6 +167,12 @@ typedef struct {
 } rydb_error_t;
 
 typedef struct {
+  void          *(*malloc)(size_t);
+  void          *(*realloc)(void *, size_t);
+  void           (*free)(void *);
+} rydb_allocator_t;
+
+typedef struct {
   uint32_t revision;
   uint16_t row_len;
   uint16_t id_len; //id is part of the row, starting at row[0]
@@ -202,6 +208,8 @@ struct rydb_s {
   
 };// rydb_t
 
+
+int rydb_global_config_allocator(rydb_allocator_t *);
 rydb_t *rydb_new(void);
 
 int rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len);

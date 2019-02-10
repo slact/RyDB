@@ -42,6 +42,10 @@ void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...
 
 int getrandombytes(unsigned char *p, size_t len);
 
+extern rydb_allocator_t rydb_mem;
+
+char *rydb_strdup(const char *str);
+
 
 //NOTE: this only works correctly if the struct is made without padding
 typedef struct {

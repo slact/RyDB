@@ -24,7 +24,34 @@
 #endif
 
 
+rydb_allocator_t rydb_mem = {
+  malloc,
+  realloc,
+  free
+};
 
+
+int rydb_global_config_allocator(rydb_allocator_t *mem) {
+  if(mem) {
+    rydb_mem = *mem;
+  }
+  else {
+    rydb_mem.malloc = malloc;
+    rydb_mem.realloc = realloc;
+    rydb_mem.free = free;
+  }
+  return 1;
+}
+
+char *rydb_strdup(const char *str){
+  size_t len = strlen(str)+1;
+  char *cpy = rydb_mem.malloc(len);
+  if(!cpy) {
+    return NULL;
+  }
+  memcpy(cpy, str, len);
+  return cpy;
+}
 
 static int rydb_index_type_valid(rydb_index_type_t index_type);
 static int rydb_find_index_num(const rydb_t *db, const char *name);
@@ -136,7 +163,7 @@ void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...
 }
 
 rydb_t *rydb_new(void) {
-  rydb_t *db = malloc(sizeof(*db));
+  rydb_t *db = rydb_mem.malloc(sizeof(*db));
   if(!db) {
     return NULL;
   }
@@ -235,13 +262,18 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
     return 0;
   }
   
+  
+  rydb_config_row_link_t *links;
   if(db->config.link_pair_count == 0) {
-    db->config.link = malloc(sizeof(*db->config.link) * 2);
+    links = rydb_mem.malloc(sizeof(*db->config.link) * 2);
   }
   else {
-    db->config.link = realloc(db->config.link, sizeof(*db->config.link) * (db->config.link_pair_count + 1) * 2);
+    links = rydb_mem.realloc(db->config.link, sizeof(*db->config.link) * (db->config.link_pair_count + 1) * 2);
   }
-  if(db->config.link == NULL) {
+  if(links) {
+    db->config.link = links;
+  }
+  else {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link");
     return 0;
   }
@@ -251,14 +283,14 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
   link_inverse = &db->config.link[offset + 1];
   
   link->inverse = 0;
-  link->next = strdup(link_name);
+  link->next = rydb_strdup(link_name);
   if(!link->next) {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link");
     return 0;
   }
-  link->prev = strdup(reverse_link_name);
+  link->prev = rydb_strdup(reverse_link_name);
   if(!link->prev) {
-    free((char *)link->next);
+    rydb_mem.free((char *)link->next);
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link");
     return 0;
   }
@@ -280,8 +312,16 @@ static inline int index_config_compare(const void *v1, const void *v2) {
 }
 
 static int rydb_config_add_index(rydb_t *db, rydb_config_index_t *idx) {
-  if(db->config.index_count >= RYDB_INDICES_MAX) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Cannot exceed %i indices per database.", RYDB_INDICES_MAX);
+  int primary = 0;
+  if(strcmp(idx->name, "primary") == 0 || rydb_find_index_num(db, "primary") != -1) {
+    primary = 1;
+  }
+  if(strcmp(idx->name, "primary") == 0 && !(idx->flags & RYDB_INDEX_UNIQUE)) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Primary index must have RYDB_INDEX_UNIQUE flag");
+    return 0;
+  }
+  if(db->config.index_count >= RYDB_INDICES_MAX - 1 + primary) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Cannot exceed %i indices for this database.", RYDB_INDICES_MAX - 1 + primary);
     return 0;
   }
   if(strlen(idx->name) > RYDB_NAME_MAX_LEN) {
@@ -305,25 +345,29 @@ static int rydb_config_add_index(rydb_t *db, rydb_config_index_t *idx) {
     return 0;
   }
   if(rydb_find_index_num(db, idx->name) != -1) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" already exists");
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" already exists", idx->name);
     return 0;
   }
   
   //allocation
+  rydb_config_index_t *indices;
   if(db->config.index_count == 0) {
-    db->config.index = malloc(sizeof(*db->config.index));
+    indices = rydb_mem.malloc(sizeof(*db->config.index));
   }
   else {
-    db->config.index = realloc(db->config.index, sizeof(*db->config.index) * (db->config.index_count + 1));
+    indices = rydb_mem.realloc(db->config.index, sizeof(*db->config.index) * (db->config.index_count + 1));
   }
-  if(db->config.index == NULL) {
+  if(indices) {
+    db->config.index = indices;
+  } 
+  else {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index \"%s\"", idx->name);
     return 0;
   }
   rydb_config_index_t *new_idx = &db->config.index[db->config.index_count];
   
   *new_idx = *idx;
-  if((new_idx->name = strdup(idx->name)) == NULL) {
+  if((new_idx->name = rydb_strdup(idx->name)) == NULL) {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index \"%s\" name", idx->name);
     return 0;
   }
@@ -388,7 +432,7 @@ static off_t rydb_filename(const rydb_t *db, const char *what, char *buf, off_t 
 }
 static void rydb_subfree(const void *ptr) {
   if(ptr) {
-    free((void *)ptr);
+    rydb_mem.free((void *)ptr);
   }
 }
 
@@ -411,7 +455,7 @@ static void rydb_free(rydb_t *db) {
     rydb_subfree(db->config.link);
   }
   
-  free(db);
+  rydb_mem.free(db);
 }
 
 static int rydb_lock(rydb_t *db, uint8_t lockflags) {
@@ -512,7 +556,7 @@ static int rydb_file_close(rydb_t *db, rydb_file_t *f) {
   f->data.end = NULL;
   
   if(f->path) {
-    free((char *)f->path);
+    rydb_mem.free((char *)f->path);
     f->path = NULL;
   }
   return ok;
@@ -523,7 +567,7 @@ static int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
   char path[2048];
   rydb_filename(db, what, path, 2048);
   
-  if((f->path = strdup(path)) == NULL) { //useful for debugging
+  if((f->path = rydb_strdup(path)) == NULL) { //useful for debugging
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for file path %s", path);
     return 0;
   }
@@ -1064,14 +1108,14 @@ static int rydb_open_abort(rydb_t *db) {
 
 int rydb_open(rydb_t *db, const char *path, const char *name) {
   int           new_db = 0;
-  char         *dup_path = strdup(path);
+  char         *dup_path = rydb_strdup(path);
   
   size_t sz = strlen(dup_path);
   if(sz > 0 && dup_path[sz - 1] == PATH_SLASH_CHAR) { // remove trailing slash
     dup_path[sz - 1] = '\00';
   }
   
-  db->name = strdup(name);
+  db->name = rydb_strdup(name);
   db->path = dup_path;
   
   if(!rydb_file_open(db, "lock", &db->data)) {
@@ -1152,7 +1196,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   //create index file array
   if(db->config.index_count > 0) {
     sz = sizeof(*db->index) * db->config.index_count;
-    db->index = malloc(sz);
+    db->index = rydb_mem.malloc(sz);
     if(!db->index) {
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index files");
       return rydb_open_abort(db);
@@ -1181,7 +1225,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
     //we'll be wanting to check all unique indices during row changes, so they should be made easy to locate
     if(db->unique_index_count > 0) {
       uint8_t n = 0;
-      db->unique_index = malloc(sizeof(*db->unique_index) * (off_t )db->unique_index_count);
+      db->unique_index = rydb_mem.malloc(sizeof(*db->unique_index) * (off_t )db->unique_index_count);
       if(!db->index) {
         rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for unique indices");
         return rydb_open_abort(db);
@@ -1478,13 +1522,13 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
   row_tx_header_t header = {.rownum = rownum, .start = start, .len = len};
   
   if(len < max_sz_for_1cmd_update) {
-    char  *buf = malloc(sizeof(header) + len);
+    char  *buf = rydb_mem.malloc(sizeof(header) + len);
     memcpy(buf, &header, sizeof(header));
     memcpy(&buf[sizeof(header)], data, len);
     rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE, data = buf};
     rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_COMMIT};
     rc = rydb_data_append_tx_rows(db, rows, n - db->transaction);
-    free(buf);
+    rydb_mem.free(buf);
   }
   else {
     rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE1, .data = (char *)&header};
