@@ -15,7 +15,7 @@ typedef uint32_t rydb_rownum_t;
 
 #define RYDB_NAME_MAX_LEN 64
 #define RYDB_INDICES_MAX 32
-#define RYDB_REVISION_MAX UINT32_MAX
+#define RYDB_REVISION_MAX UINT16_MAX
 #define RYDB_ROW_LEN_MAX UINT16_MAX
 
 #define RYDB_INDEX_DEFAULT  0x0
