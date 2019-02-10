@@ -196,6 +196,7 @@ int rydb_config_revision(rydb_t *db, unsigned revision) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Revision number cannot exceed %"PRIu64, RYDB_REVISION_MAX);
     return 0;
   }
+  db->config.revision = revision;
   return 1;
 }
 
