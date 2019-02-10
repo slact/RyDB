@@ -57,10 +57,10 @@ static: default
 	
 
 run: default
-	./$(TARGET)
+	./$(TARGET) --jobs=1 --verbose=1
 
 debug: default
-	./$(TARGET) --debug=gdb &
+	./$(TARGET) --debug=gdb --jobs=1 --verbose=1 &
 	sudo kdbg -r localhost:1234 ./$(TARGET)
 
 valgrind: gcc5
