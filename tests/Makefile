@@ -62,10 +62,10 @@ debug: default
 	kdbg ./$(TARGET) -a '--rerun-failed --no-timer "$(TEST)"'
 
 valgrind:
-	valgrind $(VALGRIND_FLAGS) ./$(TARGET) --no-timer $(TEST)
+	valgrind $(VALGRIND_FLAGS) ./$(TARGET) --no-timer "$(TEST)"
 
 callgrind: default
-	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) --no-timer $(TEST)
+	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) --no-timer "$(TEST)"
 
 coverage: O = 0
 coverage: CC = gcc
