@@ -22,11 +22,6 @@ typedef uint32_t rydb_rownum_t;
 #define RYDB_INDEX_UNIQUE   0x1
 
 typedef struct {
-  char           *str;
-  uint16_t        len;
-} rydb_str_t;
-
-typedef struct {
   uint8_t     type;
   uint8_t     reserved;
   char        data[]; //cool c99 bro
