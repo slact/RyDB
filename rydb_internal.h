@@ -29,7 +29,8 @@
 #define RYDB_LOCK_WRITE   0x02
 #define RYDB_LOCK_CLIENT  0x04
 
-#define RYDB_DEFAULT_MMAP_SIZE 12500000000 //100GB
+//#define RYDB_DEFAULT_MMAP_SIZE 12500000000 //100GB
+#define RYDB_DEFAULT_MMAP_SIZE 1024*8
 #define RYDB_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = db->data_next_row; cur < db->tx_next_row; cur = rydb_row_next(cur, db->stored_row_size, 1))
 #define RYDB_REVERSE_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = rydb_row_next(db->tx_next_row, db->stored_row_size, -1); cur >= db->data_next_row; cur = rydb_row_next(cur, db->stored_row_size, -1))
 
