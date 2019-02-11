@@ -1447,7 +1447,11 @@ static inline int rydb_tx_swap2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_
 static int rydb_transaction_run(rydb_t *db) {
   rydb_stored_row_t *prev = NULL;
   RYDB_EACH_TX_ROW(db, cur) {
-    switch(cur->type) {
+    switch((rydb_row_type_t )cur->type) {
+      case RYDB_ROW_EMPTY:
+      case RYDB_ROW_DATA:
+        //do nothing, these are weird.
+        break;
       case RYDB_ROW_TX_INSERT:
         rydb_tx_insert(db, cur);
         break;
