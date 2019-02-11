@@ -153,8 +153,15 @@ typedef enum {
   RYDB_ERROR_TRANSACTION_INACTIVE = 15,
   RYDB_ERROR_DATA_TOO_LARGE       = 16,
   RYDB_ERROR_ROWNUM_TOO_LARGE     = 17,
+  RYDB_ERROR_DATABASE_CLOSED      = 18,
+  RYDB_ERROR_DATABASE_OPEN        = 19,
 } rydb_error_code_t;
 const char *rydb_error_code_str(rydb_error_code_t code);
+
+typedef enum {
+  RYDB_STATE_CLOSED = 0,
+  RYDB_STATE_OPEN = 1,
+} rydb_state_t;
 
 typedef struct {
   rydb_error_code_t    code;
@@ -182,6 +189,7 @@ typedef struct {
 
 typedef struct rydb_s rydb_t;
 struct rydb_s {
+  rydb_state_t        state;
   const char         *path;
   const char         *name;
   uint16_t            stored_row_size;

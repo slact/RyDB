@@ -1,3 +1,4 @@
+#include "rydb.h"
 #include "rydb_internal.h"
 #include "rydb_hashtable.h"
 #include <stdlib.h>
@@ -107,6 +108,10 @@ const char *rydb_error_code_str(rydb_error_code_t code) {
     return "RYDB_ERROR_DATA_TOO_LARGE";
   case RYDB_ERROR_ROWNUM_TOO_LARGE:
     return "RYDB_ERROR_ROWNUM_TOO_LARGE";
+  case RYDB_ERROR_DATABASE_CLOSED:
+    return "RYDB_ERROR_DATABASE_CLOSED";
+  case RYDB_ERROR_DATABASE_OPEN:
+    return "RYDB_ERROR_DATABASE_OPEN";
   }
   return "???";
 }
@@ -175,6 +180,9 @@ rydb_t *rydb_new(void) {
 }
 
 int rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len) {
+  if(!rydb_ensure_closed(db, "and cannot be configured")) {
+    return 0;
+  }
   if(row_len > RYDB_ROW_LEN_MAX) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row length %u cannot exceed %"PRIu16, row_len, RYDB_ROW_LEN_MAX);
     return 0;
@@ -193,6 +201,9 @@ int rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len) {
 }
 
 int rydb_config_revision(rydb_t *db, unsigned revision) {
+  if(!rydb_ensure_closed(db, "and cannot be configured")) {
+    return 0;
+  }
   if(revision > RYDB_REVISION_MAX) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Revision number cannot exceed %"PRIu64, RYDB_REVISION_MAX);
     return 0;
@@ -221,7 +232,9 @@ static int rydb_find_row_link_num(rydb_t *db, const char *next_name) {
 }
 
 int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name) {
-
+  if(!rydb_ensure_closed(db, "and cannot be configured")) {
+    return 0;
+  }
   if(db->config.link_pair_count >= RYDB_ROW_LINK_PAIRS_MAX) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Cannot exceed %i row-link pairs per database.", RYDB_ROW_LINK_PAIRS_MAX);
     return 0;
@@ -415,6 +428,10 @@ int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start
   idx.len = len;
   idx.flags = flags;
   
+  if(!rydb_ensure_closed(db, "and cannot be configured")) {
+    return 0;
+  }
+  
   if(!rydb_config_index_check_flags(db, &idx)) {
     return 0;
   }
@@ -515,6 +532,21 @@ int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, si
     f->file.end = end;
   }
   
+  return 1;
+}
+
+int rydb_ensure_open(rydb_t *db) {
+  if(db->state != RYDB_STATE_OPEN) {
+    rydb_set_error(db, RYDB_ERROR_DATABASE_CLOSED, "Database is not open");
+    return 0;
+  }
+  return 1;
+}
+int rydb_ensure_closed(rydb_t *db, const char *msg) {
+  if(db->state != RYDB_STATE_CLOSED) {
+    rydb_set_error(db, RYDB_ERROR_DATABASE_OPEN, "Database is open %s", msg ? msg : "");
+    return 0;
+  }
   return 1;
 }
 
@@ -1118,12 +1150,17 @@ static int rydb_open_abort(rydb_t *db) {
   rydb_subfree(&db->name);
   rydb_close_nofree(db);
   rydb_subfree(&db->index);
+  db->state = RYDB_STATE_CLOSED;
   return 0;
 }
 
 
 int rydb_open(rydb_t *db, const char *path, const char *name) {
   int           new_db = 0;
+  if(!rydb_ensure_closed(db, "and cannot be reopened")) {
+    return rydb_open_abort(db);
+  }
+  
   if((db->path = rydb_strdup(path)) == NULL) {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory to open RyDB");
     return rydb_open_abort(db);
@@ -1260,6 +1297,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
     rydb_meta_save(db);
   }
   
+  db->state = RYDB_STATE_OPEN;
   return 1;
 }
 
@@ -1532,6 +1570,9 @@ int rydb_transaction_finish(rydb_t *db) {
 
 
 int rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
+  if(!rydb_ensure_open(db)) {
+    return 0;
+  }
   rydb_row_t rows[3];
   int n = 0;
   if(len == 0 || len > db->config.row_len) {
@@ -1551,10 +1592,13 @@ int rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
 }
 
 int rydb_row_insert_str(rydb_t *db, const char *data) {
-  return rydb_row_insert(db, data, sizeof(data)+1);
+  return rydb_row_insert(db, data, strlen(data)+1);
 }
 
 int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, const uint16_t start, const uint16_t len) {
+  if(!rydb_ensure_open(db)) {
+    return 0;
+  }
   if(start + len > db->config.row_len) {
     rydb_set_error(db, RYDB_ERROR_DATA_TOO_LARGE, "Data length to update exceeds row length");
     return 0;
@@ -1592,6 +1636,9 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
 }
 
 int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum) {
+  if(!rydb_ensure_open(db)) {
+    return 0;
+  }
   rydb_row_t rows[]={
     {.type = RYDB_ROW_TX_DELETE, .data=(char *)&rownum},
     {.type = RYDB_ROW_TX_COMMIT}
@@ -1604,6 +1651,9 @@ int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum) {
 }
 
 int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
+  if(!rydb_ensure_open(db)) {
+    return 0;
+  }
   rydb_rownum_t last = rydb_last_rownum(db);
   if(rownum1 > last || rownum2 > last) {
     rydb_set_error(db, RYDB_ERROR_ROWNUM_TOO_LARGE, "Row number exceeds total rows");
