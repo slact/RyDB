@@ -334,6 +334,7 @@ int rydb_index_hashtable_open(rydb_t *db, off_t i) {
   
   if(!cf->type_config.hashtable.direct_mapping) {
     if(!rydb_file_open_index_data(db, i)) {
+      rydb_file_close_index(db, i);
       return 0;
     }
   }
