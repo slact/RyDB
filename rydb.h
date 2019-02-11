@@ -50,6 +50,7 @@ typedef struct {
   rydb_rownum_t   num;
   rydb_row_type_t type;
   const char     *data;
+  uint16_t        len;
 } rydb_row_t;
 
 typedef struct {
@@ -225,7 +226,8 @@ int rydb_open(rydb_t *db, const char *path, const char *name);
 rydb_row_t *rydb_row_find(rydb_t *db, const char *id); //return 1 if found, 0 if not found
 
 int rydb_row_safe_to_write_directly_check(rydb_t *db, rydb_row_t *row, uint16_t start, uint16_t len);
-int rydb_row_insert(rydb_t *db, const char *data);
+int rydb_row_insert(rydb_t *db, const char *data, uint16_t len);
+int rydb_row_insert_str(rydb_t *db, const char *data);
 int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum);
 int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, const char *data, uint16_t start, uint16_t len);
 

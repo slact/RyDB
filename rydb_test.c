@@ -41,6 +41,7 @@ static void rydb_error_handler(rydb_t *db, rydb_error_t *err, void *pd) {
 }
 
 int main(void) {
+  printf("heyoo");
   rydb_t *db = rydb_new();
   int error_found = 0;
   rydb_set_error_handler(db, rydb_error_handler, &error_found);
@@ -52,7 +53,7 @@ int main(void) {
     return 1;
   }
   
-  rydb_row_insert(db, "heywhatthecrap even is this");
+  rydb_row_insert_str(db, "heywhatthecrap even is this");
   
   rydb_close(db);
   return error_found;

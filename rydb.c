@@ -1303,7 +1303,7 @@ static inline uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_
     case RYDB_ROW_DATA:
       return db->config.row_len;
     case RYDB_ROW_TX_INSERT:
-      return db->config.row_len;
+      return row->len == 0 ? db->config.row_len : row->len;
     case RYDB_ROW_TX_UPDATE:
       assert(row->data);
       return sizeof(rydb_rownum_t) + sizeof(uint16_t) + sizeof(uint16_t) +
@@ -1492,19 +1492,27 @@ int rydb_transaction_finish(rydb_t *db) {
 }
 
 
-int rydb_row_insert(rydb_t *db, const char *data) {
-  rydb_row_t rows[]={
-    {.type = RYDB_ROW_TX_INSERT, .data=data},
-    {.type = RYDB_ROW_TX_COMMIT}
-  };
+int rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
+  rydb_row_t rows[3];
+  int n = 0;
+  if(len == 0 || len > db->config.row_len) {
+    len = db->config.row_len;
+  }
+  rows[n++]=(rydb_row_t ){.type = RYDB_ROW_TX_INSERT, .data=data, .len = len};
+  
   if(db->transaction) {
-    if(!rydb_data_append_tx_rows(db, rows, 1)) return 0;
+    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_COMMIT};
+    if(!rydb_data_append_tx_rows(db, rows, n)) return 0;
     return rydb_transaction_run(db);
   }
   else {
-    if(!rydb_data_append_tx_rows(db, rows, 2)) return 0;
+    if(!rydb_data_append_tx_rows(db, rows, n)) return 0;
     return rydb_transaction_run(db);
   }
+}
+
+int rydb_row_insert_str(rydb_t *db, const char *data) {
+  return rydb_row_insert(db, data, sizeof(data)+1);
 }
 
 int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, const uint16_t start, const uint16_t len) {
