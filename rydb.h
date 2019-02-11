@@ -237,6 +237,7 @@ int rydb_transaction_finish(rydb_t *db);
 int rydb_transaction_cancel(rydb_t *db);
 
 int rydb_close(rydb_t *db); //also free()s db
+int rydb_delete(rydb_t *db); //deletes all files in an open db
 
 
 #endif //_RYDB_H

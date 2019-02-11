@@ -1263,6 +1263,27 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   return 1;
 }
 
+static int rydb_file_delete(rydb_t *db, rydb_file_t *f) {
+  if (f->path && remove(f->path) == -1) {
+    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to delete file %s", f->path);
+    return 0;
+  }
+  return 1;
+}
+
+int rydb_delete(rydb_t *db) {
+  if(!rydb_file_delete(db, &db->data)) return 0;
+  if(!rydb_file_delete(db, &db->meta)) return 0;
+  if(!rydb_file_delete(db, &db->lock)) return 0;
+  if(db->index) {
+    for(int i = 0; i < db->config.index_count; i++) {
+      if(!rydb_file_delete(db, &db->index[i].index)) return 0;
+      if(!rydb_file_delete(db, &db->index[i].data)) return 0;
+    }
+  }
+  return 1;
+}
+
 int rydb_close(rydb_t *db) {
   rydb_close_nofree(db);
   if(db->name && db->path) {
