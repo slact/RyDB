@@ -55,6 +55,7 @@ clean:
 	-rm -f $(DNAME)
 	-rm -f tests/*.o
 	-rm -f tests/test
+	-rm -f coverage.*
 
 .compiler_flags: force
 	@echo '$(CC) $(CFLAGS)' | cmp -s - $@ || echo '$(CC) $(CFLAGS)' > $@
@@ -82,7 +83,9 @@ sanitize:default
 
 debug: default
 	sudo kdbg ./$(BINARY)
-valgrind: gcc5
+valgrind-gcc5: gcc5
+	valgrind $(VALGRIND_FLAGS)  ./$(TARGET)
+valgrind:
 	valgrind $(VALGRIND_FLAGS)  ./$(TARGET)
 callgrind: default
 	valgrind $(CALLGRIND_FLAGS)  ./$(TARGET)
@@ -107,3 +110,7 @@ coverage:
 
 test-debug:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR) debug
+test-valgrind:	$(DNAME)
+	$(MAKE) -C $(TEST_DIR) valgrind
+test-sanitize:	sanitize
+	$(MAKE) -C $(TEST_DIR) sanitize
