@@ -12,4 +12,5 @@ librydb.so
 coverage.*
 tests/db.*
 tests/test_open.*
+tests/test.db.*
 tests/test
