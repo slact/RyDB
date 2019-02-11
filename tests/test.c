@@ -239,7 +239,7 @@ describe(rydb_open) {
   
   before_each() {
     db = rydb_new();
-    strcpy(path, "test_open.XXXXXX");
+    strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
   }
   after_each() {
@@ -270,7 +270,7 @@ describe(rydb_open) {
     
   }
   
-  it("writes metadata and matches config on reopening") {
+  it("writes and reopens metadata") {
     config_testdb(db);
     assert_db_ok(db, rydb_open(db, path, "open_test"));
     rydb_close(db);
@@ -286,6 +286,12 @@ describe(rydb_open) {
     config_testdb(db);
     assert_db_ok(db, rydb_open(db, path, "open_test"));
   }
+  
+  it("fails to do stuff when not open") {
+    config_testdb(db);
+    assert_db_fail(db, rydb_row_insert_str(db, "hello"), RYDB_ERROR_DATABASE_CLOSED);
+    
+  }
 }
 
 describe(insert_rows) {
@@ -295,7 +301,7 @@ describe(insert_rows) {
   before_each() {
     asserteq(db, NULL, "previous test not closed out correctly");
     db = rydb_new();
-    strcpy(path, "insert_rows.XXXXXX");
+    strcpy(path, "test.db.insert_rows.XXXXXX");
     mkdtemp(path);
   }
   after_each() {
@@ -306,14 +312,32 @@ describe(insert_rows) {
   
   it("works about as you'd expect") {
     config_testdb(db);
+    assert_db_ok(db, rydb_open(db, path, "open_test"));
+    char *rowdata[] = {
+      "hello this is not terribly long of a string",
+      "and this is another one that exceeds the length",
+      "this one's short",
+      "tiny"
+    };
     
-    rydb_open(db, path, "open_test");
-    rydb_row_insert_str(db, "hello this is not terribly long of a string");
-    rydb_row_insert_str(db, "and this is another one that exceeds the length");
-    rydb_row_insert_str(db, "this one's short");
-    rydb_row_insert_str(db, "tiny");
+    for(size_t i=0; i<sizeof(rowdata)/sizeof(char *); i++) {
+      rydb_row_insert_str(db, rowdata[i]);
+    }
+    rydb_close(db);
     
-    //rmdir_recursive(path);
+    db = rydb_new();
+    config_testdb(db);
+    assert_db_ok(db, rydb_open(db, path, "open_test"));
+    char buf[64];
+    int n = 0;
+    RYDB_EACH_ROW(db, cur) {
+      memset(buf, '\00', 64);
+      strcpy(buf, rowdata[n++]);
+      asserteq(memcmp(cur->data, buf, 20), 0);
+      asserteq(cur->type, RYDB_ROW_DATA);
+    }
+    assert(n == sizeof(rowdata)/sizeof(char *));
+    
   }
 }
 
