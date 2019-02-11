@@ -4,7 +4,7 @@ DNAME	:= lib$(NAME).so
 BINARY	:= rydb_test
 
 LIBS	:=
-LDFLAGS	:=
+LDFLAGS	:= -rdynamic
 CC = clang
 O=0
 CCACHE = ccache
@@ -95,16 +95,17 @@ tidy:   clean default
 lib:	$(DNAME)
 
 test:	$(DNAME)
+	$(MAKE) -C $(TEST_DIR)
 	$(MAKE) -C $(TEST_DIR) run
 
-coverage: O = 0
-coverage: CC = gcc
-coverage: CFLAGS += -fprofile-arcs -ftest-coverage
-coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
-coverage: $(DNAME)
-coverage:
+test-coverage: O = 0
+test-coverage: CC = gcc
+test-coverage: CFLAGS += -fprofile-arcs -ftest-coverage
+test-coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
+test-coverage: $(DNAME)
+test-coverage:
 	$(MAKE) -C $(TEST_DIR) coverage
-	./$(TEST_DIR)/test
+	$(MAKE) -C $(TEST_DIR) run
 	gcovr --html-details -o coverage.html
 	xdg-open ./coverage.html
 
@@ -114,3 +115,4 @@ test-valgrind:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR) valgrind
 test-sanitize:	sanitize
 	$(MAKE) -C $(TEST_DIR) sanitize
+	$(MAKE) -C $(TEST_DIR) run

@@ -1,6 +1,6 @@
 TARGET = test
 LDFLAGS_D		:= -L.. -L. -Wl,-rpath=. -Wl,-rpath=..
-LDLIBS_D		:= -lrydb
+LDLIBS_D		:= -lrydb -rdynamic
 LDFLAGS_S		:= ../librydb.a
 LDLIBS_S		:= 
 
@@ -18,7 +18,7 @@ CFLAGS = -DSNOW_ENABLED -I../ -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-
 VALGRIND_FLAGS = --trace-children=yes --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
 CALLGRIND_FLAGS = --trace-children=yes --tool=callgrind --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=callgrind-rydb-%p.out
 
-TEST ="*"
+TEST = *
 
 .PHONY: default all clean force run 
 
@@ -55,11 +55,11 @@ static: LDLIBS  = $(LDLIBS_S)
 static: default
 	
 
-run: default
+run:
 	./$(TARGET)
 
 debug: default
-	sudo kdbg ./$(TARGET) -a "--rerun-failed --no-timer $(TEST)"
+	kdbg ./$(TARGET) -a '--rerun-failed --no-timer "$(TEST)"'
 
 valgrind:
 	valgrind $(VALGRIND_FLAGS) ./$(TARGET) --no-timer $(TEST)
