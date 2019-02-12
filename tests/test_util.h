@@ -12,6 +12,8 @@
 	struct _snow _snow; \
 	int _snow_inited = 0
 
+#define skip(name) while(0) 
+  
 void test_errhandler(rydb_t *db, rydb_error_t *err, void *privdata);
 
 void fail_malloc_after(int n);
@@ -24,8 +26,7 @@ int rmdir_recursive(const char *path);
   do { \
     char buf[1024]; \
     int cmd_rc = cmd;\
-    if(rydb_error(db)) \
-      rydb_error_snprint(db, buf, 1024); \
+    rydb_error_snprint(db, buf, 1024); \
     if(cmd_rc != 1) \
       fail("%s", buf); \
   } while(0)
@@ -54,6 +55,23 @@ int rmdir_recursive(const char *path);
     } \
     if(err) \
       fail("Expected no error, got %s", buf); \
+  } while(0)
+
+#define assert_db_row_type(db, row, rowtype) \
+  do { \
+    if(row->type != rowtype) { \
+      fail("(rydb_row_type_t) Expected " #row " (rownum %i) to be " #rowtype ", but got %s", (int )rydb_row_to_rownum(db, row), rydb_rowtype_str(row->type)); \
+    } \
+  } while(0)
+  
+#define assert_db_row_data(db, row, compare_data) \
+  do { \
+    char *___cmp = malloc(db->config.row_len); \
+    memset(___cmp, '\00', db->config.row_len); \
+    strncpy(___cmp, compare_data, db->config.row_len); \
+    if(strcmp(___cmp, row->data) != 0) { \
+      fail("(rydb_stored_row_t) " #row " (rownum %i) data does not match.", (int )rydb_row_to_rownum(db, row)); \
+    } \
   } while(0)
 
 const uint8_t vectors_siphash_2_4_64[64][8];

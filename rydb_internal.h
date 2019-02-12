@@ -11,9 +11,10 @@
 #define ry_align_ptr(p, a)                                                   \
     (u_char *) (((uintptr_t) (p) + ((uintptr_t) a - 1)) & ~((uintptr_t) a - 1))
 
+#define RYDB_ROW_DATA_OFFSET offsetof(rydb_stored_row_t, data)
+#define RYDB_DATA_START_OFFSET ry_align(RYDB_ROW_DATA_OFFSET, 8)
 
-#define RYDB_DATA_START_OFFSET ry_align(offsetof(rydb_stored_row_t, data), 8)
-    
+
 #ifndef container_of
 #ifdef __GNUC__
 #define member_type(type, member) __typeof__ (((type *)0)->member)
@@ -50,19 +51,32 @@ void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...
 int rydb_ensure_open(rydb_t *db);
 int rydb_ensure_closed(rydb_t *db, const char *msg);
 
+
+//these always succeed
+int rydb_transaction_finish_or_continue(rydb_t *db, int finish);
+int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started);
+
+
+rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum);
+rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row);
+rydb_rownum_t rydb_data_next_rownum(rydb_t *db);
+inline uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row);
+
+
 int getrandombytes(unsigned char *p, size_t len);
 
 extern rydb_allocator_t rydb_mem;
 
 char *rydb_strdup(const char *str);
 
+const char *rydb_rowtype_str(rydb_row_type_t type);
+
 
 //NOTE: this only works correctly if the struct is made without padding
 typedef struct {
-  rydb_rownum_t rownum;
   uint16_t      start;
   uint16_t      len;
-} row_tx_header_t;
+} rydb_row_tx_header_t;
 
 #define rydb_row_next(row, sz, n) (void *)((char *)(row) + (sz) * (n))
 

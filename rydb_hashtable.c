@@ -246,7 +246,7 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
   char      hash_func_buf[33];
   uint16_t  store_value;
   uint16_t  direct_mapping;
-  
+
   int rc = fscanf(fp, fmt, hash_func_buf, &store_value, &direct_mapping);
   if(rc < 3 || store_value > 1 || direct_mapping > 1) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Hashtable \"%s\" specification is corrupted or invalid", idx_cf->name);

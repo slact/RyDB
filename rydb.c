@@ -104,6 +104,8 @@ const char *rydb_error_code_str(rydb_error_code_t code) {
     return "RYDB_ERROR_TRANSACTION_ACTIVE";
   case RYDB_ERROR_TRANSACTION_INACTIVE:
     return "RYDB_ERROR_TRANSACTION_INACTIVE";
+  case RYDB_ERROR_TRANSACTION_FAILED:
+    return "RYDB_ERROR_TRANSACTION_FAILED";
   case RYDB_ERROR_DATA_TOO_LARGE:
     return "RYDB_ERROR_DATA_TOO_LARGE";
   case RYDB_ERROR_ROWNUM_TOO_LARGE:
@@ -112,6 +114,22 @@ const char *rydb_error_code_str(rydb_error_code_t code) {
     return "RYDB_ERROR_DATABASE_CLOSED";
   case RYDB_ERROR_DATABASE_OPEN:
     return "RYDB_ERROR_DATABASE_OPEN";
+  }
+  return "???";
+}
+
+const char *rydb_rowtype_str(rydb_row_type_t type) {
+  switch(type) {
+    case RYDB_ROW_EMPTY: return "RYDB_ROW_EMPTY";
+    case RYDB_ROW_DATA: return "RYDB_ROW_DATA";
+    case RYDB_ROW_CMD_SET: return "RYDB_ROW_CMD_SET";
+    case RYDB_ROW_CMD_UPDATE: return "RYDB_ROW_CMD_UPDATE";
+    case RYDB_ROW_CMD_UPDATE1: return "RYDB_ROW_CMD_UPDATE1";
+    case RYDB_ROW_CMD_UPDATE2: return "RYDB_ROW_CMD_UPDATE2";
+    case RYDB_ROW_CMD_DELETE: return "RYDB_ROW_CMD_DELETE";
+    case RYDB_ROW_CMD_SWAP1: return "RYDB_ROW_CMD_SWAP1";
+    case RYDB_ROW_CMD_SWAP2: return "RYDB_ROW_CMD_SWAP2";
+    case RYDB_ROW_CMD_COMMIT: return "RYDB_ROW_CMD_COMMIT";
   }
   return "???";
 }
@@ -530,6 +548,7 @@ int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, si
       return 0;
     }
     f->file.end = end;
+    f->data.end = end;
   }
   
   return 1;
@@ -738,7 +757,7 @@ static int rydb_meta_save(rydb_t *db) {
                RYDB_DATA_START_OFFSET,
                offsetof(rydb_stored_row_t, type),
                offsetof(rydb_stored_row_t, reserved),
-               offsetof(rydb_stored_row_t, data),
+               RYDB_ROW_DATA_OFFSET,
                (uint16_t)sizeof(rydb_rownum_t),
                hash_key_hexstr_buf,
                db->config.hash_key_quality,
@@ -1369,47 +1388,50 @@ int getrandombytes(unsigned char *p, size_t len) {
   return good;
 }
 
-static inline uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row) {
+uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row) {
   switch(row->type) {
     case RYDB_ROW_EMPTY:
       return 0;
     case RYDB_ROW_DATA:
       return db->config.row_len;
-    case RYDB_ROW_TX_INSERT:
+    case RYDB_ROW_CMD_SET:
       return row->len == 0 ? db->config.row_len : row->len;
-    case RYDB_ROW_TX_UPDATE:
+    case RYDB_ROW_CMD_UPDATE:
       assert(row->data);
-      return sizeof(rydb_rownum_t) + sizeof(uint16_t) + sizeof(uint16_t) +
-        *(uint16_t *)&((char *)row->data)[sizeof(rydb_rownum_t) + sizeof(uint16_t)];
-    case RYDB_ROW_TX_UPDATE1:
-      return sizeof(rydb_rownum_t) + sizeof(uint16_t) + sizeof(uint16_t);
-    case RYDB_ROW_TX_UPDATE2:
+      return sizeof(rydb_row_tx_header_t) + *(uint16_t *)&((char *)row->data)[offsetof(rydb_row_tx_header_t, len)];
+    case RYDB_ROW_CMD_UPDATE1:
+      return sizeof(rydb_row_tx_header_t);
+    case RYDB_ROW_CMD_UPDATE2:
       row--;
       assert(row->data);
-      return *(uint16_t *)&((char *)row->data)[sizeof(rydb_rownum_t) + sizeof(uint16_t)];
-    case RYDB_ROW_TX_DELETE:
-      return sizeof(rydb_rownum_t);
-    case RYDB_ROW_TX_SWAP1:
-      return sizeof(rydb_rownum_t)*2;
-    case RYDB_ROW_TX_SWAP2:
-      return db->config.row_len;
-    case RYDB_ROW_TX_COMMIT:
+      return *(uint16_t *)&((char *)row->data)[offsetof(rydb_row_tx_header_t, len)];
+    case RYDB_ROW_CMD_DELETE:
+      return 0;
+    case RYDB_ROW_CMD_SWAP1:
+      return 0;
+    case RYDB_ROW_CMD_SWAP2:
+      return 0;
+    case RYDB_ROW_CMD_COMMIT:
       return 0;
   }
   return 0;
 }
 
-static inline rydb_rownum_t rydb_last_rownum(const rydb_t *db) {
-  //FIXME: there's an off-by-one error here
-  return ((char *)db->tx_next_row - (char *)db->data.data.start)/db->stored_row_size;
-}
-static inline rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum) {
+rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum) {
   char *start = db->data.data.start;
   rydb_stored_row_t *row = rydb_row_next(start, db->stored_row_size, rownum - 1);
   if((char *)row < start || (char *)row > db->data.data.end) {
     return NULL;
   }
   return row;
+}
+
+rydb_rownum_t rydb_data_next_rownum(rydb_t *db) {
+  return rydb_row_to_rownum(db, db->data_next_row);
+}
+
+rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row) {
+  return (rydb_rownum_t )(1 + ((char *)row - db->data.data.start)/db->stored_row_size);
 }
 
 static int rydb_data_append_tx_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
@@ -1425,6 +1447,7 @@ static int rydb_data_append_tx_rows(rydb_t *db, rydb_row_t *rows, const off_t co
   for(int i=0; i<count; i++) {
     sz = rydb_row_data_size(db, &rows[i]);
     cur->type = rows[i].type;
+    cur->target_rownum = rows[i].num;
     if(sz > 0 && rows[i].data) {
       memcpy(&cur->data, rows[i].data, sz);
     }
@@ -1434,17 +1457,27 @@ static int rydb_data_append_tx_rows(rydb_t *db, rydb_row_t *rows, const off_t co
   return 1;
 }
 
-int rydb_transaction_start(rydb_t *db) {
-  if(db->transaction) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_ACTIVE, "Transaction is already active");
-    return 0;
-  }
-  db->transaction = 1;
+int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started) {
+  if(db->transaction.active) {
+    if(transaction_started) *transaction_started = 0;
+    return 1;
+  };
+  db->transaction.active = 1;
+  db->transaction.future_data_rownum = rydb_row_to_rownum(db, db->data_next_row);
+  if(transaction_started) *transaction_started = 1;
   return 1;
 }
 
+int rydb_transaction_start(rydb_t *db) {
+  if(db->transaction.active) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_ACTIVE, "Transaction is already active");
+    return 0;
+  }
+  return rydb_transaction_start_or_continue(db, NULL);
+}
+
 int rydb_transaction_cancel(rydb_t *db) {
-  if(!db->transaction) {
+  if(!db->transaction.active) {
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_ACTIVE, "No active transaction to stop");
     return 0;
   }
@@ -1452,120 +1485,228 @@ int rydb_transaction_cancel(rydb_t *db) {
   RYDB_REVERSE_EACH_TX_ROW(db, cur) {
     cur->type = RYDB_ROW_EMPTY;
   }
-  db->transaction = 0;
+  db->tx_next_row = db->data_next_row;
+  db->transaction.active = 0;
   return 1;
 }
 
-static inline int rydb_tx_insert(rydb_t *db, rydb_stored_row_t *tx) {
+static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *tx) {
   rydb_stored_row_t   *data_next = db->data_next_row;
   size_t               rowsz = db->stored_row_size;
-  if(tx == data_next) {
-    //this tx row is right after the data -- just change its type and we're set
+  rydb_stored_row_t   *dst = rydb_rownum_to_row(db, tx->target_rownum);
+  if(!dst) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SET [%i] failed: rownum out of range", tx->target_rownum);
+    tx->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
+  if(dst > tx) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SET [%i] failed: rownum sets row after command", tx->target_rownum);
+    tx->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
+  if(tx == dst) {
+    //set this very rownum
     tx->type = RYDB_ROW_DATA;
+    tx->target_rownum = 0; //clear target
+    db->data_next_row = rydb_row_next(data_next, rowsz, 1);
   }
   else {
-    //copy the transaction to the next-after-last data row, set its type to "data"
-    tx->type = RYDB_ROW_DATA; //copy it as data
-    data_next->type = RYDB_ROW_DATA;
+    memcpy(dst->data, tx->data, db->config.row_len);
+    dst->type = RYDB_ROW_DATA;
     tx->type = RYDB_ROW_EMPTY;
   }
-  db->data_next_row = rydb_row_next(data_next, rowsz, 1);
   return 1;
 }
 
-static inline int rydb_tx_update(rydb_t *db, rydb_stored_row_t *tx) {
-  row_tx_header_t    *header = (row_tx_header_t *)(void *)tx->data;
-  rydb_stored_row_t  *target_row = rydb_rownum_to_row(db, header->rownum);
-  
-  memcpy(&target_row->data[header->start], (char *)&header[1], header->len);
+static inline int rydb_cmd_update(rydb_t *db, rydb_stored_row_t *tx) {
+  rydb_row_tx_header_t    *header = (rydb_row_tx_header_t *)(void *)tx->data;
+  rydb_stored_row_t  *dst = rydb_rownum_to_row(db, tx->target_rownum);
+  if(!dst) {
+     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE [%i] failed: rownum out of range", tx->target_rownum);
+    return 0;
+  }
+  memcpy(&dst->data[header->start], (char *)&header[1], header->len);
   tx->type = RYDB_ROW_EMPTY;
   return 1;
 }
 
-static inline int rydb_tx_update2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
-  assert(tx1 && tx2);
-  row_tx_header_t    *header = (row_tx_header_t *)(void *)tx1->data;
-  rydb_stored_row_t  *target_row = rydb_rownum_to_row(db, header->rownum);
-  
-  memcpy(&target_row->data[header->start], tx2->data, header->len);
-  tx1->type = RYDB_ROW_EMPTY;
-  tx2->type = RYDB_ROW_EMPTY;
+
+static inline int rydb_cmd_update1(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
+  if(!tx2 || tx2->type != RYDB_ROW_CMD_UPDATE2) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%i] failed: second command row has the wrong type or is missing");
+    tx1->type = RYDB_ROW_EMPTY;
+    if(tx2) {
+      tx2->type = RYDB_ROW_EMPTY;
+    }
+    return 0;
+  }
+  //do nothing if everything is ok
   return 1;
 }
-static inline int rydb_tx_delete(rydb_t *db, rydb_stored_row_t *tx) {
-  rydb_rownum_t       num = *(rydb_rownum_t *)&tx->data[0];
-  rydb_stored_row_t  *target_row = rydb_rownum_to_row(db, num);
-  
-  target_row->type = RYDB_ROW_EMPTY;
+static inline int rydb_cmd_update2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
+  assert(tx1 && tx2);
+  rydb_row_tx_header_t    *header = (rydb_row_tx_header_t *)(void *)tx1->data;
+  if(tx1->type != RYDB_ROW_CMD_UPDATE1 || tx2->type != RYDB_ROW_CMD_UPDATE2) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%i] failed: one of the UPDATE rows has the wrong type");
+    tx1->type = RYDB_ROW_EMPTY;
+    tx2->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
+  rydb_stored_row_t  *dst = rydb_rownum_to_row(db, tx1->target_rownum);
+  if(!dst) {
+     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%i] failed: rownum out of range", tx1->target_rownum);
+    tx1->type = RYDB_ROW_EMPTY;
+    tx2->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
+  memcpy(&dst->data[header->start], tx2->data, header->len);
+  tx2->type = RYDB_ROW_EMPTY;
+  tx1->type = RYDB_ROW_EMPTY;
+  return 1;
+}
+static inline int rydb_cmd_delete(rydb_t *db, rydb_stored_row_t *tx) {
+  rydb_stored_row_t  *dst = rydb_rownum_to_row(db, tx->target_rownum);
+  if(!dst) {
+     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command DELETE [%i] failed: rownum out of range", tx->target_rownum);
+     tx->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
+  dst->type = RYDB_ROW_EMPTY;
   //TODO: update used row count, maybe keep track of holes in the data file?
   tx->type = RYDB_ROW_EMPTY;
   return 1;
 }
-static inline int rydb_tx_swap2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
-  assert(tx1 && tx2);
-  rydb_rownum_t       num1 = *(rydb_rownum_t *)&tx1->data[0];
-  rydb_rownum_t       num2 = *(rydb_rownum_t *)&tx1->data[sizeof(num1)];
-  rydb_stored_row_t  *target_row1 = rydb_rownum_to_row(db, num1);
-  rydb_stored_row_t  *target_row2 = rydb_rownum_to_row(db, num2);
+
+static inline int rydb_cmd_swap1(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
+  if(!tx2) {//that's weird...
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: SWAP2 is missing from log");
+    tx1->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
+  rydb_stored_row_t  *src, *dst;
+  switch(tx2->type) {
+    case RYDB_ROW_CMD_SWAP2:
+      //don't need to be doing anything.
+      return 1;
+    case RYDB_ROW_CMD_SET:
+      //run the swap now, the temp src copy has already been written
+      src = rydb_rownum_to_row(db, tx1->target_rownum);
+      dst = rydb_rownum_to_row(db, tx2->target_rownum);
+      if(!src || !dst) {
+        rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: rownum out of range");
+        tx1->type = RYDB_ROW_EMPTY;
+        tx2->type = RYDB_ROW_EMPTY;
+        return 0;
+      }
+      memcpy(src, dst, db->stored_row_size);
+      //the followup SET command will write src to dst;
+      tx1->type = RYDB_ROW_EMPTY;
+      return 1;
+    default:
+      rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: Unexpected row type for SWAP2");
+      tx1->type = RYDB_ROW_EMPTY;
+      return 0;
+  }
+}
+
+static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
+  rydb_stored_row_t  *src = rydb_rownum_to_row(db, tx1->target_rownum);
+  rydb_stored_row_t  *dst = rydb_rownum_to_row(db, tx2->target_rownum);
+  if(!dst || !src) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP [%i][%i] failed: rownum out of range", tx1->target_rownum, tx2->target_rownum);
+    return 0;
+  }
+  
   size_t              rowsz = db->stored_row_size;
   
-  memcpy(target_row1, target_row2, rowsz);
-  memcpy(target_row2, tx2, rowsz);
-  target_row2->type = RYDB_ROW_DATA;
-  tx2->type = RYDB_ROW_EMPTY;
-  tx1->type = RYDB_ROW_EMPTY;
+  if(tx2->type != RYDB_ROW_CMD_SWAP2) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP [%i][%i] failed: SWAP2's type isn't SWAP2?...", tx1->target_rownum, tx2->target_rownum);
+    tx1->type = RYDB_ROW_EMPTY;
+    tx2->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
+  memcpy(tx2->data, src->data, rowsz - offsetof(rydb_stored_row_t, data)); //copy just the data
+  tx2->type = RYDB_ROW_CMD_SET; //second half of the swap is not a SET command.
+  // it can be idempotently re-run in case db writes fail before the swap is completed
+  if(!rydb_cmd_swap1(db, tx1, tx2)) {
+    tx1->type = RYDB_ROW_EMPTY;
+    tx2->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
+  if(!rydb_cmd_set(db, tx2)) {
+    tx1->type = RYDB_ROW_EMPTY;
+    tx2->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
   return 1;
 }
 
 static int rydb_transaction_run(rydb_t *db) {
-  rydb_stored_row_t *prev = NULL;
+  rydb_stored_row_t *prev = NULL, *next;
+  
+  int rc = 1;
   RYDB_EACH_TX_ROW(db, cur) {
     switch((rydb_row_type_t )cur->type) {
       case RYDB_ROW_EMPTY:
       case RYDB_ROW_DATA:
         //do nothing, these are weird.
         break;
-      case RYDB_ROW_TX_INSERT:
-        rydb_tx_insert(db, cur);
+      case RYDB_ROW_CMD_SET:
+        rc = rydb_cmd_set(db, cur);
         break;
-      case RYDB_ROW_TX_UPDATE:
-        rydb_tx_update(db, cur);
+      case RYDB_ROW_CMD_UPDATE:
+        rc = rydb_cmd_update(db, cur);
         break;
-      case RYDB_ROW_TX_UPDATE1:
-        break; //do nothing, this is a 2-part command
-      case RYDB_ROW_TX_UPDATE2:
-        rydb_tx_update2(db, prev, cur);
+      case RYDB_ROW_CMD_UPDATE1:
+        next = rydb_row_next(cur, db->stored_row_size, 1);
+        if(next >= db->tx_next_row) next = NULL;
+        rc = rydb_cmd_update1(db, cur, next);
         break;
-      case RYDB_ROW_TX_DELETE:
-        rydb_tx_delete(db, cur);
+      case RYDB_ROW_CMD_UPDATE2:
+        rc = rydb_cmd_update2(db, prev, cur);
         break;
-      case RYDB_ROW_TX_SWAP1:
-        break; //do nothing, this is a 2-part command
-      case RYDB_ROW_TX_SWAP2:
-        rydb_tx_swap2(db, prev, cur);
+      case RYDB_ROW_CMD_DELETE:
+        rc = rydb_cmd_delete(db, cur);
         break;
-      case RYDB_ROW_TX_COMMIT:
+      case RYDB_ROW_CMD_SWAP1:
+        next = rydb_row_next(cur, db->stored_row_size, 1);
+        if(next >= db->tx_next_row) next = NULL;
+        rc = rydb_cmd_swap1(db, cur, next);
+        break;
+      case RYDB_ROW_CMD_SWAP2:
+        rc = rydb_cmd_swap2(db, prev, cur);
+        break;
+      case RYDB_ROW_CMD_COMMIT:
         //clear it
         cur->type = RYDB_ROW_EMPTY;
         break;
     }
     prev = cur;
+    if(!rc) {
+      return 0;
+    }
   }
-  
-  db->transaction = 0;
+  return rc;
+}
+
+int rydb_transaction_finish_or_continue(rydb_t *db, int finish) {
+  if(finish && db->transaction.active) {
+    if(!rydb_transaction_run(db)) {
+      return 0;
+    }
+    db->transaction.active = 0;
+    return 1;
+  }
   return 1;
 }
 
+
 int rydb_transaction_finish(rydb_t *db) {
-  if(!db->transaction) {
+  if(!db->transaction.active) {
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_ACTIVE, "No active transaction to finish");
     return 0;
   }
-  if(!rydb_transaction_run(db)) {
-    return 0;
-  }
-  db->transaction = 0;
-  return 1;
+  return rydb_transaction_finish_or_continue(db, 1);
 }
 
 
@@ -1573,22 +1714,22 @@ int rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
   if(!rydb_ensure_open(db)) {
     return 0;
   }
-  rydb_row_t rows[3];
-  int n = 0;
   if(len == 0 || len > db->config.row_len) {
     len = db->config.row_len;
   }
-  rows[n++]=(rydb_row_t ){.type = RYDB_ROW_TX_INSERT, .data=data, .len = len};
   
-  if(db->transaction) {
-    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_COMMIT};
-    if(!rydb_data_append_tx_rows(db, rows, n)) return 0;
-    return rydb_transaction_run(db);
+  int txstarted;
+  rydb_transaction_start_or_continue(db, &txstarted);
+  
+  rydb_row_t rows[2] = {
+    {.type = RYDB_ROW_CMD_SET, .data=data, .len = len, .num = db->transaction.future_data_rownum++},
+    {.type = RYDB_ROW_CMD_COMMIT, .num = 0}
+  };
+  if(!rydb_data_append_tx_rows(db, rows, 2 - txstarted)) {
+    if(txstarted) db->transaction.active = 0;
+    return 0;
   }
-  else {
-    if(!rydb_data_append_tx_rows(db, rows, n)) return 0;
-    return rydb_transaction_run(db);
-  }
+  return rydb_transaction_finish_or_continue(db, txstarted);
 }
 
 int rydb_row_insert_str(rydb_t *db, const char *data) {
@@ -1603,85 +1744,101 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
     rydb_set_error(db, RYDB_ERROR_DATA_TOO_LARGE, "Data length to update exceeds row length");
     return 0;
   }
-  if(rownum > rydb_last_rownum(db)) {
+  if(rownum >= rydb_data_next_rownum(db)) {
     rydb_set_error(db, RYDB_ERROR_ROWNUM_TOO_LARGE, "Row number to update exceeds total rows");
     return 0;
   }
   
-  uint16_t max_sz_for_1cmd_update = db->config.row_len - sizeof(rydb_rownum_t) - sizeof(uint16_t)*2;
+  int rc = 0;
+
+  int txstarted;
+  rydb_transaction_start_or_continue(db, &txstarted);
+  
+  rydb_row_tx_header_t header = {.start = start, .len = len};
+  uint16_t max_sz_for_1cmd_update = db->config.row_len - RYDB_ROW_DATA_OFFSET;
   rydb_row_t rows[3];
-  int n = 0, rc;
-  row_tx_header_t header = {.rownum = rownum, .start = start, .len = len};
   
   if(len < max_sz_for_1cmd_update) {
-    char  *buf = rydb_mem.malloc(sizeof(header) + len);
-    memcpy(buf, &header, sizeof(header));
-    memcpy(&buf[sizeof(header)], data, len);
-    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE, data = buf};
-    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_COMMIT};
-    rc = rydb_data_append_tx_rows(db, rows, n - db->transaction);
+    char  *buf = rydb_mem.malloc(RYDB_ROW_DATA_OFFSET + len);
+    if(!buf) {
+      if(txstarted) db->transaction.active = 0;
+      rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Cannot allocate temporary memory for row update");
+      return 0;
+    }
+    memcpy(buf, &header, RYDB_ROW_DATA_OFFSET);
+    memcpy(&buf[RYDB_ROW_DATA_OFFSET], data, len);
+    rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .num = rownum, .data = buf};
+    rows[1] = (rydb_row_t ){.type = RYDB_ROW_CMD_COMMIT, .num = 0};
+    rc = rydb_data_append_tx_rows(db, rows, 2 - txstarted);
     rydb_mem.free(buf);
   }
   else {
-    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE1, .data = (char *)&header};
-    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_UPDATE2, .data = data};
-    rows[n++] = (rydb_row_t ){.type = RYDB_ROW_TX_COMMIT};
-    rc = rydb_data_append_tx_rows(db, rows, n - db->transaction);
+    rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE1, .num = rownum, .data = (char *)&header};
+    rows[1] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE2, .num = 0, .data = data};
+    rows[2] = (rydb_row_t ){.type = RYDB_ROW_CMD_COMMIT, .num = 0};
+    rc = rydb_data_append_tx_rows(db, rows, 3 - txstarted);
   }
-  
-  if(db->transaction || !rc) {
-    return rc;
+  if(!rc) {
+    if(txstarted) db->transaction.active = 0;
+    return 0;
   }
-  return rydb_transaction_run(db);
+  return rydb_transaction_finish_or_continue(db, txstarted);
 }
 
 int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum) {
   if(!rydb_ensure_open(db)) {
     return 0;
   }
-  rydb_row_t rows[]={
-    {.type = RYDB_ROW_TX_DELETE, .data=(char *)&rownum},
-    {.type = RYDB_ROW_TX_COMMIT}
-  };
-  if(db->transaction) {
-    return rydb_data_append_tx_rows(db, rows, 1);
+  if(rownum >= rydb_data_next_rownum(db)) {
+    rydb_set_error(db, RYDB_ERROR_ROWNUM_TOO_LARGE, "Row number to delete exceeds total rows");
+    return 0;
   }
-  if(!rydb_data_append_tx_rows(db, rows, 2)) return 0;
-  return rydb_transaction_run(db);
+  
+  int txstarted;
+  rydb_transaction_start_or_continue(db, &txstarted);
+  
+  rydb_row_t rows[]={
+    {.type = RYDB_ROW_CMD_DELETE, .num = rownum, .data=NULL},
+    {.type = RYDB_ROW_CMD_COMMIT, .num = 0}
+  };
+  if(!rydb_data_append_tx_rows(db, rows, 2 - txstarted)) {
+    if(txstarted) db->transaction.active = 0;
+    return 0;
+  }
+  return rydb_transaction_finish_or_continue(db, txstarted);
 }
 
 int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
   if(!rydb_ensure_open(db)) {
     return 0;
   }
-  rydb_rownum_t last = rydb_last_rownum(db);
-  if(rownum1 > last || rownum2 > last) {
-    rydb_set_error(db, RYDB_ERROR_ROWNUM_TOO_LARGE, "Row number exceeds total rows");
+  rydb_rownum_t end = rydb_data_next_rownum(db);
+  if(rownum1 >= end || rownum2 >= end) {
+    rydb_set_error(db, RYDB_ERROR_ROWNUM_TOO_LARGE, "Row numbers to swap exceed total rows");
     return 0;
   }
-  rydb_rownum_t buf[] = {rownum1, rownum2};
   
-  uint_fast16_t rowsz = db->stored_row_size;
-  rydb_stored_row_t *swap2 = rydb_row_next(db->data.data.start, rowsz, rownum2);
+  int txstarted;
+  rydb_transaction_start_or_continue(db, &txstarted);
   rydb_row_t rows[]={
-    {.type = RYDB_ROW_TX_SWAP1, .data=(char *)&buf[0]},
-    {.type = RYDB_ROW_TX_SWAP2, .data=swap2->data},
-    {.type = RYDB_ROW_TX_COMMIT}
+    {.type = RYDB_ROW_CMD_SWAP1, .num = rownum1, .data = NULL},
+    {.type = RYDB_ROW_CMD_SWAP2, .num = rownum2, .data = NULL},
+    {.type = RYDB_ROW_CMD_COMMIT}
   };
-  if(db->transaction) {
-    return rydb_data_append_tx_rows(db, rows, 2);
+  if(!rydb_data_append_tx_rows(db, rows, 2 - txstarted)) {
+    if(txstarted) db->transaction.active = 0;
+    return 0;
   }
-  if(!rydb_data_append_tx_rows(db, rows, 3)) return 0;
-  return rydb_transaction_run(db);
+  return rydb_transaction_finish_or_continue(db, txstarted);
 }
 
 
 
 /*
 int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, char *data, uint16_t start, uint16_t len) {
-  rydb_row_t update1 = {.type = RYDB_ROW_TX_UPDATE1};
-  rydb_row_t update2 = {.type = RYDB_ROW_TX_UPDATE2};
-  rydb_row_t commit = {.type = RYDB_ROW_TX_COMMIT};
+  rydb_row_t update1 = {.type = RYDB_ROW_CMD_UPDATE1};
+  rydb_row_t update2 = {.type = RYDB_ROW_CMD_UPDATE2};
+  rydb_row_t commit = {.type = RYDB_ROW_CMD_COMMIT};
   rydb_row_t *rows[]={row, &commit};
   char update_data[sizeof(rydb_rownum_t) + sizeof(uint16_t)*2+1];
   char *cur = update_data;

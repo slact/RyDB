@@ -21,24 +21,27 @@ typedef uint32_t rydb_rownum_t;
 #define RYDB_INDEX_DEFAULT  0x0
 #define RYDB_INDEX_UNIQUE   0x1
 
-typedef struct {
+typedef struct rydb_stored_row_s {
+  uint32_t    target_rownum; //used in transactions, not so much in data
   uint8_t     type;
   uint8_t     reserved;
   char        data[]; //cool c99 bro
 } rydb_stored_row_t;
 
+//each tx must be idempotent!
 typedef enum {
-  RYDB_ROW_EMPTY      ='\00',
-  RYDB_ROW_DATA       ='=',
-  RYDB_ROW_TX_INSERT  ='+',
-  RYDB_ROW_TX_UPDATE  ='^', //rownum, uint16_t start, uint16_t len, data
+  RYDB_ROW_EMPTY        ='\00',
+  RYDB_ROW_DATA         ='=',
+  RYDB_ROW_CMD_SET      ='@', // [rownum]
+  RYDB_ROW_CMD_UPDATE   ='^', // [rownum], uint16_t start, uint16_t len, data
   //when uint16t*2+data > row_len 
-  RYDB_ROW_TX_UPDATE1 ='(', //rownum, uint16_t start, uint16_t len
-  RYDB_ROW_TX_UPDATE2 =')', //update data
-  RYDB_ROW_TX_DELETE  ='-', //rownum
-  RYDB_ROW_TX_SWAP1   ='<', //rownum1, rownum2
-  RYDB_ROW_TX_SWAP2   ='>', //rownum2 data (tmp storage for row swap)
-  RYDB_ROW_TX_COMMIT  ='!',
+  RYDB_ROW_CMD_UPDATE1  ='(', // [rownum], uint16_t start, uint16_t len
+  RYDB_ROW_CMD_UPDATE2  =')', //update data
+  RYDB_ROW_CMD_DELETE   ='x', // [rownum]
+  //RYDB_ROW_CMD_MOVE     ='m', // [dst_rownum], src_rownum
+  RYDB_ROW_CMD_SWAP1    ='<', // [src_rownum]
+  RYDB_ROW_CMD_SWAP2    ='>', // [dst_rownum] to be replaced by TX_SET when SWAP1 finishes
+  RYDB_ROW_CMD_COMMIT   ='!',
 } rydb_row_type_t;
 
 typedef struct {
@@ -151,10 +154,11 @@ typedef enum {
   RYDB_ERROR_WRONG_ENDIANNESS     = 13,
   RYDB_ERROR_TRANSACTION_ACTIVE   = 14,
   RYDB_ERROR_TRANSACTION_INACTIVE = 15,
-  RYDB_ERROR_DATA_TOO_LARGE       = 16,
-  RYDB_ERROR_ROWNUM_TOO_LARGE     = 17,
-  RYDB_ERROR_DATABASE_CLOSED      = 18,
-  RYDB_ERROR_DATABASE_OPEN        = 19,
+  RYDB_ERROR_TRANSACTION_FAILED   = 16,
+  RYDB_ERROR_DATA_TOO_LARGE       = 17,
+  RYDB_ERROR_ROWNUM_TOO_LARGE     = 18,
+  RYDB_ERROR_DATABASE_CLOSED      = 19,
+  RYDB_ERROR_DATABASE_OPEN        = 20,
 } rydb_error_code_t;
 const char *rydb_error_code_str(rydb_error_code_t code);
 
@@ -194,16 +198,19 @@ struct rydb_s {
   const char         *name;
   uint16_t            stored_row_size;
   rydb_stored_row_t  *data_next_row; //row after last for RYDB_ROW_DATA
-  rydb_stored_row_t  *tx_next_row; //row after last for RYDB_ROW_TX_*, also the next after the last row (of any type) in the data file
+  rydb_stored_row_t  *tx_next_row; //row after last for RYDB_ROW_CMD_*, also the next after the last row (of any type) in the data file
   rydb_file_t         data;
   rydb_file_t         meta;
   rydb_file_t         lock;
   rydb_config_t       config;
   rydb_index_t       *index;
-  uint8_t             transaction;
   uint8_t             unique_index_count;
   uint8_t            *unique_index;
   uint8_t             lock_state;
+  struct {
+    rydb_rownum_t       future_data_rownum;
+    unsigned            active:1;
+  }                   transaction;
   struct {
     void              (*function)(rydb_t *db, rydb_error_t *err, void *pd);
     void               *privdata;

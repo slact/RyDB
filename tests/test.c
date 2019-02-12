@@ -15,6 +15,15 @@ static void config_testdb(rydb_t *db) {
   assert_db_ok(db, rydb_config_add_row_link(db, "fwd", "rew"));
 }
 
+describe(struct_size) {
+  test("rydb_row_tx_header_t is unpadded") {
+    asserteq(sizeof(rydb_row_tx_header_t), sizeof(uint16_t)*2);
+  }
+  test("rydb_stored_row_t data offset is unpadded") {
+    asserteq(offsetof(rydb_stored_row_t, data), sizeof(uint8_t)*2 + sizeof(rydb_rownum_t));
+  }
+}
+
 describe(rydb_new) {
   it("fails gracefully when out of memory") {
     fail_malloc_after(0);
@@ -298,11 +307,21 @@ describe(insert_rows) {
   rydb_t *db = NULL;
   char path[64];
   
+  char *rowdata[] = {
+    "hello this is not terribly long of a string",
+    "and this is another one that exceeds the length",
+    "this one's short",
+    "tiny"
+  };
+  int nrows = sizeof(rowdata)/sizeof(char *);
+  
   before_each() {
     asserteq(db, NULL, "previous test not closed out correctly");
     db = rydb_new();
     strcpy(path, "test.db.insert_rows.XXXXXX");
     mkdtemp(path);
+    config_testdb(db);
+    assert_db_ok(db, rydb_open(db, path, "open_test"));
   }
   after_each() {
     rydb_close(db);
@@ -310,35 +329,37 @@ describe(insert_rows) {
     rmdir_recursive(path);
   }
   
-  it("works about as you'd expect") {
-    config_testdb(db);
-    assert_db_ok(db, rydb_open(db, path, "open_test"));
-    char *rowdata[] = {
-      "hello this is not terribly long of a string",
-      "and this is another one that exceeds the length",
-      "this one's short",
-      "tiny"
-    };
-    
-    for(size_t i=0; i<sizeof(rowdata)/sizeof(char *); i++) {
-      rydb_row_insert_str(db, rowdata[i]);
+  it("inserts rows in a new database") {
+    for(int i=0; i<nrows; i++) {
+      assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
     }
     rydb_close(db);
     
     db = rydb_new();
     config_testdb(db);
     assert_db_ok(db, rydb_open(db, path, "open_test"));
-    char buf[64];
+    
     int n = 0;
     RYDB_EACH_ROW(db, cur) {
-      memset(buf, '\00', 64);
-      strcpy(buf, rowdata[n++]);
-      asserteq(memcmp(cur->data, buf, 20), 0);
-      asserteq(cur->type, RYDB_ROW_DATA);
+      assert_db_row_type(db, cur, RYDB_ROW_DATA);
+      assert_db_row_data(db, cur, rowdata[n++]);
     }
-    assert(n == sizeof(rowdata)/sizeof(char *));
-    
+    assert(n == nrows);
   }
+  
+  it("inserts transactionally") {
+    assert_db_ok(db, rydb_transaction_start(db));
+    for(int i=0; i<nrows; i++) {
+      assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
+    }
+    int n = 0;
+    RYDB_EACH_ROW(db, cur) {
+      assert_db_row_type(db, cur, RYDB_ROW_CMD_SET);
+      asserteq(cur->target_rownum, n+1);
+      assert_db_row_data(db, cur, rowdata[n]);
+    }
+  }
+  
 }
 
 describe(hashing) {
