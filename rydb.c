@@ -1218,7 +1218,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   }
   db->data.data.start = &db->data.file.start[RYDB_DATA_START_OFFSET - offsetof(rydb_stored_row_t, data)];
   db->data.data.end = db->data.file.end;
-  memcpy(db->data.file.start, "rydb", 4); //just for show
+  memcpy(db->data.file.start, RYDB_DATA_HEADER_STRING, strlen(RYDB_DATA_HEADER_STRING)); //mark it
   
   if(!rydb_file_open(db, "meta", &db->meta)) {
     return rydb_open_abort(db);
@@ -1641,9 +1641,13 @@ static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored
   return 1;
 }
 
-static int rydb_transaction_run(rydb_t *db) {
+int rydb_transaction_run(rydb_t *db) {
   rydb_stored_row_t *prev = NULL, *next;
-  
+  rydb_stored_row_t *lastcmd = rydb_row_next(db->tx_next_row, db->stored_row_size, -1);
+  if(lastcmd < db->data_next_row || lastcmd->type != RYDB_ROW_CMD_COMMIT) {
+    // no CMD_COMMIT at the end -- bail
+    return 0;
+  }
   int rc = 1;
   RYDB_EACH_TX_ROW(db, cur) {
     switch((rydb_row_type_t )cur->type) {
@@ -1695,6 +1699,7 @@ int rydb_transaction_finish_or_continue(rydb_t *db, int finish) {
       return 0;
     }
     db->transaction.active = 0;
+    db->tx_next_row = db->data_next_row;
     return 1;
   }
   return 1;
@@ -1704,6 +1709,10 @@ int rydb_transaction_finish_or_continue(rydb_t *db, int finish) {
 int rydb_transaction_finish(rydb_t *db) {
   if(!db->transaction.active) {
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_ACTIVE, "No active transaction to finish");
+    return 0;
+  }
+  rydb_row_t commit_row = {.type = RYDB_ROW_CMD_COMMIT, .num = 0};
+  if(!rydb_data_append_tx_rows(db, &commit_row, 1)) {
     return 0;
   }
   return rydb_transaction_finish_or_continue(db, 1);
@@ -1725,7 +1734,7 @@ int rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
     {.type = RYDB_ROW_CMD_SET, .data=data, .len = len, .num = db->transaction.future_data_rownum++},
     {.type = RYDB_ROW_CMD_COMMIT, .num = 0}
   };
-  if(!rydb_data_append_tx_rows(db, rows, 2 - txstarted)) {
+  if(!rydb_data_append_tx_rows(db, rows, 1 + txstarted)) {
     if(txstarted) db->transaction.active = 0;
     return 0;
   }
@@ -1769,14 +1778,14 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
     memcpy(&buf[RYDB_ROW_DATA_OFFSET], data, len);
     rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .num = rownum, .data = buf};
     rows[1] = (rydb_row_t ){.type = RYDB_ROW_CMD_COMMIT, .num = 0};
-    rc = rydb_data_append_tx_rows(db, rows, 2 - txstarted);
+    rc = rydb_data_append_tx_rows(db, rows, 1 + txstarted);
     rydb_mem.free(buf);
   }
   else {
     rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE1, .num = rownum, .data = (char *)&header};
     rows[1] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE2, .num = 0, .data = data};
     rows[2] = (rydb_row_t ){.type = RYDB_ROW_CMD_COMMIT, .num = 0};
-    rc = rydb_data_append_tx_rows(db, rows, 3 - txstarted);
+    rc = rydb_data_append_tx_rows(db, rows, 2 + txstarted);
   }
   if(!rc) {
     if(txstarted) db->transaction.active = 0;
@@ -1801,7 +1810,7 @@ int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum) {
     {.type = RYDB_ROW_CMD_DELETE, .num = rownum, .data=NULL},
     {.type = RYDB_ROW_CMD_COMMIT, .num = 0}
   };
-  if(!rydb_data_append_tx_rows(db, rows, 2 - txstarted)) {
+  if(!rydb_data_append_tx_rows(db, rows, 1 + txstarted)) {
     if(txstarted) db->transaction.active = 0;
     return 0;
   }
@@ -1825,7 +1834,7 @@ int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
     {.type = RYDB_ROW_CMD_SWAP2, .num = rownum2, .data = NULL},
     {.type = RYDB_ROW_CMD_COMMIT}
   };
-  if(!rydb_data_append_tx_rows(db, rows, 2 - txstarted)) {
+  if(!rydb_data_append_tx_rows(db, rows, 1 + txstarted)) {
     if(txstarted) db->transaction.active = 0;
     return 0;
   }
@@ -1852,3 +1861,24 @@ int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, char *data, uint16_t start
   }
 }
 */
+
+void rydb_print_stored_data(rydb_t *db) {
+  const char *rowtype;
+  char header[RYDB_DATA_START_OFFSET + 1];
+  memcpy(header, db->data.file.start, RYDB_DATA_START_OFFSET);
+  header[RYDB_DATA_START_OFFSET] = '\00';
+  char datacpy[64];
+  printf("\n>>%s\n", header);
+  RYDB_EACH_ROW(db, cur) {
+    char *trail = "";
+    rowtype = rydb_rowtype_str(cur->type);
+    rowtype = &rowtype[strlen("RYDB_ROW_")];
+    size_t len = db->stored_row_size - RYDB_ROW_DATA_OFFSET;
+    if(len > 62) {
+      len = 60;
+      trail = "...";
+    }
+    memcpy(datacpy, cur->data, len);
+    printf("[%4"PRIu32"] %8s <%4"PRIu32"> %s%s\n", rydb_row_to_rownum(db, cur), rowtype, cur->target_rownum, datacpy, trail);
+  }
+}

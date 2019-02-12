@@ -11,8 +11,10 @@
 #define ry_align_ptr(p, a)                                                   \
     (u_char *) (((uintptr_t) (p) + ((uintptr_t) a - 1)) & ~((uintptr_t) a - 1))
 
+
+#define RYDB_DATA_HEADER_STRING "rydb data"
 #define RYDB_ROW_DATA_OFFSET offsetof(rydb_stored_row_t, data)
-#define RYDB_DATA_START_OFFSET ry_align(RYDB_ROW_DATA_OFFSET, 8)
+#define RYDB_DATA_START_OFFSET ry_align(RYDB_ROW_DATA_OFFSET + strlen(RYDB_DATA_HEADER_STRING), 8)
 
 
 #ifndef container_of
@@ -34,7 +36,7 @@
 #define RYDB_DEFAULT_MMAP_SIZE 1024*8
 #define RYDB_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = db->data_next_row; cur < db->tx_next_row; cur = rydb_row_next(cur, db->stored_row_size, 1))
 #define RYDB_REVERSE_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = rydb_row_next(db->tx_next_row, db->stored_row_size, -1); cur >= db->data_next_row; cur = rydb_row_next(cur, db->stored_row_size, -1))
-#define RYDB_EACH_ROW(db, cur) for(rydb_stored_row_t *cur = (void *)db->data.data.start; cur < db->tx_next_row; cur = rydb_row_next(cur, db->stored_row_size, 1))
+#define RYDB_EACH_ROW(db, cur) for(rydb_stored_row_t *cur = (void *)db->data.data.start; (char *)cur <= (char *)db->data.file.end - db->stored_row_size; cur = rydb_row_next(cur, db->stored_row_size, 1))
 
 int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f);
 int rydb_file_open_index(rydb_t *db, int index_n);
@@ -55,12 +57,12 @@ int rydb_ensure_closed(rydb_t *db, const char *msg);
 //these always succeed
 int rydb_transaction_finish_or_continue(rydb_t *db, int finish);
 int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started);
-
+int rydb_transaction_run(rydb_t *db);
 
 rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum);
 rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row);
 rydb_rownum_t rydb_data_next_rownum(rydb_t *db);
-inline uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row);
+uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row);
 
 
 int getrandombytes(unsigned char *p, size_t len);
@@ -79,5 +81,9 @@ typedef struct {
 } rydb_row_tx_header_t;
 
 #define rydb_row_next(row, sz, n) (void *)((char *)(row) + (sz) * (n))
+
+
+//debug stuff?
+void rydb_print_stored_data(rydb_t *db);
 
 #endif //RYDB_INTERNAL_H

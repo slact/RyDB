@@ -21,6 +21,7 @@ void fail_malloc_later_each_time(void);
 void reset_malloc(void);
 
 int rmdir_recursive(const char *path);
+void rydb_print_stored_data(rydb_t *db);
 
 #define assert_db_ok(db, cmd) \
   do { \
@@ -61,6 +62,14 @@ int rmdir_recursive(const char *path);
   do { \
     if(row->type != rowtype) { \
       fail("(rydb_row_type_t) Expected " #row " (rownum %i) to be " #rowtype ", but got %s", (int )rydb_row_to_rownum(db, row), rydb_rowtype_str(row->type)); \
+    } \
+  } while(0)
+
+#define assert_db_row_target_rownum(db, row, trownum) \
+  do { \
+    rydb_rownum_t ___expected_rownum = trownum; \
+    if(row->target_rownum != ___expected_rownum) { \
+      fail("(rydb_row_type_t) Expected " #row " (rownum %i) target_rownum to be %i, but got %i", (int )rydb_row_to_rownum(db, row), ___expected_rownum, (int )row->target_rownum); \
     } \
   } while(0)
   

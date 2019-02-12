@@ -338,11 +338,17 @@ describe(insert_rows) {
     db = rydb_new();
     config_testdb(db);
     assert_db_ok(db, rydb_open(db, path, "open_test"));
-    
+//    rydb_print_stored_data(db);
     int n = 0;
     RYDB_EACH_ROW(db, cur) {
-      assert_db_row_type(db, cur, RYDB_ROW_DATA);
-      assert_db_row_data(db, cur, rowdata[n++]);
+      if(n < nrows) {
+        assert_db_row_type(db, cur, RYDB_ROW_DATA);
+        assert_db_row_target_rownum(db, cur, 0);
+        assert_db_row_data(db, cur, rowdata[n++]);
+      }
+      else {
+        assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+      }
     }
     assert(n == nrows);
   }
@@ -352,12 +358,29 @@ describe(insert_rows) {
     for(int i=0; i<nrows; i++) {
       assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
     }
+    
     int n = 0;
     RYDB_EACH_ROW(db, cur) {
       assert_db_row_type(db, cur, RYDB_ROW_CMD_SET);
-      asserteq(cur->target_rownum, n+1);
+      assert_db_row_target_rownum(db, cur, n+1);
       assert_db_row_data(db, cur, rowdata[n]);
+      n++;
     }
+    assert_db_ok(db, rydb_transaction_finish(db));
+    //rydb_print_stored_data(db);
+    n = 0;
+    RYDB_EACH_ROW(db, cur) {
+      if(n < nrows) {
+        assert_db_row_type(db, cur, RYDB_ROW_DATA);
+        assert_db_row_target_rownum(db, cur, 0);
+        assert_db_row_data(db, cur, rowdata[n]);
+      }
+      else {
+        assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+      }
+      n++;
+    }
+    asserteq(n, nrows+1);
   }
   
 }
