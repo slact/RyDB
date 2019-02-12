@@ -75,14 +75,26 @@ void rydb_print_stored_data(rydb_t *db);
   
 #define assert_db_row_data(db, row, compare_data) \
   do { \
-    char *___cmp = malloc(db->config.row_len); \
-    memset(___cmp, '\00', db->config.row_len); \
+    char *___cmp = malloc(db->config.row_len+1); \
+    if(!___cmp) { \
+      fail("assert_db_row_data because malloc() failed"); \
+    } \
+    memset(___cmp, '\00', db->config.row_len+1); \
     strncpy(___cmp, compare_data, db->config.row_len); \
-    if(strcmp(___cmp, row->data) != 0) { \
+    int ___rc = strcmp(___cmp, row->data); \
+    free(___cmp); \
+    if(___rc != 0) { \
       fail("(rydb_stored_row_t) " #row " (rownum %i) data does not match.", (int )rydb_row_to_rownum(db, row)); \
     } \
   } while(0)
 
+#define assert_db_datarow(db, row, compare_data, n) \
+  do { \
+    assert_db_row_type(db, row, RYDB_ROW_DATA); \
+    assert_db_row_target_rownum(db, row, 0); \
+    assert_db_row_data(db, row, compare_data[n]); \
+  } while(0)
+  
 const uint8_t vectors_siphash_2_4_64[64][8];
 
 

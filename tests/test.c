@@ -308,10 +308,20 @@ describe(insert_rows) {
   char path[64];
   
   char *rowdata[] = {
-    "hello this is not terribly long of a string",
-    "and this is another one that exceeds the length",
-    "this one's short",
-    "tiny"
+    "1.hello this is not terribly long of a string",
+    "2.and this is another one that exceeds the length",
+    "3.this one's short",
+    "4.tiny",
+    "5.here's another one",
+    "6.zzzzzzzzzzzzzz"
+  };
+    char *rowdata2[] = {
+    "1.hello this is not terribly long of a string",
+    "2.and this is another one that exceeds the length",
+    "3>this one's short",
+    "4.tiny",
+    "5.here's another one",
+    "6.zzzzzzzzzzzzzz"
   };
   int nrows = sizeof(rowdata)/sizeof(char *);
   
@@ -330,7 +340,7 @@ describe(insert_rows) {
   }
   
   it("inserts rows in a new database") {
-    for(int i=0; i<nrows; i++) {
+    for(int i=0; i<nrows-2; i++) {
       assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
     }
     rydb_close(db);
@@ -338,27 +348,38 @@ describe(insert_rows) {
     db = rydb_new();
     config_testdb(db);
     assert_db_ok(db, rydb_open(db, path, "open_test"));
-//    rydb_print_stored_data(db);
     int n = 0;
     RYDB_EACH_ROW(db, cur) {
-      if(n < nrows) {
-        assert_db_row_type(db, cur, RYDB_ROW_DATA);
-        assert_db_row_target_rownum(db, cur, 0);
-        assert_db_row_data(db, cur, rowdata[n++]);
-      }
-      else {
+      if(n < nrows-2)
+        assert_db_datarow(db, cur, rowdata, n);
+      else
         assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-      }
+      n++;
     }
-    assert(n == nrows);
+    assert(n - 1 == nrows-2);
+    
+    //now insert the remainder
+    for(int i=nrows-2; i<nrows; i++) {
+      assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
+    }
+    
+    n = 0;
+    RYDB_EACH_ROW(db, cur) {
+      if(n < nrows)
+        assert_db_datarow(db, cur, rowdata, n);
+      else
+        assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+      n++;
+    }
+    assert(n - 1 == nrows);
   }
   
-  it("inserts transactionally") {
+  it("inserts in a transaction") {
     assert_db_ok(db, rydb_transaction_start(db));
     for(int i=0; i<nrows; i++) {
       assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
     }
-    
+    rydb_print_stored_data(db);
     int n = 0;
     RYDB_EACH_ROW(db, cur) {
       assert_db_row_type(db, cur, RYDB_ROW_CMD_SET);
@@ -366,8 +387,8 @@ describe(insert_rows) {
       assert_db_row_data(db, cur, rowdata[n]);
       n++;
     }
+
     assert_db_ok(db, rydb_transaction_finish(db));
-    //rydb_print_stored_data(db);
     n = 0;
     RYDB_EACH_ROW(db, cur) {
       if(n < nrows) {
