@@ -1482,7 +1482,7 @@ int rydb_transaction_cancel(rydb_t *db) {
     return 0;
   }
   
-  RYDB_REVERSE_EACH_TX_ROW(db, cur) {
+  RYDB_REVERSE_EACH_CMD_ROW(db, cur) {
     cur->type = RYDB_ROW_EMPTY;
   }
   db->cmd_next_row = db->data_next_row;
@@ -1491,7 +1491,6 @@ int rydb_transaction_cancel(rydb_t *db) {
 }
 
 static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *tx) {
-  rydb_stored_row_t   *data_next = db->data_next_row;
   size_t               rowsz = db->stored_row_size;
   rydb_stored_row_t   *dst = rydb_rownum_to_row(db, tx->target_rownum);
   if(!dst) {
@@ -1508,12 +1507,14 @@ static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *tx) {
     //set this very rownum
     tx->type = RYDB_ROW_DATA;
     tx->target_rownum = 0; //clear target
-    db->data_next_row = rydb_row_next(data_next, rowsz, 1);
   }
   else {
     memcpy(dst->data, tx->data, db->config.row_len);
     dst->type = RYDB_ROW_DATA;
     tx->type = RYDB_ROW_EMPTY;
+  }
+  if(dst >= db->data_next_row) {
+    db->data_next_row = rydb_row_next(dst, rowsz, 1);
   }
   return 1;
 }
@@ -1530,6 +1531,24 @@ static inline int rydb_cmd_update(rydb_t *db, rydb_stored_row_t *tx) {
   return 1;
 }
 
+
+void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_just_emptied) {
+  size_t              rowsz = db->stored_row_size;
+  rydb_stored_row_t  *last = rydb_row_next(db->data_next_row, rowsz, -1);
+  if(last != row_just_emptied) { 
+    return; //end of data hasn't changed, the row that was just deleted wasn't at the tail-end of the data rows
+  }
+  // remove contiguous empty rows at the end of the data from the data range
+  // this gives the DELETE command a worst-case performance of O(n)
+  rydb_stored_row_t  *first = (void *)db->data.data.start;
+  rydb_stored_row_t   *cur;
+  for(cur = last; cur >= first; cur = rydb_row_next(cur, rowsz, -1)) {
+    if(cur->type != RYDB_ROW_EMPTY) {
+      break;
+    }
+  }
+  db->data_next_row = rydb_row_next(cur, rowsz, 1);
+}
 
 static inline int rydb_cmd_update1(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored_row_t *tx2) {
   if(!tx2 || tx2->type != RYDB_ROW_CMD_UPDATE2) {
@@ -1573,21 +1592,10 @@ static inline int rydb_cmd_delete(rydb_t *db, rydb_stored_row_t *tx) {
   }
   dst->type = RYDB_ROW_EMPTY;
   tx->type = RYDB_ROW_EMPTY;
-  size_t rowsz = db->stored_row_size;
-  
-  rydb_stored_row_t *last = rydb_row_next(db->data_next_row, rowsz, -1);
-  if(last == dst) { //last row was just deleted
-    // remove contiguous empty rows at the end of the data from the data range
-    // this gives the DELETE command a worst-case performance of O(n)
-    rydb_stored_row_t *first = (void *)db->data.data.start;
-    rydb_stored_row_t *cur;
-    for(cur = last; cur >= first; cur = rydb_row_next(cur, rowsz, -1)) {
-      if(cur->type != RYDB_ROW_EMPTY) {
-        break;
-      }
-    }
-    db->data_next_row = rydb_row_next(cur, rowsz, 1);
-  }
+  // remove contiguous empty rows at the end of the data from the data range
+  // this gives the DELETE command a worst-case performance of O(n)
+  // (but only when deleting the last row)
+  rydb_data_update_last_nonempty_data_row(db, dst);
   return 1;
 }
 
@@ -1603,6 +1611,7 @@ static inline int rydb_cmd_swap1(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored
       //don't need to be doing anything.
       return 1;
     case RYDB_ROW_CMD_SET:
+    case RYDB_ROW_CMD_DELETE:
       //run the swap now, the temp src copy has already been written
       src = rydb_rownum_to_row(db, tx1->target_rownum);
       dst = rydb_rownum_to_row(db, tx2->target_rownum);
@@ -1613,6 +1622,12 @@ static inline int rydb_cmd_swap1(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored
         return 0;
       }
       memcpy(src, dst, db->stored_row_size);
+      if(src->type == RYDB_ROW_EMPTY) {
+        // remove contiguous empty rows at the end of the data from the data range
+        // this gives the SWAP command a worst-case performance of O(n)
+        // (but only when swapping with the last row)
+        rydb_data_update_last_nonempty_data_row(db, src);
+      }
       //the followup SET command will write src to dst;
       tx1->type = RYDB_ROW_EMPTY;
       return 1;
@@ -1639,15 +1654,35 @@ static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *tx1, rydb_stored
     tx2->type = RYDB_ROW_EMPTY;
     return 0;
   }
-  memcpy(tx2->data, src->data, rowsz - offsetof(rydb_stored_row_t, data)); //copy just the data
-  tx2->type = RYDB_ROW_CMD_SET; //second half of the swap is not a SET command.
-  // it can be idempotently re-run in case db writes fail before the swap is completed
+  rydb_row_type_t cmd2;
+  switch(src->type) {
+    case RYDB_ROW_DATA:
+      memcpy(tx2->data, src->data, rowsz - offsetof(rydb_stored_row_t, data)); //copy just the data
+      tx2->type = cmd2 = RYDB_ROW_CMD_SET; //second half of the swap is not a SET command.
+      // it can be idempotently re-run in case db writes fail before the swap is completed
+      break;
+    case RYDB_ROW_EMPTY:
+      tx2->type = cmd2 = RYDB_ROW_CMD_DELETE;
+      break;
+    default:
+      rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP [%i][%i] failed: unexpected dst row type", tx1->target_rownum, tx2->target_rownum);
+      tx1->type = RYDB_ROW_EMPTY;
+      tx2->type = RYDB_ROW_EMPTY;
+      return 0;
+  }
   if(!rydb_cmd_swap1(db, tx1, tx2)) {
     tx1->type = RYDB_ROW_EMPTY;
     tx2->type = RYDB_ROW_EMPTY;
     return 0;
   }
-  if(!rydb_cmd_set(db, tx2)) {
+  int rc = 0;
+  if(cmd2 == RYDB_ROW_CMD_SET) {
+    rc = rydb_cmd_set(db, tx2);
+  }
+  else if(cmd2 == RYDB_ROW_CMD_DELETE) {
+    rc = rydb_cmd_delete(db, tx2);
+  }
+  if(!rc) {
     tx1->type = RYDB_ROW_EMPTY;
     tx2->type = RYDB_ROW_EMPTY;
     return 0;
@@ -1663,7 +1698,7 @@ int rydb_transaction_run(rydb_t *db) {
     return 0;
   }
   int rc = 1;
-  RYDB_EACH_TX_ROW(db, cur) {
+  RYDB_EACH_CMD_ROW(db, cur) {
     switch((rydb_row_type_t )cur->type) {
       case RYDB_ROW_EMPTY:
       case RYDB_ROW_DATA:
@@ -1793,14 +1828,14 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
   rydb_row_t rows[3];
   
   if(len < max_sz_for_1cmd_update) {
-    char  *buf = rydb_mem.malloc(RYDB_ROW_DATA_OFFSET + len);
+    char  *buf = rydb_mem.malloc(sizeof(header) + len);
     if(!buf) {
       if(txstarted) db->transaction.active = 0;
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Cannot allocate temporary memory for row update");
       return 0;
     }
-    memcpy(buf, &header, RYDB_ROW_DATA_OFFSET);
-    memcpy(&buf[RYDB_ROW_DATA_OFFSET], data, len);
+    memcpy(buf, &header, sizeof(header));
+    memcpy(&buf[sizeof(header)], data, len);
     rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .num = rownum, .data = buf};
     rows[1] = (rydb_row_t ){.type = RYDB_ROW_CMD_COMMIT, .num = 0};
     rc = rydb_data_append_cmd_rows(db, rows, 1 + txstarted);
@@ -1848,6 +1883,10 @@ int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
   if(!rydb_rownum_in_data_range(db, rownum1) || !rydb_rownum_in_data_range(db, rownum2)) {
     return 0;
   }
+  if(rownum1 == rownum2) {
+    //swap row with itself, do nothing.
+    return 1;
+  }
   
   int txstarted;
   rydb_transaction_start_or_continue(db, &txstarted);
@@ -1856,7 +1895,7 @@ int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
     {.type = RYDB_ROW_CMD_SWAP2, .num = rownum2, .data = NULL},
     {.type = RYDB_ROW_CMD_COMMIT}
   };
-  if(!rydb_data_append_cmd_rows(db, rows, 1 + txstarted)) {
+  if(!rydb_data_append_cmd_rows(db, rows, 2 + txstarted)) {
     if(txstarted) db->transaction.active = 0;
     return 0;
   }

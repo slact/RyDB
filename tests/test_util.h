@@ -41,7 +41,7 @@ void rydb_print_stored_data(rydb_t *db);
       rydb_error_snprint(db, buf, 1024); \
     if(cmd_rc != 0) \
       fail("Expected to fail with error %s [%i], but succeeded instead", rydb_error_code_str(expected_error), expected_error); \
-    else if(err->code != expected_error) \
+    else if(err && err->code != expected_error) \
       fail("Expected to fail with error %s [%i], but got %s", rydb_error_code_str(expected_error), expected_error, buf); \
     rydb_error_clear(db); \
   } while(0)
@@ -94,6 +94,17 @@ void rydb_print_stored_data(rydb_t *db);
     assert_db_row_target_rownum(db, row, 0); \
     assert_db_row_data(db, row, compare_data[n]); \
   } while(0)
+
+#define assert_db_insert_rows(db, rows, nrows) \
+  do { \
+    int ___maxrows = nrows; \
+    char **___rowdata = rows; \
+    for(int ___i=0; ___i<___maxrows; ___i++) { \
+      assert_db_ok(db, rydb_row_insert_str(db, ___rowdata[___i])); \
+    } \
+  } while(0);
+  
+  
   
 const uint8_t vectors_siphash_2_4_64[64][8];
 

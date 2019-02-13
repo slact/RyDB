@@ -6,7 +6,7 @@ void test_errhandler(rydb_t *db, rydb_error_t *err, void *privdata) {
   asserteq(db, privdata);
   asserteq(err->code, RYDB_ERROR_BAD_CONFIG);
 }
-
+#define ROW_LEN 20
 static void config_testdb(rydb_t *db) {
   assert_db_ok(db, rydb_config_row(db, 20, 5));
   assert_db_ok(db, rydb_config_add_index_hashtable(db, "foo", 5, 5, RYDB_INDEX_DEFAULT, NULL));
@@ -21,6 +21,25 @@ describe(struct_size) {
   }
   test("rydb_stored_row_t data offset is unpadded") {
     asserteq(offsetof(rydb_stored_row_t, data), sizeof(uint8_t)*2 + sizeof(rydb_rownum_t));
+  }
+}
+
+describe(hashing) {
+  subdesc(siphash_2_4_64bit) {
+    it("has the expected output") {
+      uint8_t in[64], k[16], out[8];
+      
+      //initialize key
+      for (int i = 0; i < 16; ++i) k[i] = i;
+      
+      for (int i = 0; i < 64; ++i) {
+        in[i] = i;
+        *(uint64_t *)out = siphash(in, i, k);
+        if(memcmp(out, vectors_siphash_2_4_64[i], 8)!=0) {
+          fail("mismatch at test vector %i", i);
+        }
+      }
+    }
   }
 }
 
@@ -333,9 +352,7 @@ describe(row_operations) {
   
   subdesc(insert) {  
     it("inserts rows in a new database") {
-      for(int i=0; i<nrows-2; i++) {
-        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
-      }
+      assert_db_insert_rows(db, rowdata, nrows-2);
       rydb_close(db);
       
       db = rydb_new();
@@ -352,16 +369,16 @@ describe(row_operations) {
       assert(n - 1 == nrows-2);
       
       //now insert the remainder
-      for(int i=nrows-2; i<nrows; i++) {
-        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
-      }
+      assert_db_insert_rows(db, &rowdata[nrows-2], 2);
       
       n = 0;
       RYDB_EACH_ROW(db, cur) {
-        if(n < nrows)
+        if(n < nrows) {
           assert_db_datarow(db, cur, rowdata, n);
-        else
+        }
+        else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        }
         n++;
       }
       assert(n - 1 == nrows);
@@ -369,9 +386,8 @@ describe(row_operations) {
     
     it("inserts in a transaction") {
       assert_db_ok(db, rydb_transaction_start(db));
-      for(int i=0; i<nrows; i++) {
-        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
-      }
+      assert_db_insert_rows(db, rowdata, nrows);
+      
       //rydb_print_stored_data(db);
       int n = 0;
       RYDB_EACH_ROW(db, cur) {
@@ -385,9 +401,7 @@ describe(row_operations) {
       n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n < nrows) {
-          assert_db_row_type(db, cur, RYDB_ROW_DATA);
-          assert_db_row_target_rownum(db, cur, 0);
-          assert_db_row_data(db, cur, rowdata[n]);
+          assert_db_datarow(db, cur, rowdata, n);
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -400,21 +414,16 @@ describe(row_operations) {
   
   subdesc(delete) {
     it("fails to delete out-of-range data rows") {
-      rydb_print_stored_data(db);
       assert_db_fail(db, rydb_row_delete(db, 0), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
       assert_db_fail(db, rydb_row_delete(db, 1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
       assert_db_fail(db, rydb_row_delete(db, 100), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
       
-      for(int i=0; i<nrows; i++) {
-        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
-      }
+      assert_db_insert_rows(db, rowdata, nrows);
       assert_db_fail(db, rydb_row_delete(db, nrows+1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
     }
     
     it("deletes rows from data end") {
-      for(int i=0; i<nrows; i++) {
-        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
-      }
+      assert_db_insert_rows(db, rowdata, nrows);
       //rydb_print_stored_data(db);
       for(int i=nrows; i>0; i--) {
         assert_db_ok(db, rydb_row_delete(db, i));
@@ -432,9 +441,7 @@ describe(row_operations) {
     }
     
     it("handles a range of empty rows before the last row") {
-      for(int i=0; i<nrows; i++) {
-        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
-      }
+      assert_db_insert_rows(db, rowdata, nrows);
       
       //set a couple of rows before the last row as empty
       for(int i=1; i<3; i++) {
@@ -453,9 +460,7 @@ describe(row_operations) {
     }
     
     it("deletes rows from data start") {
-      for(int i=0; i<nrows; i++) {
-        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
-      }
+      assert_db_insert_rows(db, rowdata, nrows);
       
       for(int i=1; i<=nrows; i++) {
         //rydb_print_stored_data(db);
@@ -478,25 +483,204 @@ describe(row_operations) {
       }
       //rydb_print_stored_data(db);
     }
-  }
-}
-
-describe(hashing) {
-  subdesc(siphash_2_4_64bit) {
-    it("has the expected output") {
-      uint8_t in[64], k[16], out[8];
+    
+    it("deletes last row repeatedly in a transaction") {
+      assert_db_insert_rows(db, rowdata, nrows);
       
-      //initialize key
-      for (int i = 0; i < 16; ++i) k[i] = i;
-      
-      for (int i = 0; i < 64; ++i) {
-        in[i] = i;
-        *(uint64_t *)out = siphash(in, i, k);
-        if(memcmp(out, vectors_siphash_2_4_64[i], 8)!=0) {
-          fail("mismatch at test vector %i", i);
+      assert_db_ok(db, rydb_transaction_start(db));
+      assert_db_ok(db, rydb_row_delete(db, nrows));
+      assert_db_ok(db, rydb_row_delete(db, nrows));
+      assert_db_ok(db, rydb_row_delete(db, nrows));
+      int n = 0;
+      RYDB_EACH_ROW(db, cur) {
+        if(n < nrows) {
+          assert_db_datarow(db, cur, rowdata, n);
         }
+        else {
+          assert_db_row_type(db, cur, RYDB_ROW_CMD_DELETE);
+          assert_db_row_target_rownum(db, cur, nrows);
+        }
+        n++;
+      }
+      asserteq(n, nrows + 3);
+      assert_db_ok(db, rydb_transaction_finish(db));
+      
+      n = 0;
+      RYDB_EACH_ROW(db, cur) {
+        if(n < nrows - 1) {
+          assert_db_datarow(db, cur, rowdata, n);
+        }
+        else {
+          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        }
+        n++;
+      }
+      asserteq(n, nrows + 4);
+      
+      //and it works fine afterwards
+      assert_db_ok(db, rydb_row_insert_str(db, "after"));
+      //rydb_print_stored_data(db);
+      n = 0;
+      RYDB_EACH_ROW(db, cur) {
+        if(n < nrows - 1) {
+          assert_db_datarow(db, cur, rowdata, n);
+        }
+        else if(n < nrows) {
+          assert_db_datarow(db, cur, &"after", 0);
+        }
+        else {
+          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        }
+        n++;
       }
     }
+  }
+  
+  subdesc(swap) {
+    it("fails on out-of-range swaps") {
+      assert_db_fail(db, rydb_row_swap(db, 0, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_insert_rows(db, rowdata, nrows);
+      assert_db_fail(db, rydb_row_swap(db, 1, nrows+1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_row_swap(db, nrows+1, 1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+    }
+    it("swaps two rows close to the middle") {
+      assert_db_insert_rows(db, rowdata, nrows);
+      assert_db_ok(db, rydb_row_swap(db, 2, nrows-2));
+      int n = 0;
+      
+      RYDB_EACH_ROW(db, cur) {
+        if(n+1 == 2) { //one of the swapped rows
+          assert_db_datarow(db, cur, rowdata, (nrows-1) - 2);
+        }
+        else if(n+1 == nrows - 2) { // the other swapped row
+          assert_db_datarow(db, cur, rowdata, 1);
+        }
+        else if(n < nrows) {
+          assert_db_datarow(db, cur, rowdata, n);
+        }
+        else {
+          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        }
+        n++;
+      }
+    }
+    
+    it("swaps all the rows one by one") {
+      assert_db_insert_rows(db, rowdata, nrows);
+      //this should move the first row all the way down
+      for(int i = 2; i <= nrows; i++) {
+        assert_db_ok(db, rydb_row_swap(db, i, i-1));
+      }
+      int n = 0;
+      RYDB_EACH_ROW(db, cur) {
+        if(n+1 < nrows) {
+          assert_db_datarow(db, cur, rowdata, n+1);
+        }
+        else if (n+1 == nrows) {
+          assert_db_datarow(db, cur, rowdata, 0);
+        }
+        else {
+          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        }
+        n++;
+      }
+    }
+    
+    it("swaps rows with an empty row") {
+      assert_db_insert_rows(db, rowdata, nrows);
+      assert_db_ok(db, rydb_row_delete(db, 1));
+      
+      int n = 0;
+      RYDB_EACH_ROW(db, cur) {
+        if ( n > 0 && n < nrows) {
+          assert_db_datarow(db, cur, rowdata, n);
+        }
+        else {
+          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        }
+        n++;
+      }
+      assert_db_ok(db, rydb_row_swap(db, 1, nrows-1));
+      assert_db_ok(db, rydb_row_delete(db, nrows-2));
+      assert_db_ok(db, rydb_row_swap(db, nrows, nrows-2));
+      assert_db_ok(db, rydb_row_insert_str(db, "after"));
+      n = 0;
+      RYDB_EACH_ROW(db, cur) {
+        if(n==0) {
+          assert_db_datarow(db, cur, rowdata, 4);
+        }
+        else if(n < 3) {
+          assert_db_datarow(db, cur, rowdata, n);
+        }
+        else if(n == 3) {
+          assert_db_datarow(db, cur, rowdata, 5);
+        }
+        else if(n == 4) {
+          assert_db_datarow(db, cur, &"after", 0);
+        }
+        else {
+          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        }
+        n++;
+      }
+    }
+  }
+  
+  subdesc(update) {
+    it("fails on out-of-range updates") {
+      assert_db_fail(db, rydb_row_update(db, 0, "hey", 3, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_row_update(db, 9, "hey", 3, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_insert_rows(db, rowdata, nrows);
+      assert_db_fail(db, rydb_row_update(db, nrows+1, "hey", 3, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+    }
+    it("fails on updates that are longer than the row length") {
+      assert_db_insert_rows(db, rowdata, nrows);
+      assert_db_fail(db, rydb_row_update(db, 1, "hey", ROW_LEN, 3), RYDB_ERROR_DATA_TOO_LARGE);
+      assert_db_fail(db, rydb_row_update(db, 1, "zzzzzzzzzzzzzzzzzzzzzzzzzz", 0, ROW_LEN+1), RYDB_ERROR_DATA_TOO_LARGE);
+    }
+    
+    it("updates a small part of a row") {
+      assert_db_insert_rows(db, rowdata, nrows);
+      assert_db_ok(db, rydb_row_update(db, nrows, "hey", 3, 3));
+      //rydb_print_stored_data(db);
+      int n = 0;
+      RYDB_EACH_ROW(db, cur) {
+        if(n<nrows-1) {
+          assert_db_datarow(db, cur, rowdata, n);
+        }
+        else if(n == nrows-1) {
+          assert_db_datarow(db, cur, &"6.zheyzzzzzzzzzz", 0);
+        }
+        else {
+          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        }
+        n++;
+      }
+    }
+    
+    it("updates a large part of a row") {
+      assert_db_insert_rows(db, rowdata, nrows);
+      assert_db_ok(db, rydb_row_update(db, nrows, "heywhatis this even", 3, 17));
+      assert_db_ok(db, rydb_row_update(db, nrows-1, "................................", 0, ROW_LEN));
+      //rydb_print_stored_data(db);
+      int n = 0;
+      RYDB_EACH_ROW(db, cur) {
+        if(n<nrows-2) {
+          assert_db_datarow(db, cur, rowdata, n);
+        }
+        else if(n == nrows-2) {
+          assert_db_datarow(db, cur, &"....................", 0);
+        }
+        else if(n == nrows-1) {
+          assert_db_datarow(db, cur, &"6.zheywhatis this ev", 0);
+        }
+        else {
+          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        }
+        n++;
+      }
+    }
+    
   }
 }
 

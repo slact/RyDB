@@ -34,8 +34,8 @@
 
 //#define RYDB_DEFAULT_MMAP_SIZE 12500000000 //100GB
 #define RYDB_DEFAULT_MMAP_SIZE 1024*8
-#define RYDB_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = db->data_next_row; cur < db->cmd_next_row; cur = rydb_row_next(cur, db->stored_row_size, 1))
-#define RYDB_REVERSE_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = rydb_row_next(db->cmd_next_row, db->stored_row_size, -1); cur >= db->data_next_row; cur = rydb_row_next(cur, db->stored_row_size, -1))
+#define RYDB_EACH_CMD_ROW(db, cur) for(rydb_stored_row_t *cur = db->data_next_row; cur < db->cmd_next_row; cur = rydb_row_next(cur, db->stored_row_size, 1))
+#define RYDB_REVERSE_EACH_CMD_ROW(db, cur) for(rydb_stored_row_t *cur = rydb_row_next(db->cmd_next_row, db->stored_row_size, -1); cur >= db->data_next_row; cur = rydb_row_next(cur, db->stored_row_size, -1))
 #define RYDB_EACH_ROW(db, cur) for(rydb_stored_row_t *cur = (void *)db->data.data.start; (char *)cur <= (char *)db->data.file.end - db->stored_row_size; cur = rydb_row_next(cur, db->stored_row_size, 1))
 
 int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f);

@@ -240,6 +240,7 @@ int rydb_row_insert(rydb_t *db, const char *data, uint16_t len);
 int rydb_row_insert_str(rydb_t *db, const char *data);
 int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum);
 int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, const char *data, uint16_t start, uint16_t len);
+int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2);
 
 rydb_error_t *rydb_error(const rydb_t *db);
 int rydb_error_print(const rydb_t *db);
