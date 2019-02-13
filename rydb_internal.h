@@ -16,7 +16,6 @@
 #define RYDB_ROW_DATA_OFFSET offsetof(rydb_stored_row_t, data)
 #define RYDB_DATA_START_OFFSET ry_align(RYDB_ROW_DATA_OFFSET + strlen(RYDB_DATA_HEADER_STRING), 8)
 
-
 #ifndef container_of
 #ifdef __GNUC__
 #define member_type(type, member) __typeof__ (((type *)0)->member)
@@ -65,6 +64,8 @@ rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row)
 rydb_rownum_t rydb_data_next_rownum(rydb_t *db);
 uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row);
 int rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count);
+void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_just_emptied);
+
 
 int getrandombytes(unsigned char *p, size_t len);
 
