@@ -14,3 +14,6 @@ tests/db.*
 tests/test_open.*
 tests/test.db.*
 tests/test
+.profdata
+coverage-report/*
+tests/.profraw
