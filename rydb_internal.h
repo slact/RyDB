@@ -82,7 +82,7 @@ typedef struct {
   uint16_t      len;
 } rydb_row_cmd_header_t;
 
-#define rydb_row_next(row, sz, n) (void *)((char *)(row) + (sz) * (n))
+#define rydb_row_next(row, sz, n) (void *)((char *)(row) + (off_t )(sz) * (n))
 
 
 //debug stuff?

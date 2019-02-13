@@ -23,6 +23,14 @@ void reset_malloc(void);
 int rmdir_recursive(const char *path);
 void rydb_print_stored_data(rydb_t *db);
 
+#define assert_ptr_aligned(ptr, alignment) \
+do { \
+  if((uintptr_t )ptr % alignment != 0) { \
+    fail("" #ptr " fails %i-byte-alignment by %i bytes", (int )alignment, (int)((uintptr_t )ptr % alignment)); \
+  } \
+} while(0)
+
+
 #define assert_db_ok(db, cmd) \
   do { \
     char buf[1024]; \

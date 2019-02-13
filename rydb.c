@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <time.h>
 
 #include <signal.h>
 #include <assert.h>
@@ -758,7 +759,7 @@ static int rydb_meta_save(rydb_t *db) {
                //storage info
                RYDB_DATA_START_OFFSET,
                offsetof(rydb_stored_row_t, type),
-               offsetof(rydb_stored_row_t, reserved),
+               offsetof(rydb_stored_row_t, reserved1),
                RYDB_ROW_DATA_OFFSET,
                (uint16_t)sizeof(rydb_rownum_t),
                hash_key_hexstr_buf,
@@ -900,7 +901,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     return 0;
   }
   
-  if(rowformat.type_off != offsetof(rydb_stored_row_t, type) || rowformat.reserved_off != offsetof(rydb_stored_row_t, reserved) || rowformat.data_off != offsetof(rydb_stored_row_t, data)) {
+  if(rowformat.type_off != offsetof(rydb_stored_row_t, type) || rowformat.reserved_off != offsetof(rydb_stored_row_t, reserved1) || rowformat.data_off != offsetof(rydb_stored_row_t, data)) {
     //TODO: format conversions
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Row format mismatch");
     return 0;
@@ -1218,7 +1219,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   if(!rydb_file_ensure_writable_address(db, &db->data, db->data.file.start, RYDB_DATA_START_OFFSET)) {
     return rydb_open_abort(db);
   }
-  db->data.data.start = &db->data.file.start[RYDB_DATA_START_OFFSET - offsetof(rydb_stored_row_t, data)];
+  db->data.data.start = &db->data.file.start[RYDB_DATA_START_OFFSET];
   db->data.data.end = db->data.file.end;
   memcpy(db->data.file.start, RYDB_DATA_HEADER_STRING, strlen(RYDB_DATA_HEADER_STRING)); //mark it
   

@@ -15,15 +15,6 @@ static void config_testdb(rydb_t *db) {
   assert_db_ok(db, rydb_config_add_row_link(db, "fwd", "rew"));
 }
 
-describe(struct_size) {
-  test("rydb_row_cmd_header_t is unpadded") {
-    asserteq(sizeof(rydb_row_cmd_header_t), sizeof(uint16_t)*2);
-  }
-  test("rydb_stored_row_t data offset is unpadded") {
-    asserteq(offsetof(rydb_stored_row_t, data), sizeof(uint8_t)*2 + sizeof(rydb_rownum_t));
-  }
-}
-
 describe(hashing) {
   subdesc(siphash_2_4_64bit) {
     it("has the expected output") {
@@ -357,6 +348,42 @@ describe(config) {
   }
 }
 
+describe(sizing) {
+    rydb_t *db;
+  char path[64];
+  
+  subdesc(struct_padding) {
+    test("rydb_row_cmd_header_t is unpadded") {
+      asserteq(sizeof(rydb_row_cmd_header_t), sizeof(uint16_t)*2);
+    }
+    test("rydb_stored_row_t data offset is unpadded") {
+      asserteq(offsetof(rydb_stored_row_t, data), sizeof(uint8_t)*4 + sizeof(rydb_rownum_t));
+    }
+  }
+  subdesc(alignment) {
+    before_each() {
+      reset_malloc();
+      db = rydb_new();
+      assert_db(db);
+      strcpy(path, "test.db.insert_rows.XXXXXX");
+      mkdtemp(path);
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "open_test"));
+    }
+    after_each() {
+      rydb_close(db);
+      db = NULL;
+      rmdir_recursive(path);
+    }
+    test("data start is 8-byte aligned") {
+      assert_ptr_aligned(offsetof(rydb_stored_row_t, data), 8);
+      assert_ptr_aligned(RYDB_DATA_START_OFFSET, 8);
+      assert_ptr_aligned(db->data.file.start, 8);
+      asserteq((char *)db->data.data.start - (char *)db->data.file.start, RYDB_DATA_START_OFFSET);
+      assert_ptr_aligned(db->data.data.start, 8);
+      
+      
+    }
   }
 }
 
