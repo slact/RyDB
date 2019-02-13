@@ -7,8 +7,6 @@ LDLIBS_S		:=
 LDFLAGS = $(LDFLAGS_D)
 LDLIBS = $(LDLIBS_D)
 
-RYDB_MAKE_RULE = all
-
 CC = clang
 O=0
 CCACHE = ccache
@@ -67,11 +65,16 @@ valgrind:
 callgrind: default
 	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) --no-timer "$(TEST)"
 
+coverage-gcc: O = 0
+coverage-gcc: CC = gcc
+coverage-gcc: CFLAGS += -fprofile-arcs -ftest-coverage
+coverage-gcc: LDFLAGS += -fprofile-arcs -ftest-coverage
+coverage-gcc: default
+
 coverage: O = 0
-coverage: CC = gcc
+coverage: CC = clang
 coverage: CFLAGS += -fprofile-arcs -ftest-coverage
 coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
-coverage: RYDB_MAKE_RULE = coverage
 coverage: default
 
 sanitize:CC = clang

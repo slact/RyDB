@@ -12,7 +12,7 @@ COLOR = always
 COLOR_OPT = -fdiagnostics-color=${COLOR}
 CFLAGS = -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC
 VALGRIND_FLAGS = --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
-SANITIZE_FLAGS = -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum
+SANITIZE_FLAGS = -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum -fstack-protector
 CALLGRIND_FLAGS = --tool=callgrind --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=callgrind-rydb-%p.out
 ANALYZE_FLAGS = -maxloop 10 -enable-checker alpha.clone -enable-checker alpha.core -enable-checker alpha.deadcode -enable-checker alpha.security -enable-checker alpha.unix -enable-checker nullability
 CLANG_TIDY_CHECKS = bugprone-*, readability-*, performance-*, google-*, cert-*, -cert-err34-c, -google-readability-todo, -clang-diagnostic-unused-function
@@ -56,6 +56,10 @@ clean:
 	-rm -f tests/*.o
 	-rm -f tests/test
 	-rm -f coverage.*
+	-rm -Rf tests/test.db.*
+	-rm -f *.profraw
+	-rm -r tests/*.profraw
+	-rm -Rf coverage-report
 
 .compiler_flags: force
 	@echo '$(CC) $(CFLAGS)' | cmp -s - $@ || echo '$(CC) $(CFLAGS)' > $@
@@ -70,10 +74,10 @@ gcc:	default
 
 clang:	CC = clang
 clang:	default
-	
+
 analyze:clean
 	scan-build $(ANALYZE_FLAGS) --view -stats $(MAKE) O=$(O) CC=clang CFLAGS="$(CFLAGS)" CCACHE=""
-	
+
 sanitize:CC = clang
 sanitize:COLOR_OPT = ""
 sanitize:LDFLAGS = -fsanitize=address
@@ -81,38 +85,45 @@ sanitize:LIBS += -lubsan
 sanitize:CFLAGS += $(SANITIZE_FLAGS)
 sanitize:default
 
-debug: default
-	sudo kdbg ./$(BINARY)
-valgrind-gcc5: gcc5
-	valgrind $(VALGRIND_FLAGS)  ./$(TARGET)
-valgrind:
-	valgrind $(VALGRIND_FLAGS)  ./$(TARGET)
-callgrind: default
-	valgrind $(CALLGRIND_FLAGS)  ./$(TARGET)
 tidy:   clean default
 	clang-tidy -checks="$(CLANG_TIDY_CHECKS)" *.c
 
 lib:	$(DNAME)
 
+test:   CFLAGS += -DRYDB_DEBUG
 test:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR)
 	$(MAKE) -C $(TEST_DIR) run
 
-test-coverage: O = 0
-test-coverage: CC = gcc
-test-coverage: CFLAGS += -fprofile-arcs -ftest-coverage
-test-coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
-test-coverage: $(DNAME)
-test-coverage:
+coverage-gcc: O = 0
+coverage-gcc: CC = gcc
+coverage-gcc: CFLAGS += -fprofile-arcs -ftest-coverage
+coverage-gcc: LDFLAGS += -fprofile-arcs -ftest-coverage
+coverage-gcc: $(DNAME)
+coverage-gcc:
 	$(MAKE) -C $(TEST_DIR) coverage
 	$(MAKE) -C $(TEST_DIR) run
 	gcovr --html-details -o coverage.html
 	xdg-open ./coverage.html
 
-test-debug:	$(DNAME)
+coverage: O = 0
+coverage: CC = clang
+coverage: CFLAGS += -fprofile-instr-generate -fcoverage-mapping
+coverage: LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
+coverage: $(DNAME)
+coverage: 
+	$(MAKE) -C $(TEST_DIR) coverage
+	LLVM_PROFILE_FILE=".profraw" $(MAKE) -C $(TEST_DIR) run
+	llvm-profdata merge -sparse $(TEST_DIR)/.profraw -o .profdata
+	llvm-cov show -format="html" -output-dir="coverage-report" "librydb.so" -instr-profile=".profdata"
+	xdg-open ./coverage-report/index.html
+
+debug:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR) debug
-test-valgrind:	$(DNAME)
+valgrind:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR) valgrind
-test-sanitize:	sanitize
+sanitize:	sanitize
 	$(MAKE) -C $(TEST_DIR) sanitize
 	$(MAKE) -C $(TEST_DIR) run
+callgrind: $(DNAME)
+	$(MAKE) -C $(TEST_DIR) callgrind
