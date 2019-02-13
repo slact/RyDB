@@ -56,31 +56,45 @@ describe(rydb_new) {
   }
 }
 describe(config) {
+  rydb_t *db;
+  char path[64];
+  
+  before_each() {
+    reset_malloc();
+    db = rydb_new();
+    assert_db(db);
+    strcpy(path, "test.db.insert_rows.XXXXXX");
+    mkdtemp(path);
+  }
+  after_each() {
+    rydb_close(db);
+    db = NULL;
+    rmdir_recursive(path);
+  }
+  
   subdesc(row)   {
     it("fails on bad length params") {
-      rydb_t *db = rydb_new();
-      assert_db(db);
       assert_db_fail(db, rydb_config_row(db, 10, 20), RYDB_ERROR_BAD_CONFIG);
       assert_db_fail(db, rydb_config_row(db, 0, 0), RYDB_ERROR_BAD_CONFIG);
       assert_db_fail(db, rydb_config_row(db, RYDB_ROW_LEN_MAX+1, 0), RYDB_ERROR_BAD_CONFIG);
       asserteq(db->config.row_len, 0);
       asserteq(db->config.id_len, 0);
-      rydb_close(db);
     }
     it("sets lengths right") {
-      rydb_t *db = rydb_new();
-      assert_db(db);
       assert_db_ok(db, rydb_config_row(db, 10, 4));
       asserteq(db->config.row_len, 10);
       asserteq(db->config.id_len, 4);
-      rydb_close(db);
+    }
+    
+    it("fails if db is already open") {
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "config_test"));
+      assert_db_fail(db, rydb_config_row(db, 10, 4), RYDB_ERROR_DATABASE_OPEN);
     }
   }
   
   subdesc(row_link) {
     it("fails on weird link names") {
-      rydb_t *db = rydb_new();
-      assert_db(db);
       assert_db_fail(db, rydb_config_add_row_link(db, "", "meh"), RYDB_ERROR_BAD_CONFIG);
       assert_db_fail(db, rydb_config_add_row_link(db, "meh", ""), RYDB_ERROR_BAD_CONFIG);
       
@@ -94,16 +108,17 @@ describe(config) {
       assert_db_fail(db, rydb_config_add_row_link(db, "meh", "non-alphanum!"), RYDB_ERROR_BAD_CONFIG);
       
       assert_db_fail(db, rydb_config_add_row_link(db, "same", "same"), RYDB_ERROR_BAD_CONFIG);
-      rydb_close(db);
     }
     it("fails gracefully when out of memory") {
-      rydb_t *db = rydb_new();
-      assert_db(db);
+
       fail_malloc_later_each_time();
       assert_db_fail(db, rydb_config_add_row_link(db, "foo", "bar"), RYDB_ERROR_NOMEMORY);
       asserteq(db->config.link_pair_count, 0);
       assert_db_fail(db, rydb_config_add_row_link(db, "foo", "bar"), RYDB_ERROR_NOMEMORY);
       asserteq(db->config.link_pair_count, 0);
+      assert_db_fail(db, rydb_config_add_row_link(db, "foo", "bar"), RYDB_ERROR_NOMEMORY);
+      asserteq(db->config.link_pair_count, 0);
+      fail_malloc_after(2);
       assert_db_fail(db, rydb_config_add_row_link(db, "foo", "bar"), RYDB_ERROR_NOMEMORY);
       asserteq(db->config.link_pair_count, 0);
       reset_malloc();
@@ -117,22 +132,17 @@ describe(config) {
       asserteq(db->config.link_pair_count, 2);
       assertneq(db->config.link, NULL);
       reset_malloc();
-      rydb_close(db);
     }
     
     it("fails on repeated row link names") {
-      rydb_t *db = rydb_new();
-      assert_db(db);
       assert_db_ok(db, rydb_config_add_row_link(db, "next", "prev"));
       assert_db_fail(db, rydb_config_add_row_link(db, "next", "meh"), RYDB_ERROR_BAD_CONFIG);
       assert_db_fail(db, rydb_config_add_row_link(db, "meh", "next"), RYDB_ERROR_BAD_CONFIG);
       assert_db_fail(db, rydb_config_add_row_link(db, "prev", "meh"), RYDB_ERROR_BAD_CONFIG);
       assert_db_fail(db, rydb_config_add_row_link(db, "meh", "prev"), RYDB_ERROR_BAD_CONFIG);
-      rydb_close(db);
     }
     
     it("fails on too many links") {
-      rydb_t *db = rydb_new();
       for(int i=0; i<RYDB_ROW_LINK_PAIRS_MAX; i++) {
         char prevname[32], nextname[32];
         sprintf(prevname, "prev%i", i);
@@ -144,11 +154,9 @@ describe(config) {
       assert_db_fail(db, rydb_config_add_row_link(db, "next1000", "prev1000"), RYDB_ERROR_BAD_CONFIG);
       
       asserteq(db->config.link_pair_count, RYDB_ROW_LINK_PAIRS_MAX);
-      rydb_close(db);
     }
     
     it("sorts link names") {
-      rydb_t *db = rydb_new();
       for(int i=0; i<RYDB_ROW_LINK_PAIRS_MAX; i++) {
         char prevname[32], nextname[32];
         sprintf(prevname, "prev%i", i);
@@ -168,56 +176,62 @@ describe(config) {
         
         prev = cur;
       }
-      
-      rydb_close(db);
+    }
+    it("fails if db is already open") {
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "config_test"));
+      assert_db_fail(db, rydb_config_add_row_link(db, "next", "prev"), RYDB_ERROR_DATABASE_OPEN);
     }
   }
   
   subdesc(errors) {
     it("sets error_handler correctly") {
-      rydb_t *db = rydb_new();
       rydb_set_error_handler(db, test_errhandler, db);
       assert_db_fail(db, rydb_config_row(db, 0, 0), RYDB_ERROR_BAD_CONFIG);
-      assert(rydb_close(db));
     }
   }
   
   subdesc(add_hashtable_index) {
     it("fails on bad flags") {
-      rydb_t *db = rydb_new();
       rydb_config_row(db, 20, 5);
       
       //bad flags
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, 0xFF, NULL), RYDB_ERROR_BAD_CONFIG);
-      
+    }
+    
+    it("fails on bad hashtable config") {
       rydb_config_index_hashtable_t cf = {
         .hash_function = -1,
         .store_value = 1,
         .direct_mapping = 1
       };
-      //bad hashtable config
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG);
-      
+    }
+    it("fails if index name is weird") {
       char bigname[RYDB_NAME_MAX_LEN+10];
       memset(bigname, 'z', sizeof(bigname)-1);
       bigname[sizeof(bigname)-1]='\00';
       assert_db_fail(db, rydb_config_add_index_hashtable(db, bigname, 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
       
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "shouldn't have spaces", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
-      
+    }
+    it("fails if index start or length are out-of-bounds") {
+      rydb_config_row(db, 20, 5);
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 0, 30, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 30, 1, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
-      
+    }
+    it("fails on duplicate index name") {
+      rydb_config_row(db, 20, 5);
       assert_db_ok(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL));
       //can't add duplicate index
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
-      
-      //primary index must be unique
+    }
+    it("ensures the primary index is unique") {
+      rydb_config_row(db, 20, 5);
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "primary", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
-      
-      rydb_close(db);
-      
-      db = rydb_new();
+    }
+     
+    it("fails if adding too many indices") {
       rydb_config_row(db, 20, 5);
       //add all the possible indices
       for(int i=0; i < RYDB_INDICES_MAX-1; i++) {
@@ -228,6 +242,17 @@ describe(config) {
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
       assert_db_ok(db, rydb_config_add_index_hashtable(db, "primary", 5, 5, RYDB_INDEX_UNIQUE, NULL));
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar2", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
+    }
+    
+    it("sorts the idices") {
+      rydb_config_row(db, 20, 5);
+      //add all the possible indices
+      for(int i=0; i < RYDB_INDICES_MAX-1; i++) {
+        char indexname[32];
+        sprintf(indexname, "index%i", i);
+        assert_db_ok(db, rydb_config_add_index_hashtable(db, indexname, 5, 5, RYDB_INDEX_DEFAULT, NULL));
+      }
+      assert_db_ok(db, rydb_config_add_index_hashtable(db, "primary", 5, 5, RYDB_INDEX_UNIQUE, NULL));
       //check out the indices
       asserteq(db->config.index_count, RYDB_INDICES_MAX);
       rydb_config_index_t *cur, *prev = NULL;
@@ -238,26 +263,38 @@ describe(config) {
         }
         prev = cur;
       }
-      rydb_close(db);
-      
-      //memory allocation tests
-      db = rydb_new();
+    }
+    
+    it("fails gracefully when out of memory") {
       rydb_config_row(db, 20, 5);
       fail_malloc_later_each_time();
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_NOMEMORY);
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_NOMEMORY);
       assert_db_ok(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL));
       reset_malloc();
-      rydb_close(db);
+    }
+    
+    it("fails if db is already open") {
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "config_test"));
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_DATABASE_OPEN);
     }
   }
-  it("sets db revision") {
-    rydb_t *db = rydb_new();
-    assert_db_fail(db, rydb_config_revision(db, RYDB_REVISION_MAX + 1), RYDB_ERROR_BAD_CONFIG);
-    asserteq(db->config.revision, 0);
-    assert_db_ok(db, rydb_config_revision(db, 15));
-    asserteq(db->config.revision, 15);
-    rydb_close(db);
+  
+  subdesc(revision) {
+    it("sets db revision") {
+      assert_db_ok(db, rydb_config_revision(db, 15));
+      asserteq(db->config.revision, 15);
+    }
+    it("fails if db revision is too large") {
+      assert_db_fail(db, rydb_config_revision(db, RYDB_REVISION_MAX + 1), RYDB_ERROR_BAD_CONFIG);
+      asserteq(db->config.revision, 0);
+    }
+    it("fails if db is already open") {
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "config_test"));
+      assert_db_fail(db, rydb_config_revision(db, RYDB_REVISION_MAX + 1), RYDB_ERROR_DATABASE_OPEN);
+    }
   }
 }
 
