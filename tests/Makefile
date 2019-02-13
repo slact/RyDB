@@ -76,13 +76,13 @@ coverage-gcc: default
 
 coverage: O = 0
 coverage: CC = clang
-coverage: CFLAGS += -fprofile-arcs -ftest-coverage
-coverage: LDFLAGS += -fprofile-arcs -ftest-coverage
+coverage: CFLAGS += -fprofile-instr-generate -fcoverage-mapping
+coverage: LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
 coverage: default
 
 sanitize:CC = clang
 sanitize:COLOR_OPT = ""
 sanitize:LDFLAGS += -fsanitize=address
 sanitize:LIBS += -lubsan
-#sanitize:CFLAGS += $(SANITIZE_FLAGS)
+sanitize:CFLAGS += $(SANITIZE_FLAGS)
 sanitize:default

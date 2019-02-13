@@ -115,7 +115,7 @@ coverage:
 	$(MAKE) -C $(TEST_DIR) coverage
 	LLVM_PROFILE_FILE=".profraw" $(MAKE) -C $(TEST_DIR) run
 	llvm-profdata merge -sparse $(TEST_DIR)/.profraw -o .profdata
-	llvm-cov show -format="html" -output-dir="coverage-report" "librydb.so" -instr-profile=".profdata"
+	llvm-cov show -format="html" -output-dir="coverage-report" -instr-profile=".profdata" "librydb.so" -object "tests/test"
 	xdg-open ./coverage-report/index.html
 
 debug:	$(DNAME)
