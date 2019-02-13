@@ -1370,9 +1370,11 @@ int getrandombytes(unsigned char *p, size_t len) {
   else {
     //generate shitty seed rydb_row_nextfrom timeofday, pid, and other nonrandom crap
     struct {
+      clock_t clocked;
       struct timeval tv;
       pid_t pid;
     } shitseed;
+    shitseed.clocked = clock();
     gettimeofday(&shitseed.tv,NULL);
     shitseed.pid = getpid();
     uint64_t rnd;
