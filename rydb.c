@@ -298,7 +298,7 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
   char *nextname = rydb_strdup(link_name);
   char*prevname = rydb_strdup(reverse_link_name);
   if(!nextname || !prevname) {
-    rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link");
+    rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link names");
     if(nextname) rydb_mem.free(nextname);
     if(prevname) rydb_mem.free(prevname);
     return 0;
@@ -316,6 +316,8 @@ int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reve
   }
   else {
     rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for row-link");
+    if(nextname) rydb_mem.free(nextname);
+    if(prevname) rydb_mem.free(prevname);
     return 0;
   }
   rydb_config_row_link_t *link, *link_inverse;
