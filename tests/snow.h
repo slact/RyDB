@@ -64,26 +64,35 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/time.h>
-#include <sys/wait.h>
 #include <setjmp.h>
 #include <unistd.h>
 #include <stdint.h>
 
 #ifdef __MINGW32__
 # ifndef SNOW_USE_FNMATCH
-# define SNOW_USE_FNMATCH 0
+#  define SNOW_USE_FNMATCH 0
+# endif
+# ifndef SNOW_USE_FORK
+#  define SNOW_USE_FORK 0
 # endif
 #else
 # ifndef SNOW_USE_FNMATCH
-# define SNOW_USE_FNMATCH 1
+#  define SNOW_USE_FNMATCH 1
+# endif
+# ifndef SNOW_USE_FORK
+#  define SNOW_USE_FORK 1
 # endif
 #endif
 
-#if SNOW_USE_FNMATCH == 1
+#if SNOW_USE_FNMATCH != 0
 #include <fnmatch.h>
 #endif
 
-#define SNOW_VERSION "2.3.0"
+#if SNOW_USE_FORK != 0
+#include <sys/wait.h>
+#endif
+
+#define SNOW_VERSION "2.3.1"
 
 // Eventually, I want to re-implement optional explanation arguments
 // for assert macros to make this unnecessary.
@@ -606,7 +615,7 @@ static void _snow_desc_begin(const char *name) {
 
 			// Use fnmatch to do glob matching if that's enabled,
 			// otherwise just compare with strcmp
-#if SNOW_USE_FNMATCH == 1
+#if SNOW_USE_FNMATCH != 0
 			int fm = fnmatch(pattern, desc.full_name, 0);
 			matched = fm == 0;
 			error = !matched && fm != FNM_NOMATCH;
@@ -944,8 +953,8 @@ static int snow_main_function(int argc, char **argv) {
 
 	// If --gdb was passed, re-run under GDB
 	if (_snow.opts[_SNOW_OPT_GDB].boolval) {
-#ifdef __MINGW32__
-		fprintf(stderr, "Running under GDB is not supported with mingw.");
+#if SNOW_USE_FORK == 0
+		fprintf(stderr, "Can't run GDB, because SNOW_USE_FORK is 0.");
 		_snow.exit_code = EXIT_FAILURE;
 		goto cleanup;
 #else
@@ -1251,9 +1260,9 @@ static int _snow_assert_fake(int invert, ...) {
 	return -1;
 }
 
-// In mingw, size_t is compatible with unsigned int, and
+// In mingw and on ARM, size_t is compatible with unsigned int, and
 // ssize_t is compatible with int
-#ifdef __MINGW32__
+#if(__SIZEOF_SIZE_T__ == __SIZEOF_INT__)
 #define _snow_generic_assert(x) \
 	_Generic((x), \
 		float: _snow_assert_dbl, \
