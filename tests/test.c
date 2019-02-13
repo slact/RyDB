@@ -298,6 +298,20 @@ describe(config) {
   }
 }
 
+describe(debug) {
+  it("stringifies error codes") {
+    for(int i=0; i<100; i++) {
+      assertneq(rydb_error_code_str(i), NULL);
+    }
+  }
+  
+  it("stringifies row types") {
+    for(int i=0; i<100; i++) {
+      assertneq(rydb_rowtype_str(i), NULL);
+    }
+  }
+}
+
 describe(rydb_open) {
   rydb_t *db;
   char path[64];
