@@ -22,11 +22,11 @@ typedef uint32_t rydb_rownum_t;
 #define RYDB_INDEX_UNIQUE   0x1
 
 typedef struct rydb_stored_row_s {
-  uint32_t    target_rownum; //used in transactions, not so much in data
-  uint8_t     type;
   uint8_t     reserved1;
   uint8_t     reserved2;
   uint8_t     reserved3;
+  uint8_t     type;
+  uint32_t    target_rownum; //used in transactions, not so much in data
   char        data[]; //cool c99 bro
 } rydb_stored_row_t;
 
