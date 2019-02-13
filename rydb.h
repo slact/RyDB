@@ -156,7 +156,7 @@ typedef enum {
   RYDB_ERROR_TRANSACTION_INACTIVE = 15,
   RYDB_ERROR_TRANSACTION_FAILED   = 16,
   RYDB_ERROR_DATA_TOO_LARGE       = 17,
-  RYDB_ERROR_ROWNUM_TOO_LARGE     = 18,
+  RYDB_ERROR_ROWNUM_OUT_OF_RANGE  = 18,
   RYDB_ERROR_DATABASE_CLOSED      = 19,
   RYDB_ERROR_DATABASE_OPEN        = 20,
 } rydb_error_code_t;
@@ -198,7 +198,7 @@ struct rydb_s {
   const char         *name;
   uint16_t            stored_row_size;
   rydb_stored_row_t  *data_next_row; //row after last for RYDB_ROW_DATA
-  rydb_stored_row_t  *tx_next_row; //row after last for RYDB_ROW_CMD_*, also the next after the last row (of any type) in the data file
+  rydb_stored_row_t  *cmd_next_row; //row after last for RYDB_ROW_CMD_*, also the next after the last row (of any type) in the data file
   rydb_file_t         data;
   rydb_file_t         meta;
   rydb_file_t         lock;

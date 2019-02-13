@@ -34,8 +34,8 @@
 
 //#define RYDB_DEFAULT_MMAP_SIZE 12500000000 //100GB
 #define RYDB_DEFAULT_MMAP_SIZE 1024*8
-#define RYDB_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = db->data_next_row; cur < db->tx_next_row; cur = rydb_row_next(cur, db->stored_row_size, 1))
-#define RYDB_REVERSE_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = rydb_row_next(db->tx_next_row, db->stored_row_size, -1); cur >= db->data_next_row; cur = rydb_row_next(cur, db->stored_row_size, -1))
+#define RYDB_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = db->data_next_row; cur < db->cmd_next_row; cur = rydb_row_next(cur, db->stored_row_size, 1))
+#define RYDB_REVERSE_EACH_TX_ROW(db, cur) for(rydb_stored_row_t *cur = rydb_row_next(db->cmd_next_row, db->stored_row_size, -1); cur >= db->data_next_row; cur = rydb_row_next(cur, db->stored_row_size, -1))
 #define RYDB_EACH_ROW(db, cur) for(rydb_stored_row_t *cur = (void *)db->data.data.start; (char *)cur <= (char *)db->data.file.end - db->stored_row_size; cur = rydb_row_next(cur, db->stored_row_size, 1))
 
 int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f);
@@ -53,6 +53,7 @@ void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...
 int rydb_ensure_open(rydb_t *db);
 int rydb_ensure_closed(rydb_t *db, const char *msg);
 
+int rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum); //save an error on failure
 
 //these always succeed
 int rydb_transaction_finish_or_continue(rydb_t *db, int finish);
@@ -63,7 +64,7 @@ rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rown
 rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row);
 rydb_rownum_t rydb_data_next_rownum(rydb_t *db);
 uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row);
-
+int rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count);
 
 int getrandombytes(unsigned char *p, size_t len);
 
@@ -78,7 +79,7 @@ const char *rydb_rowtype_str(rydb_row_type_t type);
 typedef struct {
   uint16_t      start;
   uint16_t      len;
-} rydb_row_tx_header_t;
+} rydb_row_cmd_header_t;
 
 #define rydb_row_next(row, sz, n) (void *)((char *)(row) + (sz) * (n))
 
