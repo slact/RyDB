@@ -54,7 +54,7 @@ describe(config) {
     reset_malloc();
     db = rydb_new();
     assert_db(db);
-    strcpy(path, "test.db.insert_rows.XXXXXX");
+    strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
   }
   after_each() {
@@ -365,10 +365,10 @@ describe(sizing) {
       reset_malloc();
       db = rydb_new();
       assert_db(db);
-      strcpy(path, "test.db.insert_rows.XXXXXX");
+      strcpy(path, "test.db.XXXXXX");
       mkdtemp(path);
       config_testdb(db);
-      assert_db_ok(db, rydb_open(db, path, "open_test"));
+      assert_db_ok(db, rydb_open(db, path, "test"));
     }
     after_each() {
       rydb_close(db);
@@ -479,7 +479,7 @@ describe(row_operations) {
   before_each() {
     asserteq(db, NULL, "previous test not closed out correctly");
     db = rydb_new();
-    strcpy(path, "test.db.insert_rows.XXXXXX");
+    strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
     config_testdb(db);
     assert_db_ok(db, rydb_open(db, path, "test"));

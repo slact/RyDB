@@ -59,7 +59,7 @@ run:
 debug: default
 	kdbg ./$(TARGET) -a '--rerun-failed --no-timer "$(TEST)"'
 
-valgrind:
+valgrind:default
 	valgrind $(VALGRIND_FLAGS) ./$(TARGET) --no-timer "$(TEST)"
 
 callgrind: default
