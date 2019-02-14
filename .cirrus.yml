@@ -7,7 +7,9 @@ linux_task:
   build_script: make CCACHE="" CC=gcc all
   tests_script: make CCACHE="" CC=gcc test
   coverage_script:
-    - apt-get install python-pip
+    - apt-get install python
+    - wget https://bootstrap.pypa.io/get-pip.py
+    - python get-pip.py
     - pip install --user cpp-coveralls
     - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
     - coveralls --exclude tests --gcov-options '\-lp'
