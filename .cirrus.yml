@@ -1,6 +1,6 @@
-container:
-  image: gcc:latest
-task:
+gcc_task:
+  container:
+    image: gcc:latest
   env:
     CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
   build_script: make CCACHE="" CC=gcc all
@@ -9,3 +9,12 @@ task:
     - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
     - bash <(curl -s https://codecov.io/bash)
 
+osx_task:
+  osx_instance:
+    image: mojave-xcode-10.1
+  test_script: make CCACHE="" test
+
+freebsd_task:
+  image: freebsd-12-0-release-amd64
+  test_script: gmake CCACHE="" test
+ 
