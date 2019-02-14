@@ -1,13 +1,19 @@
-gcc_task:
+linux_task:
   container:
     image: gcc:latest
   env:
     CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
+    
   build_script: make CCACHE="" CC=gcc all
   tests_script: make CCACHE="" CC=gcc test
   coverage_script:
+    - sudo aptitude install python-pip
+    - pip install --user cpp-coveralls
     - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
-    - bash <(curl -s https://codecov.io/bash)
+    - coveralls --exclude tests --gcov-options '\-lp'
+#  coverage_script:
+#    - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
+#    - bash <(curl -s https://codecov.io/bash)
 
 osx_task:
   osx_instance:
