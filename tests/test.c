@@ -189,7 +189,6 @@ describe(config) {
       //bad flags
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, 0xFF, NULL), RYDB_ERROR_BAD_CONFIG);
     }
-    
     it("fails on bad hashtable config") {
       rydb_config_index_hashtable_t cf = {
         .hash_function = -1,
@@ -221,7 +220,6 @@ describe(config) {
       rydb_config_row(db, 20, 5);
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "primary", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
     }
-     
     it("fails if adding too many indices") {
       rydb_config_row(db, 20, 5);
       //add all the possible indices
@@ -234,8 +232,6 @@ describe(config) {
       assert_db_ok(db, rydb_config_add_index_hashtable(db, "primary", 5, 5, RYDB_INDEX_UNIQUE, NULL));
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar2", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
     }
-  
-    
     it("fails gracefully when out of memory") {
       rydb_config_row(db, 20, 5);
       fail_malloc_later_each_time();
@@ -244,13 +240,11 @@ describe(config) {
       assert_db_ok(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL));
       reset_malloc();
     }
-    
     it("fails if db is already open") {
       config_testdb(db);
       assert_db_ok(db, rydb_open(db, path, "config_test"));
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_DATABASE_OPEN);
     }
-    
     it("adds hashtable indices") {
       rydb_config_row(db, 20, 5);
       char *name = strdup("aaah"); //test that we're not using the passed-in string by reference
@@ -307,7 +301,6 @@ describe(config) {
       }
       asserteq(i, 3);
     }
-    
     it("sorts the indices") {
       rydb_config_row(db, 20, 5);
       //add all the possible indices
@@ -416,7 +409,6 @@ describe(rydb_open) {
   }
   
   it ("gracefully fails when out of memory") {
-    
     rydb_config_row(db, 20, 5);
     
     assert_db_fail(db, rydb_open(db, "./fakepath", "test"), RYDB_ERROR_FILE_ACCESS);
@@ -438,21 +430,32 @@ describe(rydb_open) {
     
   }
   
-  it("writes and reopens metadata") {
-    config_testdb(db);
-    assert_db_ok(db, rydb_open(db, path, "open_test"));
-    rydb_close(db);
+  subdesc(metadata) {
+    before_each() {
+      db = rydb_new();
+      strcpy(path, "test.db.XXXXXX");
+      mkdtemp(path);
+    }
+    after_each() {
+      rydb_close(db);
+      rmdir_recursive(path);
+    }
     
-    db = rydb_new();
-    config_testdb(db);
-    assert_db_ok(db, rydb_config_add_row_link(db, "front", "back"));
-    assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_CONFIG_MISMATCH);
-    rydb_close(db);
-    
-    //open ok
-    db = rydb_new();
-    config_testdb(db);
-    assert_db_ok(db, rydb_open(db, path, "open_test"));
+    it("writes and reopens metadata") {
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      rydb_close(db);
+      
+      db = rydb_new();
+      config_testdb(db);
+      assert_db_ok(db, rydb_config_add_row_link(db, "front", "back"));
+      assert_db_fail(db, rydb_open(db, path, "test"), RYDB_ERROR_CONFIG_MISMATCH);
+      rydb_close(db);
+      
+      //open ok
+      db = rydb_new();
+      assert_db_ok(db, rydb_open(db, path, "test"));
+    }
   }
   
   it("fails to do stuff when not open") {
@@ -822,6 +825,109 @@ describe(row_operations) {
     }
     
   }
+}
+
+describe(transactions) {
+  rydb_t *db = NULL;
+  char path[64];
+  
+  char *rowdata[] = {
+    "1.hello this is not terribly long of a string",
+    "2.and this is another one that exceeds the length",
+    "3.this one's short",
+    "4.tiny",
+    "5.here's another one",
+    "6.zzzzzzzzzzzzzz"
+  };
+  int nrows = sizeof(rowdata)/sizeof(char *);
+  
+  before_each() {
+    asserteq(db, NULL, "previous test not closed out correctly");
+    db = rydb_new();
+    strcpy(path, "test.db.XXXXXX");
+    mkdtemp(path);
+    config_testdb(db);
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    assert_db_insert_rows(db, rowdata, nrows);
+  }
+  after_each() {
+    rydb_close(db);
+    db = NULL;
+    rmdir_recursive(path);
+  }
+  
+  subdesc(commands) {
+    subdesc(SET) {
+      it("fails when out of range") {
+        assert_db_ok(db, rydb_transaction_start(db));
+        rydb_row_t rows[1];
+        rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_SET, .data="what", .len = 4, .num = 0};
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        
+        assert_db_ok(db, rydb_transaction_start(db));
+        rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_SET, .data="hows", .len = 4, .num = nrows + 1000};
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        
+        assert_db_ok(db, rydb_transaction_start(db));
+        rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_SET, .data="hows", .len = 4, .num = nrows + 2};
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        int n = 0;
+        RYDB_EACH_ROW(db, cur) {
+          if(n<nrows) {
+            assert_db_datarow(db, cur, rowdata, n);
+          }
+          else {
+            assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+          }
+          n++;
+        }
+      }
+    }
+    subdesc(UPDATE) {
+      it("fails when out of range") {
+         assert_db_ok(db, rydb_transaction_start(db));
+        rydb_row_t rows[1];
+        char buf[20];
+        rydb_row_cmd_header_t *header = (void *)buf;
+        header->start = 3;
+        header->len = 4;
+        memcpy(&buf[sizeof(*header)], "what", 4);
+        
+        rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .data=buf, .len = 4, .num = 0};
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        
+        assert_db_ok(db, rydb_transaction_start(db));
+        rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .data=buf, .len = 4, .num = nrows + 1000};
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        
+        rydb_print_stored_data(db);
+        assert_db_ok(db, rydb_transaction_start(db));
+        rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .data=buf, .len = 4, .num = nrows + 2};
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
+        rydb_print_stored_data(db);
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        int n = 0;
+        RYDB_EACH_ROW(db, cur) {
+          if(n<nrows) {
+            assert_db_datarow(db, cur, rowdata, n);
+          }
+          else {
+            assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+          }
+          n++;
+        }
+        
+      }
+      
+    }
+    
+  }
+  
 }
 
 snow_main();
