@@ -101,7 +101,7 @@ coverage-gcc: CFLAGS += -fprofile-arcs -ftest-coverage
 coverage-gcc: LDFLAGS += -fprofile-arcs -ftest-coverage
 coverage-gcc: $(DNAME)
 coverage-gcc:
-	$(MAKE) -C $(TEST_DIR) coverage
+	$(MAKE) -C $(TEST_DIR) coverage-gcc
 	$(MAKE) -C $(TEST_DIR) run
 	gcovr --html-details -o coverage.html
 	xdg-open ./coverage.html

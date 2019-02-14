@@ -1,8 +1,8 @@
 TARGET = test
-LDFLAGS_D		:= -L.. -L. -Wl,-rpath=. -Wl,-rpath=..
-LDLIBS_D		:= -lrydb -rdynamic
-LDFLAGS_S		:= ../librydb.a
-LDLIBS_S		:= 
+LDFLAGS_D	:= -L.. -L. -Wl,-rpath=. -Wl,-rpath=..
+LDLIBS_D	:= -lrydb -rdynamic
+LDFLAGS_S	:= ../librydb.a
+LDLIBS_S	:= 
 
 LDFLAGS = $(LDFLAGS_D)
 LDLIBS = $(LDLIBS_D)
@@ -20,7 +20,7 @@ CALLGRIND_FLAGS = --trace-children=yes --tool=callgrind --collect-jumps=yes  --c
 
 TEST = *
 
-.PHONY: default all clean force run 
+.PHONY: default all clean force run coverage coverage-gcc
 
 default: $(TARGET)
 all: default
