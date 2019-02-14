@@ -265,7 +265,8 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Unsupported hash function %s for hashtable \"%s\"", hash_func_buf, idx_cf->name);
     return 0;
   }
-  
+  idx_cf->type_config.hashtable.store_value = store_value;
+  idx_cf->type_config.hashtable.direct_mapping = store_value;
   return 1;
 }
 static char *hashfunction_to_str(rydb_config_index_type_t *cf) {
