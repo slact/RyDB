@@ -8,13 +8,13 @@ linux_task:
   tests_script: make CCACHE="" CC=gcc test
   coverage_script:
     - apt-get update
-    - apt-get install -y --no-install-recommends python python-dev
-    - wget https://bootstrap.pypa.io/get-pip.py
-    - python get-pip.py
+    - apt-get install -y --no-install-recommends python python-dev python-pip
+    #- wget https://bootstrap.pypa.io/get-pip.py
+    #- python get-pip.py
     - pip install --user cpp-coveralls
     - pip install --user pyYAML
-    - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
-    - /root/.local/bin/coveralls --exclude tests --gcov-options '\-lp'
+    - make CCACHE="" CC=gcc coverage-gcc-create
+    - /root/.local/bin/coveralls --exclude ./tests --verbose --gcov-options '\-lp'
 #  coverage_script:
 #    - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
 #    - bash <(curl -s https://codecov.io/bash)
