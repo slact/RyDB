@@ -24,7 +24,6 @@ int rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
   if(!rydb_file_ensure_writable_address(db, &db->data, newrows_start, ((char *)newrows_end - (char *)newrows_start))) {
     return 0;
   }
-  uint_fast16_t sz;
   rydb_stored_row_t *cur = newrows_start;
   for(int i=0; i<count; i++) {
     //copy the data
