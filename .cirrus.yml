@@ -1,9 +1,11 @@
 container:
   image: gcc:latest
 task:
+  env:
+    CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
   build_script: make CCACHE="" CC=gcc all
   tests_script: make CCACHE="" CC=gcc test
   coverage_script:
-    - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-gcov
+    - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
     - bash <(curl -s https://codecov.io/bash)
 
