@@ -15,7 +15,7 @@ linux_task:
     - pip install --user pyYAML
     - pip install --user cpp-coveralls
     - make CCACHE="" CC=gcc coverage-gcc-create
-    - /root/.local/bin/coveralls --exclude ./tests --verbose --gcov-options '\-lp'
+    - /root/.local/bin/coveralls --exclude ./tests --gcov-options '\-lp'
   codecov_script:
     - make CCACHE="" CC=gcc coverage-gcc-create
     - bash <(curl -s https://codecov.io/bash)
