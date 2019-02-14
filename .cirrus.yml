@@ -1,5 +1,5 @@
 container:
   image: gcc:latest
 task:
-  tests_script: make test
+  tests_script: make CCACHE="" CC="gcc" test
 
