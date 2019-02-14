@@ -95,20 +95,20 @@ test:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR)
 	$(MAKE) -C $(TEST_DIR) run
 
-coverage-gcc-build: O = 0
-coverage-gcc-build: CC = gcc
-coverage-gcc-build: CFLAGS += -fprofile-arcs -ftest-coverage
-coverage-gcc-build: LDFLAGS += -fprofile-arcs -ftest-coverage
-coverage-gcc-build: $(DNAME)
-coverage-gcc-build:
+coverage-gcc-create: O = 0
+coverage-gcc-create: CC = gcc
+coverage-gcc-create: CFLAGS += -fprofile-arcs -ftest-coverage
+coverage-gcc-create: LDFLAGS += -fprofile-arcs -ftest-coverage
+coverage-gcc-create: $(DNAME)
+coverage-gcc-create:
 	$(MAKE) -C $(TEST_DIR) coverage-gcc
 	$(MAKE) -C $(TEST_DIR) run
 
-coverage-gcc: coverage-gcc-build
+coverage-gcc: coverage-gcc-create
 	gcovr --html-details -o coverage.html
 	xdg-open ./coverage.html
 
-coverage-gcc-gcov: coverage-gcc-build
+coverage-gcc-gcov: coverage-gcc-create
 	gcov  $(filter-out rydb_test.c, $(wildcard *.c)) $(HEADERS)
 
 coverage: O = 0

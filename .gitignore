@@ -9,6 +9,7 @@ librydb.a
 librydb.so
 *.gcda
 *.gcno
+*.gcov
 coverage.*
 tests/db.*
 tests/test_open.*
