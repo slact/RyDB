@@ -7,10 +7,13 @@ linux_task:
   build_script: make CCACHE="" CC=gcc all
   tests_script: make CCACHE="" CC=gcc test
   coveralls_script:
-    - apt-get update
-    - apt-get install -y --no-install-recommends python python-dev python-pip python-setuptools
+    #- apt-get update
+    #- apt-get install -y --no-install-recommends python python-dev python-pip python-setuptools
     #- wget https://bootstrap.pypa.io/get-pip.py
     #- python get-pip.py
+    - apt-get install -y --no-install-recommends python python-dev
+    - wget https://bootstrap.pypa.io/get-pip.py
+    - python get-pip.py
     - pip install --user wheel
     - pip install --user pyYAML
     - pip install --user cpp-coveralls
