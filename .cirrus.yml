@@ -1,5 +1,9 @@
 container:
   image: gcc:latest
 task:
-  tests_script: make CCACHE="" CC="gcc" test
-
+  env:
+    CCACHE:
+    CC: gcc
+  build_script: make all
+  tests_script: make test
+  
