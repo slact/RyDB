@@ -11,6 +11,7 @@ linux_task:
     - wget https://bootstrap.pypa.io/get-pip.py
     - python get-pip.py
     - pip install --user cpp-coveralls
+    - pip install --user pyYAML
     - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
     - /root/.local/bin/coveralls --exclude tests --gcov-options '\-lp'
 #  coverage_script:
