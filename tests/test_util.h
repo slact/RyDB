@@ -49,6 +49,17 @@ do { \
     char ___buf[1024]; \
     char *___rxpattern = "" __VA_ARGS__; \
     if(___rydb_failed_as_expected(db, #cmd, (cmd), expected_error, ___rxpattern, ___buf) == 0 ) { \
+      rydb_error_clear(db); \
+      snow_fail("%s", ___buf); \
+    } \
+  } while(0)
+  
+#define assert_db_fail_match_errstr(db, cmd, expected_error, match) \
+  do { \
+    snow_fail_update(); \
+    char ___buf[1024]; \
+    if(___rydb_failed_as_expected(db, #cmd, (cmd), expected_error, match,  ___buf) == 0 ) { \
+      rydb_error_clear(db); \
       snow_fail("%s", ___buf); \
     } \
   } while(0)
