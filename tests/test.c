@@ -829,6 +829,31 @@ describe(row_operations) {
   }
 }
 
+
+struct cmd_rownum_out_of_range_check_s {
+  char      *name;
+  rydb_row_t rows[2];
+  int        n;
+  int        n_check;
+};
+void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_check_s *check, int nrows) {
+  int badrownums[] = {0, nrows + 1000, nrows + 2};
+  for(int j = 0; j<check->n_check; j++) {
+    rydb_row_t *row = &check->rows[j];
+    for(int k = 0; k<3; k++) {
+      row->num = badrownums[k];
+      assert_db_ok(db, rydb_transaction_start(db));
+      assert_db_ok(db, rydb_data_append_cmd_rows(db, check->rows, check->n));
+      char match[128];
+      snprintf(match, 128, "%s.* failed.* rownum.* %s", check->name, k<2 ? "out of range" : "beyond command");
+      //printf("%s %i %i %i\n", check->name, i, j, k);
+      //rydb_print_stored_data(db);
+      assert_db_fail_match_errstr(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, match);
+      row->num = 1;
+    }
+  }
+}
+
 describe(transactions) {
   rydb_t *db = NULL;
   char path[64];
@@ -842,6 +867,7 @@ describe(transactions) {
     "6.zzzzzzzzzzzzzz"
   };
   int nrows = sizeof(rowdata)/sizeof(char *);
+  struct cmd_rownum_out_of_range_check_s rangecheck;
   
   before_each() {
     asserteq(db, NULL, "previous test not closed out correctly");
@@ -859,77 +885,90 @@ describe(transactions) {
   }
   
   subdesc(commands) {
+    subdesc(rownum) {
+      it("fails SET with out-of-range rownum") {
+        rangecheck = (struct cmd_rownum_out_of_range_check_s ){ .name = "SET",
+          .rows = {{.type = RYDB_ROW_CMD_SET, .data="hows", .len = 4, .start = 0, .num = 1}},
+          .n = 1, .n_check = 1
+        };
+        cmd_rownum_out_of_range_check(db, &rangecheck, nrows);
+      }
+      it("fails UPDATE with out-of-range rownum") {
+        rangecheck = (struct cmd_rownum_out_of_range_check_s ){ .name = "UPDATE",
+          .rows = {{.type = RYDB_ROW_CMD_UPDATE, .data="hows", .len = 4, .start = 0, .num = 1}},
+          .n = 1, .n_check = 1
+        };
+        cmd_rownum_out_of_range_check(db, &rangecheck, nrows);
+      }
+      it("fails UPDATE2 with out-of-range rownum") {
+        rangecheck = (struct cmd_rownum_out_of_range_check_s ){ .name = "UPDATE2", //2-part update
+          .rows = {
+            {.type = RYDB_ROW_CMD_UPDATE1, .data=NULL ,  .len = 4, .start = 0, .num = 1},
+            {.type = RYDB_ROW_CMD_UPDATE2, .data="hows", .len = 4, .num = 1}
+          },
+          .n = 2, .n_check = 1
+        };
+        cmd_rownum_out_of_range_check(db, &rangecheck, nrows);
+      }
+      it("fails DELETE with out-of-range rownum") {  
+        rangecheck = (struct cmd_rownum_out_of_range_check_s ){ .name = "DELETE",
+          .rows = {{.type = RYDB_ROW_CMD_DELETE, .data=NULL , .len = 4, .start = 0, .num = 1}},
+          .n = 1, .n_check = 1
+        };
+        cmd_rownum_out_of_range_check(db, &rangecheck, nrows);
+      };
+      it("fails SWAP1 + SWAP2 with out-of-range rownum") {
+        rangecheck = (struct cmd_rownum_out_of_range_check_s ){ .name = "SWAP", //2-part update
+          .rows = {
+            {.type = RYDB_ROW_CMD_SWAP1, .data=NULL, .num = 4},
+            {.type = RYDB_ROW_CMD_SWAP2, .data=NULL, .num = 2}
+          },
+          .n = 2, .n_check = 2
+        };
+        cmd_rownum_out_of_range_check(db, &rangecheck, nrows);
+      }
+      it("fails SWAP1 + DELETE with out-of-range rownum") {
+        rangecheck = (struct cmd_rownum_out_of_range_check_s ){ .name = "SWAP", //2-part update
+          .rows = {
+            {.type = RYDB_ROW_CMD_SWAP1, .data=NULL, .num = 4},
+            {.type = RYDB_ROW_CMD_DELETE, .data=NULL, .num = 2}
+          },
+          .n = 2, .n_check = 2
+        };
+        cmd_rownum_out_of_range_check(db, &rangecheck, nrows);
+      }
+      it("fails SWAP1 + SET with out-of-range rownum") {
+        rangecheck = (struct cmd_rownum_out_of_range_check_s ){ .name = "SWAP", //2-part update
+          .rows = {
+            {.type = RYDB_ROW_CMD_SWAP1, .data=NULL, .num = 4},
+            {.type = RYDB_ROW_CMD_SET, .data="wooooooooooooooooowwwww", .len=5, .start=0, .num = 2}
+          },
+          .n = 2, .n_check = 2
+        };
+        cmd_rownum_out_of_range_check(db, &rangecheck, nrows);
+      }
+    }
+    
+    
     subdesc(SET) {
-      it("fails when out of range") {
+      it("assumes full row-length if .len==0") {
         assert_db_ok(db, rydb_transaction_start(db));
-        rydb_row_t rows[1];
-        rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_SET, .data="what", .len = 4, .num = 0};
-        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
-        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "SET.* failed.* rownum out of range");
-        
-        assert_db_ok(db, rydb_transaction_start(db));
-        rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_SET, .data="hows", .len = 4, .num = nrows + 1000};
-        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
-        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "SET.* failed.* rownum out of range");
-        
-        assert_db_ok(db, rydb_transaction_start(db));
-        rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_SET, .data="hows", .len = 4, .num = nrows + 2};
-        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
-        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "SET.* failed.* rownum.* beyond command");
-        int n = 0;
-        RYDB_EACH_ROW(db, cur) {
-          if(n<nrows) {
-            assert_db_datarow(db, cur, rowdata, n);
-          }
-          else {
-            assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-          }
-          n++;
-        }
+        rydb_row_t row = {.type = RYDB_ROW_CMD_SET, .data="abababababazazazaaaaazazaazaz", .len=0, .num=3};
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
       }
     }
     subdesc(UPDATE) {
-      it("fails when out of range") {
-         assert_db_ok(db, rydb_transaction_start(db));
-        rydb_row_t rows[1];
-        char buf[20];
-        rydb_row_cmd_header_t *header = (void *)buf;
-        header->start = 3;
-        header->len = 4;
-        memcpy(&buf[sizeof(*header)], "what", 4);
-        
-        rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .data=buf, .len = 4, .num = 0};
-        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
-        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
-        
+      
+      it("fails when UPDATE2 does not follow UPDATE1") {
         assert_db_ok(db, rydb_transaction_start(db));
-        rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .data=buf, .len = 4, .num = nrows + 1000};
-        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
-        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        //rydb_row_t rows[1];
         
-        rydb_print_stored_data(db);
-        assert_db_ok(db, rydb_transaction_start(db));
-        rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .data=buf, .len = 4, .num = nrows + 2};
-        assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
-        rydb_print_stored_data(db);
-        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
-        int n = 0;
-        RYDB_EACH_ROW(db, cur) {
-          if(n<nrows) {
-            assert_db_datarow(db, cur, rowdata, n);
-          }
-          else {
-            assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-          }
-          n++;
-        }
         
       }
       
     }
     
   }
-  
 }
 
 snow_main();
