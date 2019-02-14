@@ -950,6 +950,26 @@ describe(transactions) {
     }
     
     
+    subdesc("cmd_append") {
+      it("fails if it can't grow the file") {
+        rydb_row_t row = {.type = RYDB_ROW_CMD_DELETE, .num = 1};
+        assert_db_ok(db, rydb_transaction_start(db));
+        fclose(db->data.fp);
+        db->data.fp = NULL;
+        db->data.fd = -1;
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
+        assert_db_fail(db, rydb_data_append_cmd_rows(db, &row, 1), RYDB_ERROR_FILE_SIZE, "[Ff]ailed to grow file");
+      }
+      it("fails if given a DATA row") {
+        rydb_row_t row = {.type = RYDB_ROW_DATA};
+        assert_db_fail(db, rydb_data_append_cmd_rows(db, &row, 1), RYDB_ERROR_TRANSACTION_FAILED, "append row .*DATA to transaction");
+      }
+      it("fails if given an EMPTY row") {
+        rydb_row_t row = {.type = RYDB_ROW_EMPTY};
+        assert_db_fail(db, rydb_data_append_cmd_rows(db, &row, 1), RYDB_ERROR_TRANSACTION_FAILED, "append row .*EMPTY to transaction");
+      }
+    }
+    
     subdesc(SET) {
       it("assumes full row-length if .len==0") {
         assert_db_ok(db, rydb_transaction_start(db));
@@ -958,16 +978,197 @@ describe(transactions) {
       }
     }
     subdesc(UPDATE) {
-      
-      it("fails when UPDATE2 does not follow UPDATE1") {
+      it("fails when UPDATE1 is the last command in the transaction") {
         assert_db_ok(db, rydb_transaction_start(db));
-        //rydb_row_t rows[1];
-        
-        
+        rydb_row_t row = {.type = RYDB_ROW_CMD_UPDATE1, .data="abababa", .len=4, .num=3};
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "second .*command.* is missing"); 
+      }
+      it("fails when UPDATE1 is followed by anything but UPDATE2") {
+        for(int i=0; i<255; i++) {
+          if(i == RYDB_ROW_CMD_UPDATE2 || i == RYDB_ROW_DATA || i == RYDB_ROW_EMPTY) {
+            continue;
+          }
+          assert_db_ok(db, rydb_transaction_start(db));
+          rydb_row_t row = {.type = RYDB_ROW_CMD_UPDATE1, .data="abababa", .len=4, .num=3};
+          assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
+          row.type = i;
+          assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
+          assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "second .*wrong type.* is missing"); 
+        }
       }
       
+      it("fails when UPDATE2 is preceded by nothing") {
+        rydb_close(db);
+        db = rydb_new();
+        config_testdb(db);
+        assert_db_ok(db, rydb_open(db, path, "UPDATE2_test"));
+        rydb_row_t row = {.type = RYDB_ROW_CMD_UPDATE2, .data="abababa", .len=4, .num=3};
+        assert_db_ok(db, rydb_transaction_start(db));
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "is missing"); 
+      }
+      
+      it("fails when UPDATE2 is preceded by anything but UPDATE1") {
+        for(int i=0; i<255; i++) {
+          if(i == RYDB_ROW_CMD_UPDATE1  //has been tested
+            || i == RYDB_ROW_CMD_UPDATE2  //same
+            || i == RYDB_ROW_CMD_SWAP1 //will be tested
+            || i == RYDB_ROW_CMD_SWAP2 //same
+          ) {
+            continue;
+          }
+          assert_db_ok(db, rydb_transaction_start(db));
+          rydb_row_t row[] = {
+            {.type = RYDB_ROW_CMD_UPDATE1, .data="abababazzzzzzzzzzzzzzzzzzzzzz", .len=4, .start=3, .num=3},
+            {.type = RYDB_ROW_CMD_UPDATE2, .data="abababazzzzzzzzzzzzzzzzzzzzzz", .len=4, .start=3, .num=3}
+          };
+          assert_db_ok(db, rydb_data_append_cmd_rows(db, row, 2));
+          rydb_stored_row_t *u1 = rydb_rownum_to_row(db, nrows + 1);
+          u1->type = i;
+          assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "wrong type"); 
+        }
+      }
+    }
+     subdesc(SWAP2) {
+#ifdef RYDB_DEBUG
+      it("fails when SWAP1 is the last command in the transaction") {
+        rydb_refuse_to_run_transaction_without_commit = 0;
+        assert_db_ok(db, rydb_transaction_start(db));
+        rydb_row_t row[] = {
+          {.type = RYDB_ROW_CMD_SWAP1, .num=3}
+        };
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, row, 1));
+        assert_db_fail(db, rydb_transaction_run(db), RYDB_ERROR_TRANSACTION_FAILED, "SWAP.* missing"); 
+        rydb_refuse_to_run_transaction_without_commit = 1;
+      }
+#endif
+      it("fails when SWAP1 is followed by anything but SWAP2") {
+        for(int i=0; i<255; i++) {
+          if(i == RYDB_ROW_CMD_SWAP2 || i == RYDB_ROW_DATA || i == RYDB_ROW_EMPTY
+            || i == RYDB_ROW_CMD_SET || i == RYDB_ROW_CMD_DELETE) {
+            continue;
+          }
+          assert_db_ok(db, rydb_transaction_start(db));
+          rydb_row_t row = {.type = RYDB_ROW_CMD_SWAP1, .data="abababa", .len=4, .num=3};
+          assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
+          row.type = i;
+          assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
+          assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "second .*wrong type."); 
+        }
+      }
+      
+      it("fails when SWAP2 is preceded by nothing") {
+        rydb_close(db);
+        db = rydb_new();
+        config_testdb(db);
+        assert_db_ok(db, rydb_open(db, path, "SWAP2_test"));
+        rydb_row_t row = {.type = RYDB_ROW_CMD_SWAP2, .data="abababa", .len=4, .num=3};
+        assert_db_ok(db, rydb_transaction_start(db));
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "SWAP1 is missing"); 
+      }
+      
+      it("fails when SWAP2 is preceded by anything but SWAP1") {
+        for(int i=0; i<255; i++) {
+          if(i == RYDB_ROW_CMD_UPDATE1  //has been tested
+            || i == RYDB_ROW_CMD_UPDATE2  //same
+            || i == RYDB_ROW_CMD_SWAP1 //same
+            || i == RYDB_ROW_CMD_SWAP2 //being tested now
+          ) {
+            continue;
+          }
+          assert_db_ok(db, rydb_transaction_start(db));
+          rydb_row_t row[] = {
+            {.type = RYDB_ROW_CMD_SWAP1, .data="abababazzzzzzzzzzzzzzzzzzzzzz", .len=4, .start=3, .num=3},
+            {.type = RYDB_ROW_CMD_SWAP2, .data="abababazzzzzzzzzzzzzzzzzzzzzz", .len=4, .start=3, .num=3}
+          };
+          assert_db_ok(db, rydb_data_append_cmd_rows(db, row, 2));
+          rydb_stored_row_t *u1 = rydb_rownum_to_row(db, nrows + 1);
+          u1->type = i;
+          //rydb_print_stored_data(db);
+          assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "wrong type"); 
+        }
+      }
+      
+      it("fails to SWAP a non-empty non-data row") {
+        assert_db_ok(db, rydb_transaction_start(db));
+        rydb_row_t row[] = {
+          {.type = RYDB_ROW_CMD_SWAP1, .len=4, .start=3, .num=3},
+          {.type = RYDB_ROW_CMD_SWAP2, .len=4, .start=3, .num=1}
+        };
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, row, 2));
+        
+        rydb_stored_row_t *s = rydb_rownum_to_row(db, 3);
+        s->type = RYDB_ROW_CMD_UPDATE1;
+        //rydb_print_stored_data(db);
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "wrong type"); 
+        s->type = RYDB_ROW_DATA;
+        assert_db_ok(db, rydb_data_append_cmd_rows(db, row, 2));
+        
+        assert_db_ok(db, rydb_transaction_start(db));
+        s = rydb_rownum_to_row(db, 1);
+        s->type = RYDB_ROW_CMD_UPDATE2;
+        
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "wrong type");
+        
+        s->type = RYDB_ROW_DATA;
+      }
+      
+      it("fails if SWAP1 fails") {
+        assert_db_ok(db, rydb_transaction_start(db));
+        assert_db_ok(db, rydb_row_swap(db, 1, 2));
+        rydb_stored_row_t *s = rydb_rownum_to_row(db, nrows + 2);
+        s->type = RYDB_ROW_EMPTY;
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+      }
     }
     
+    subdesc(COMMIT) {
+      it("refuses to run an uncommitted transaction") {
+        assert_db_ok(db, rydb_transaction_start(db));
+        assert_db_ok(db, rydb_row_swap(db, 1, 2));
+        assert_db_ok(db, rydb_row_swap(db, 2, 3));
+        assert_db_fail_match_errstr(db, rydb_transaction_run(db), RYDB_ERROR_TRANSACTION_INCOMPLETE, "doesn't end with a COMMIT");
+      }
+#ifdef RYDB_DEBUG
+      it("notices if forced to run through an uncommitted transaction") {
+        assert_db_ok(db, rydb_transaction_start(db));
+        assert_db_ok(db, rydb_row_swap(db, 1, 2));
+        assert_db_ok(db, rydb_row_swap(db, 2, 3));
+        rydb_refuse_to_run_transaction_without_commit = 0;
+        assert_db_fail(db, rydb_transaction_run(db), RYDB_ERROR_TRANSACTION_FAILED, "committed without ending on a COMMIT");
+        rydb_refuse_to_run_transaction_without_commit = 1;
+#endif
+      }
+    }
+    
+    it("refuses to finish a transaction that wasn't started") {
+      assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_INACTIVE);
+    }
+    it("refuses to start a transaction twice") {
+      assert_db_ok(db, rydb_transaction_start(db));
+      assert_db_fail(db, rydb_transaction_start(db), RYDB_ERROR_TRANSACTION_ACTIVE, "already active");
+    }
+    
+    it("refuses to cancel an inactive transaction") {
+      assert_db_fail(db, rydb_transaction_cancel(db), RYDB_ERROR_TRANSACTION_INACTIVE, "[Nn]o active transaction");
+    }
+    it("cancels an ongoing transaction") {
+      assert_db_ok(db, rydb_transaction_start(db));
+      assert_db_ok(db, rydb_row_delete(db, 1));
+      assert_db_ok(db, rydb_row_delete(db, 2));
+      assert_db_ok(db, rydb_transaction_cancel(db));
+      int n = 0;
+      RYDB_EACH_ROW(db, cur) {
+        if(n < nrows)
+          assert_db_datarow(db, cur, rowdata, n);
+        else
+          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
+        n++;
+      }
+      asserteq(n, nrows + 2);
+    }
   }
 }
 

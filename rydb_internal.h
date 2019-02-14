@@ -84,6 +84,11 @@ typedef struct {
 
 #define rydb_row_next(row, sz, n) (void *)((char *)(row) + (off_t )(sz) * (n))
 
+#ifdef RYDB_DEBUG
+int rydb_refuse_to_run_transaction_without_commit; //turning this off lets us test more invalid inputs to commands
+#else
+#define rydb_refuse_to_run_transaction_without_commit 1
+#endif
 
 //debug stuff?
 void rydb_print_stored_data(rydb_t *db);

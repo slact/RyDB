@@ -56,7 +56,7 @@ int rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
         break;
       case RYDB_ROW_EMPTY:
       case RYDB_ROW_DATA:
-        rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Tried to append data %s to transaction log", rydb_rowtype_str(row->type));
+        rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Tried to append row %s to transaction log", rydb_rowtype_str(row->type));
         return 0;
     }
     cur->target_rownum = rows[i].num;
@@ -113,7 +113,11 @@ static inline int rydb_cmd_update1(rydb_t *db, rydb_stored_row_t *cmd1, rydb_sto
   return 1;
 }
 static inline int rydb_cmd_update2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_stored_row_t *cmd2) {
-  assert(cmd1 && cmd2);
+  if(!cmd1) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%i] failed: one of the UPDATE2 rows is missing");
+    cmd2->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
   rydb_row_cmd_header_t    *header = (rydb_row_cmd_header_t *)(void *)cmd1->data;
   if(cmd1->type != RYDB_ROW_CMD_UPDATE1 || cmd2->type != RYDB_ROW_CMD_UPDATE2) {
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%i] failed: one of the UPDATE rows has the wrong type");
@@ -146,14 +150,16 @@ static inline int rydb_cmd_delete(rydb_t *db, rydb_stored_row_t *cmd) {
 
 static inline int rydb_cmd_swap1(rydb_t *db, rydb_stored_row_t *cmd1, rydb_stored_row_t *cmd2) {
   if(!cmd2) {//that's weird...
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: SWAP2 is missing from log");
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: second command row is missing");
     cmd1->type = RYDB_ROW_EMPTY;
     return 0;
   }
   rydb_stored_row_t  *src, *dst;
   switch(cmd2->type) {
     case RYDB_ROW_CMD_SWAP2:
-      //don't need to be doing anything.
+      // don't need to be doing anything.
+      // SWAP2 needs to run first to change itself to a SET or DELETE
+      // then it will run SWAP1
       return 1;
     case RYDB_ROW_CMD_SET:
     case RYDB_ROW_CMD_DELETE:
@@ -174,13 +180,17 @@ static inline int rydb_cmd_swap1(rydb_t *db, rydb_stored_row_t *cmd1, rydb_store
       cmd1->type = RYDB_ROW_EMPTY;
       return 1;
     default:
-      rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: Unexpected row type for SWAP2");
+      rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed:  second command row has the wrong type");
       cmd1->type = RYDB_ROW_EMPTY;
       return 0;
   }
 }
 
 static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_stored_row_t *cmd2) {
+  if(!cmd1) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP2 failed: SWAP1 is missing");
+    return 0;
+  }
   rydb_stored_row_t  *src = rydb_rownum_to_row(db, cmd1->target_rownum);
   rydb_stored_row_t  *dst = rydb_rownum_to_row(db, cmd2->target_rownum);
   if(!rydb_cmd_rangecheck(db, "SWAP2", cmd1, src) || !rydb_cmd_rangecheck(db, "SWAP2", cmd1, dst)) {
@@ -189,14 +199,23 @@ static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_store
   
   size_t              rowsz = db->stored_row_size;
   
-  if(cmd2->type != RYDB_ROW_CMD_SWAP2) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP [%i][%i] failed: SWAP2's type isn't SWAP2?...", cmd1->target_rownum, cmd2->target_rownum);
+  if(cmd2->type != RYDB_ROW_CMD_SWAP2 || cmd1->type != RYDB_ROW_CMD_SWAP1) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: one of the command rows is the wrong type");
     cmd1->type = RYDB_ROW_EMPTY;
     cmd2->type = RYDB_ROW_EMPTY;
     return 0;
   }
+  
+  rydb_row_type_t srctype = src->type, dsttype = dst->type;
+  if(dsttype != RYDB_ROW_EMPTY && dsttype != RYDB_ROW_DATA) {
+        rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: dst row is the wrong type");
+    cmd1->type = RYDB_ROW_EMPTY;
+    cmd2->type = RYDB_ROW_EMPTY;
+    return 0;
+  }
+  
   rydb_row_type_t cmd2type;
-  switch(src->type) {
+  switch(srctype) {
     case RYDB_ROW_DATA:
       memcpy(cmd2->data, src->data, rowsz - offsetof(rydb_stored_row_t, data)); //copy just the data
       cmd2->type = cmd2type = RYDB_ROW_CMD_SET; //second half of the swap is not a SET command.
@@ -206,7 +225,7 @@ static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_store
       cmd2->type = cmd2type = RYDB_ROW_CMD_DELETE;
       break;
     default:
-      rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP [%i][%i] failed: unexpected dst row type", cmd1->target_rownum, cmd2->target_rownum);
+      rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: src row is the wrong type");
       cmd1->type = RYDB_ROW_EMPTY;
       cmd2->type = RYDB_ROW_EMPTY;
       return 0;
@@ -234,8 +253,10 @@ static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_store
 int rydb_transaction_run(rydb_t *db) {
   rydb_stored_row_t *prev = NULL, *next;
   rydb_stored_row_t *lastcmd = rydb_row_next(db->cmd_next_row, db->stored_row_size, -1);
-  if(lastcmd < db->data_next_row || lastcmd->type != RYDB_ROW_CMD_COMMIT) {
+  if(lastcmd < db->data_next_row || 
+    (rydb_refuse_to_run_transaction_without_commit && lastcmd->type != RYDB_ROW_CMD_COMMIT)) {
     // no CMD_COMMIT at the end -- bail
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_INCOMPLETE, "Refused to run a transaction that doesn't end with a COMMIT");
     return 0;
   }
   int rc = 1;
@@ -308,7 +329,7 @@ int rydb_transaction_finish_or_continue(rydb_t *db, int finish) {
 
 int rydb_transaction_finish(rydb_t *db) {
   if(!db->transaction.active) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_ACTIVE, "No active transaction to finish");
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_INACTIVE, "No active transaction to finish");
     return 0;
   }
   rydb_row_t commit_row = {.type = RYDB_ROW_CMD_COMMIT, .num = 0};
@@ -339,7 +360,7 @@ int rydb_transaction_start(rydb_t *db) {
 
 int rydb_transaction_cancel(rydb_t *db) {
   if(!db->transaction.active) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_ACTIVE, "No active transaction to stop");
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_INACTIVE, "No active transaction to stop");
     return 0;
   }
   

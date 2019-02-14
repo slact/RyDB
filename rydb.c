@@ -1,4 +1,3 @@
-#include "rydb.h"
 #include "rydb_internal.h"
 #include "rydb_hashtable.h"
 #include <stdlib.h>
@@ -25,6 +24,9 @@
 #define PATH_SLASH "/"
 #endif
 
+#ifdef RYDB_DEBUG
+int rydb_refuse_to_run_transaction_without_commit = 1; //turning this off lets us test more invalid inputs to commands
+#endif
 
 rydb_allocator_t rydb_mem = {
   malloc,
@@ -107,6 +109,8 @@ const char *rydb_error_code_str(rydb_error_code_t code) {
     return "RYDB_ERROR_TRANSACTION_INACTIVE";
   case RYDB_ERROR_TRANSACTION_FAILED:
     return "RYDB_ERROR_TRANSACTION_FAILED";
+  case RYDB_ERROR_TRANSACTION_INCOMPLETE:
+    return "RYDB_ERROR_TRANSACTION_INCOMPLETE";
   case RYDB_ERROR_DATA_TOO_LARGE:
     return "RYDB_ERROR_DATA_TOO_LARGE";
   case RYDB_ERROR_ROWNUM_OUT_OF_RANGE:
@@ -135,8 +139,10 @@ const char *rydb_rowtype_str(rydb_row_type_t type) {
   return "???";
 }
 
+
+
 #define RETURN_ERROR_PRINTF(err, func, ...) \
-  if(err->errno_val != 0) {            \
+  if(err->errno_val != 0 && err->code >= 4 && err->code <=8) {            \
     return func(__VA_ARGS__ "%s [%d]: %s, errno [%d]: %s\n", rydb_error_code_str(err->code), err->code, err->str, err->errno_val, strerror(err->errno_val));\
   } \
   return func(__VA_ARGS__ "%s [%d]: %s\n", rydb_error_code_str(err->code), err->code, err->str)
@@ -538,7 +544,7 @@ static int rydb_unlock(rydb_t *db, uint8_t lockflags) {
 int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz) {
   size_t current_sz = f->file.end - f->file.start;
   if(current_sz < desired_min_sz && ftruncate(f->fd, desired_min_sz) == -1) {
-    rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed grow file to size %zu", desired_min_sz);
+    rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to grow file to size %zu", desired_min_sz);
     return 0;
   }
   return 1;
@@ -547,7 +553,7 @@ int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, si
   char *end = (char *)addr + sz;
   if(end > f->file.end) {
     if(ftruncate(f->fd, (size_t )((char *)end - (char *)f->file.start)) == -1) {
-      rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed grow file to size %zu", (size_t )((char *)end - (char *)f->file.end));
+      rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to grow file to size %zu", (size_t )((char *)end - (char *)f->file.end));
       return 0;
     }
     f->file.end = end;

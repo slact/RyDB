@@ -10,7 +10,7 @@ O=0
 CCACHE = ccache
 COLOR = always
 COLOR_OPT = -fdiagnostics-color=${COLOR}
-CFLAGS = -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC
+CFLAGS = -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC -DRYDB_DEBUG
 VALGRIND_FLAGS = --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
 SANITIZE_FLAGS = -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum -fstack-protector
 CALLGRIND_FLAGS = --tool=callgrind --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=callgrind-rydb-%p.out
@@ -102,10 +102,10 @@ coverage-gcc-create: LDFLAGS += -fprofile-arcs -ftest-coverage
 coverage-gcc-create: $(DNAME)
 coverage-gcc-create:
 	$(MAKE) -C $(TEST_DIR) coverage-gcc
-	$(MAKE) -C $(TEST_DIR) run
+	-$(MAKE) -C $(TEST_DIR) run
 
 coverage-gcc: coverage-gcc-create
-	gcovr --html-details -o coverage.html
+	gcovr --html-details --exclude snow.h --exclude test_util.h -o coverage.html
 	xdg-open ./coverage.html
 
 coverage-gcc-gcov: coverage-gcc-create
@@ -118,7 +118,7 @@ coverage: LDFLAGS += -fprofile-instr-generate -fcoverage-mapping
 coverage: $(DNAME)
 coverage: 
 	$(MAKE) -C $(TEST_DIR) coverage
-	LLVM_PROFILE_FILE=".profraw" $(MAKE) -C $(TEST_DIR) run
+	-LLVM_PROFILE_FILE=".profraw" $(MAKE) -C $(TEST_DIR) run
 	llvm-profdata merge -sparse $(TEST_DIR)/.profraw -o .profdata
 	llvm-cov show -format="html" -output-dir="coverage-report" -instr-profile=".profdata" "librydb.so" -object "tests/test"
 	xdg-open ./coverage-report/index.html
