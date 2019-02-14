@@ -6,7 +6,7 @@ linux_task:
     
   build_script: make CCACHE="" CC=gcc all
   tests_script: make CCACHE="" CC=gcc test
-  coverage_script:
+  coveralls_script:
     - apt-get update
     - apt-get install -y --no-install-recommends python python-dev python-pip python-setuptools
     #- wget https://bootstrap.pypa.io/get-pip.py
@@ -16,9 +16,9 @@ linux_task:
     - pip install --user cpp-coveralls
     - make CCACHE="" CC=gcc coverage-gcc-create
     - /root/.local/bin/coveralls --exclude ./tests --verbose --gcov-options '\-lp'
-#  coverage_script:
-#    - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
-#    - bash <(curl -s https://codecov.io/bash)
+  codecov_script:
+    - make CCACHE="" CC=gcc coverage-gcc-create
+    - bash <(curl -s https://codecov.io/bash)
 
 osx_task:
   osx_instance:
