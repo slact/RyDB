@@ -33,37 +33,37 @@ do { \
 
 #define assert_db_ok(db, cmd) \
   do { \
-    char buf[1024]; \
-    int cmd_rc = cmd;\
-    rydb_error_snprint(db, buf, 1024); \
-    if(cmd_rc != 1) \
-      fail("%s", buf); \
+    char ___buf[1024]; \
+    int ___cmd_rc = cmd;\
+    rydb_error_snprint(db, ___buf, 1024); \
+    if(___cmd_rc != 1) \
+      fail("%s", ___buf); \
   } while(0)
 
 #define assert_db_fail(db, cmd, expected_error) \
   do { \
-    int cmd_rc = cmd;\
-    char buf[1024]; \
+    int ___cmd_rc = cmd;\
+    char ___buf[1024]; \
     rydb_error_t *err = rydb_error(db); \
     if(err) \
-      rydb_error_snprint(db, buf, 1024); \
-    if(cmd_rc != 0) \
+      rydb_error_snprint(db, ___buf, 1024); \
+    if(___cmd_rc != 0) \
       fail("Expected to fail with error %s [%i], but succeeded instead", rydb_error_code_str(expected_error), expected_error); \
     else if(err && err->code != expected_error) \
-      fail("Expected to fail with error %s [%i], but got %s", rydb_error_code_str(expected_error), expected_error, buf); \
+      fail("Expected to fail with error %s [%i], but got %s", rydb_error_code_str(expected_error), expected_error, ___buf); \
     rydb_error_clear(db); \
   } while(0)
 
 #define assert_db(db) \
   do { \
-    char buf[1024]; \
+    char ___cmd_rc[1024]; \
     assertneq(db, NULL, "rydb struct pointer cannot be NULL"); \
     rydb_error_t *err = rydb_error(db); \
     if(err) { \
-      rydb_error_snprint(db, buf, 1024); \
+      rydb_error_snprint(db, ___cmd_rc, 1024); \
     } \
     if(err) \
-      fail("Expected no error, got %s", buf); \
+      fail("Expected no error, got %s", ___cmd_rc); \
   } while(0)
 
 #define assert_db_row_type(db, row, rowtype) \
