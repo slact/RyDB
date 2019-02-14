@@ -234,6 +234,9 @@ int rydb_transaction_run(rydb_t *db) {
       cur->type = RYDB_ROW_EMPTY;
     }
   }
+  if(!rc) {
+    return 0;
+  }
   if(commit_row != prev) {
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Transaction was committed without ending on a COMMIT command");
     return 0;
