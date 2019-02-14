@@ -12,7 +12,7 @@ linux_task:
     - python get-pip.py
     - pip install --user cpp-coveralls
     - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
-    - coveralls --exclude tests --gcov-options '\-lp'
+    - /root/.local/bin/coveralls --exclude tests --gcov-options '\-lp'
 #  coverage_script:
 #    - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
 #    - bash <(curl -s https://codecov.io/bash)
