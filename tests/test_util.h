@@ -4,6 +4,7 @@
 #include "rydb_internal.h"
 #include "snow.h"
 #include <signal.h>
+#include <regex.h>
 
 #undef snow_main_decls
 #define snow_main_decls \
@@ -23,6 +24,8 @@ void reset_malloc(void);
 int rmdir_recursive(const char *path);
 void rydb_print_stored_data(rydb_t *db);
 
+int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_code_t expected_error_code, const char *errmsg_match, char *errmsg_result);
+
 #define assert_ptr_aligned(ptr, alignment) \
 do { \
   if((uintptr_t )ptr % alignment != 0) { \
@@ -40,18 +43,14 @@ do { \
       fail("%s", ___buf); \
   } while(0)
 
-#define assert_db_fail(db, cmd, expected_error) \
+#define assert_db_fail(db, cmd, expected_error, ...) \
   do { \
-    int ___cmd_rc = cmd;\
+    snow_fail_update(); \
     char ___buf[1024]; \
-    rydb_error_t *err = rydb_error(db); \
-    if(err) \
-      rydb_error_snprint(db, ___buf, 1024); \
-    if(___cmd_rc != 0) \
-      fail("Expected to fail with error %s [%i], but succeeded instead", rydb_error_code_str(expected_error), expected_error); \
-    else if(err && err->code != expected_error) \
-      fail("Expected to fail with error %s [%i], but got %s", rydb_error_code_str(expected_error), expected_error, ___buf); \
-    rydb_error_clear(db); \
+    char *___rxpattern = "" __VA_ARGS__; \
+    if(___rydb_failed_as_expected(db, #cmd, (cmd), expected_error, ___rxpattern, ___buf) == 0 ) { \
+      snow_fail("%s", ___buf); \
+    } \
   } while(0)
 
 #define assert_db(db) \

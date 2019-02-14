@@ -65,9 +65,9 @@ describe(config) {
   
   subdesc(row)   {
     it("fails on bad length params") {
-      assert_db_fail(db, rydb_config_row(db, 10, 20), RYDB_ERROR_BAD_CONFIG);
-      assert_db_fail(db, rydb_config_row(db, 0, 0), RYDB_ERROR_BAD_CONFIG);
-      assert_db_fail(db, rydb_config_row(db, RYDB_ROW_LEN_MAX+1, 0), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_row(db, 10, 20), RYDB_ERROR_BAD_CONFIG, "cannot exceed row length");
+      assert_db_fail(db, rydb_config_row(db, 0, 0), RYDB_ERROR_BAD_CONFIG, "length cannot be 0");
+      assert_db_fail(db, rydb_config_row(db, RYDB_ROW_LEN_MAX+1, 0), RYDB_ERROR_BAD_CONFIG, "length [0-9]+ cannot exceed [0-9]+");
       asserteq(db->config.row_len, 0);
       asserteq(db->config.id_len, 0);
     }
@@ -80,25 +80,25 @@ describe(config) {
     it("fails if db is already open") {
       config_testdb(db);
       assert_db_ok(db, rydb_open(db, path, "config_test"));
-      assert_db_fail(db, rydb_config_row(db, 10, 4), RYDB_ERROR_DATABASE_OPEN);
+      assert_db_fail(db, rydb_config_row(db, 10, 4), RYDB_ERROR_DATABASE_OPEN, "open .*cannot be configured");
     }
   }
   
   subdesc(row_link) {
     it("fails on weird link names") {
-      assert_db_fail(db, rydb_config_add_row_link(db, "", "meh"), RYDB_ERROR_BAD_CONFIG);
-      assert_db_fail(db, rydb_config_add_row_link(db, "meh", ""), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_row_link(db, "", "meh"), RYDB_ERROR_BAD_CONFIG, "name .*length 0");
+      assert_db_fail(db, rydb_config_add_row_link(db, "meh", ""), RYDB_ERROR_BAD_CONFIG, "reverse .*name .*length 0");
       
       char bigname[RYDB_NAME_MAX_LEN+10];
       memset(bigname, 'z', sizeof(bigname));
       bigname[sizeof(bigname)-1]='\00';
-      assert_db_fail(db, rydb_config_add_row_link(db, bigname, "meh"), RYDB_ERROR_BAD_CONFIG);
-      assert_db_fail(db, rydb_config_add_row_link(db, "meh", bigname), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_row_link(db, bigname, "meh"), RYDB_ERROR_BAD_CONFIG, "name is too long");
+      assert_db_fail(db, rydb_config_add_row_link(db, "meh", bigname), RYDB_ERROR_BAD_CONFIG, "[Rr]everse .*name is too long");
       
-      assert_db_fail(db, rydb_config_add_row_link(db, "non-alphanum!", "meh"), RYDB_ERROR_BAD_CONFIG);
-      assert_db_fail(db, rydb_config_add_row_link(db, "meh", "non-alphanum!"), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_row_link(db, "non-alphanum!", "meh"), RYDB_ERROR_BAD_CONFIG, "must be alphanumeric");
+      assert_db_fail(db, rydb_config_add_row_link(db, "meh", "non-alphanum!"), RYDB_ERROR_BAD_CONFIG, "[Rr]everse .*must be alphanumeric");
       
-      assert_db_fail(db, rydb_config_add_row_link(db, "same", "same"), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_row_link(db, "same", "same"), RYDB_ERROR_BAD_CONFIG, "cannot be the same");
     }
     it("fails gracefully when out of memory") {
 
@@ -127,10 +127,10 @@ describe(config) {
     
     it("fails on repeated row link names") {
       assert_db_ok(db, rydb_config_add_row_link(db, "next", "prev"));
-      assert_db_fail(db, rydb_config_add_row_link(db, "next", "meh"), RYDB_ERROR_BAD_CONFIG);
-      assert_db_fail(db, rydb_config_add_row_link(db, "meh", "next"), RYDB_ERROR_BAD_CONFIG);
-      assert_db_fail(db, rydb_config_add_row_link(db, "prev", "meh"), RYDB_ERROR_BAD_CONFIG);
-      assert_db_fail(db, rydb_config_add_row_link(db, "meh", "prev"), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_row_link(db, "next", "meh"), RYDB_ERROR_BAD_CONFIG, "already exists");
+      assert_db_fail(db, rydb_config_add_row_link(db, "meh", "next"), RYDB_ERROR_BAD_CONFIG, "already exists");
+      assert_db_fail(db, rydb_config_add_row_link(db, "prev", "meh"), RYDB_ERROR_BAD_CONFIG, "already exists");
+      assert_db_fail(db, rydb_config_add_row_link(db, "meh", "prev"), RYDB_ERROR_BAD_CONFIG, "already exists");
     }
     
     it("fails on too many links") {
@@ -142,7 +142,7 @@ describe(config) {
       }
       
       //too many links
-      assert_db_fail(db, rydb_config_add_row_link(db, "next1000", "prev1000"), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_row_link(db, "next1000", "prev1000"), RYDB_ERROR_BAD_CONFIG, "[Cc]annot exceed [0-9]+ .*link.* per database");
       
       asserteq(db->config.link_pair_count, RYDB_ROW_LINK_PAIRS_MAX);
     }
@@ -171,14 +171,14 @@ describe(config) {
     it("fails if db is already open") {
       config_testdb(db);
       assert_db_ok(db, rydb_open(db, path, "config_test"));
-      assert_db_fail(db, rydb_config_add_row_link(db, "next", "prev"), RYDB_ERROR_DATABASE_OPEN);
+      assert_db_fail(db, rydb_config_add_row_link(db, "next", "prev"), RYDB_ERROR_DATABASE_OPEN, "open .*cannot be configured");
     }
   }
   
   subdesc(errors) {
     it("sets error_handler correctly") {
       rydb_set_error_handler(db, test_errhandler, db);
-      assert_db_fail(db, rydb_config_row(db, 0, 0), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_row(db, 0, 0), RYDB_ERROR_BAD_CONFIG, "[Rr]ow length cannot be 0");
     }
   }
   
@@ -187,7 +187,7 @@ describe(config) {
       rydb_config_row(db, 20, 5);
       
       //bad flags
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, 0xFF, NULL), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, 0xFF, NULL), RYDB_ERROR_BAD_CONFIG, "[Uu]nknown flags");
     }
     it("fails on bad hashtable config") {
       rydb_config_index_hashtable_t cf = {
@@ -195,30 +195,30 @@ describe(config) {
         .store_value = 1,
         .direct_mapping = 1
       };
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Ii]nvalid hash");
     }
     it("fails if index name is weird") {
       char bigname[RYDB_NAME_MAX_LEN+10];
       memset(bigname, 'z', sizeof(bigname)-1);
       bigname[sizeof(bigname)-1]='\00';
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, bigname, 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, bigname, 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG, "[Ii]ndex name .*too long");
       
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "shouldn't have spaces", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "shouldn't have spaces", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG, "name .*invalid.* must consist of .*alphanumeric .*underscore");
     }
     it("fails if index start or length are out-of-bounds") {
       rydb_config_row(db, 20, 5);
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 0, 30, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 30, 1, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 0, 30, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG, "out of bounds");
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 30, 1, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG, "out of bounds");
     }
     it("fails on duplicate index name") {
       rydb_config_row(db, 20, 5);
       assert_db_ok(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL));
       //can't add duplicate index
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG, "already exists");
     }
     it("fails on non-unique primary index") {
       rydb_config_row(db, 20, 5);
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "primary", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "primary", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG, "[Pp]rimary index must have .*UNIQUE.* flag");
     }
     it("fails if adding too many indices") {
       rydb_config_row(db, 20, 5);
@@ -228,9 +228,9 @@ describe(config) {
         sprintf(indexname, "index%i", i);
         assert_db_ok(db, rydb_config_add_index_hashtable(db, indexname, 5, 5, RYDB_INDEX_DEFAULT, NULL));
       }
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG, "[Cc]annot exceed [0-9]+ indices");
       assert_db_ok(db, rydb_config_add_index_hashtable(db, "primary", 5, 5, RYDB_INDEX_UNIQUE, NULL));
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar2", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar2", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_BAD_CONFIG, "[Cc]annot exceed [0-9]+ indices");
     }
     it("fails gracefully when out of memory") {
       rydb_config_row(db, 20, 5);
@@ -243,7 +243,7 @@ describe(config) {
     it("fails if db is already open") {
       config_testdb(db);
       assert_db_ok(db, rydb_open(db, path, "config_test"));
-      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_DATABASE_OPEN);
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_DATABASE_OPEN, "open and cannot be configured");
     }
     it("adds hashtable indices") {
       rydb_config_row(db, 20, 5);
@@ -325,7 +325,7 @@ describe(config) {
   
   subdesc(revision) {
     it("fails if db revision is too large") {
-      assert_db_fail(db, rydb_config_revision(db, RYDB_REVISION_MAX + 1), RYDB_ERROR_BAD_CONFIG);
+      assert_db_fail(db, rydb_config_revision(db, RYDB_REVISION_MAX + 1), RYDB_ERROR_BAD_CONFIG, "[Rr]evision number cannot exceed [0-9]+");
       asserteq(db->config.revision, 0);
     }
     it("fails if db is already open") {
@@ -399,11 +399,13 @@ describe(rydb_open) {
   char path[64];
   
   before_each() {
+    reset_malloc();
     db = rydb_new();
     strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
   }
   after_each() {
+    reset_malloc();
     rydb_close(db);
     rmdir_recursive(path);
   }
@@ -411,7 +413,7 @@ describe(rydb_open) {
   it ("gracefully fails when out of memory") {
     rydb_config_row(db, 20, 5);
     
-    assert_db_fail(db, rydb_open(db, "./fakepath", "test"), RYDB_ERROR_FILE_ACCESS);
+    assert_db_fail(db, rydb_open(db, "./fakepath", "test"), RYDB_ERROR_FILE_ACCESS, "[Ff]ailed to open file .* errno \\[2\\]");
     
     fail_malloc_later_each_time();
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
@@ -449,7 +451,7 @@ describe(rydb_open) {
       db = rydb_new();
       config_testdb(db);
       assert_db_ok(db, rydb_config_add_row_link(db, "front", "back"));
-      assert_db_fail(db, rydb_open(db, path, "test"), RYDB_ERROR_CONFIG_MISMATCH);
+      assert_db_fail(db, rydb_open(db, path, "test"), RYDB_ERROR_CONFIG_MISMATCH, "[Mm]ismatch.*link.*count");
       rydb_close(db);
       
       //open ok
@@ -778,7 +780,7 @@ describe(row_operations) {
     }
     it("fails on updates that are longer than the row length") {
       assert_db_insert_rows(db, rowdata, nrows);
-      assert_db_fail(db, rydb_row_update(db, 1, "hey", ROW_LEN, 3), RYDB_ERROR_DATA_TOO_LARGE);
+      assert_db_fail(db, rydb_row_update(db, 1, "hey", ROW_LEN, 3), RYDB_ERROR_DATA_TOO_LARGE, "[Dd]ata length.* exceeds row length");
       assert_db_fail(db, rydb_row_update(db, 1, "zzzzzzzzzzzzzzzzzzzzzzzzzz", 0, ROW_LEN+1), RYDB_ERROR_DATA_TOO_LARGE);
     }
     
@@ -863,17 +865,17 @@ describe(transactions) {
         rydb_row_t rows[1];
         rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_SET, .data="what", .len = 4, .num = 0};
         assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
-        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "SET.* failed.* rownum out of range");
         
         assert_db_ok(db, rydb_transaction_start(db));
         rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_SET, .data="hows", .len = 4, .num = nrows + 1000};
         assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
-        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "SET.* failed.* rownum out of range");
         
         assert_db_ok(db, rydb_transaction_start(db));
         rows[0]=(rydb_row_t ){.type = RYDB_ROW_CMD_SET, .data="hows", .len = 4, .num = nrows + 2};
         assert_db_ok(db, rydb_data_append_cmd_rows(db, rows, 1));
-        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
+        assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, "SET.* failed.* rownum.* beyond command");
         int n = 0;
         RYDB_EACH_ROW(db, cur) {
           if(n<nrows) {

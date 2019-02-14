@@ -3,6 +3,51 @@
 #include <stdlib.h>
 #include <ftw.h>
 
+
+int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_code_t expected_error_code, const char *errmsg_match, char *errmsg_result) {
+  rydb_error_t *err = rydb_error(db);
+  if(rc == 1) {
+    snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i], but succeeded instead", callstr, rydb_error_code_str(expected_error_code), expected_error_code);
+    return 0;
+  }
+  if(!err) {
+    snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i], but succeeded instead", callstr, rydb_error_code_str(expected_error_code), expected_error_code);
+    return 0;
+  }
+  char buf[1024];
+  rydb_error_snprint(db, buf, 1024);
+  if(err->code != expected_error_code) {
+    snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i], but instead got %s", callstr, rydb_error_code_str(expected_error_code), expected_error_code, buf);
+    return 0;
+  }
+  if(strlen(errmsg_match) > 0) {
+    regex_t   regex;
+    int       rcx;
+    char      rxerrbuf[100];
+    rcx = regcomp(&regex, errmsg_match, REG_EXTENDED);
+    if (rcx != 0) {
+      snprintf(errmsg_result, 1024, "Bad regex %s", errmsg_match);
+      return 0;
+    }
+    rcx = regexec(&regex, buf, 0, NULL, 0);
+    if(rcx == REG_NOMATCH) {
+      snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i] matching /%s/, but instead got %s", callstr, rydb_error_code_str(expected_error_code), expected_error_code, errmsg_match, buf);
+      regfree(&regex);
+      return 0;
+    }
+    if(rcx != 0) {
+      regerror(rcx, &regex, rxerrbuf, 100);
+      snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i] matching %s, but instead got regex error %s", callstr, rydb_error_code_str(expected_error_code), expected_error_code, errmsg_match, rxerrbuf);
+      regfree(&regex);
+      return 0;
+    }
+    regfree(&regex);
+    return 1;
+  } 
+  return 1;
+}
+
+
 //wonky memory allocator
 static uint64_t malloc_n, malloc_n_max = UINT64_MAX;
 static uint_fast8_t  increment_and_reset_on_malloc_fail = 0;
