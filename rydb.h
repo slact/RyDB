@@ -50,6 +50,7 @@ typedef struct {
   rydb_rownum_t   num;
   rydb_row_type_t type;
   const char     *data;
+  uint16_t        start;
   uint16_t        len;
 } rydb_row_t;
 

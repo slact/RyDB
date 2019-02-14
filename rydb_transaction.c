@@ -16,6 +16,58 @@ static int rydb_cmd_rangecheck(rydb_t *db, const char *cmdname, rydb_stored_row_
   return 1;
 }
 
+int rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
+  uint_fast16_t        rowsize = db->stored_row_size;
+  rydb_stored_row_t   *newrows_start = db->cmd_next_row;
+  rydb_stored_row_t   *newrows_end = rydb_row_next(newrows_start, rowsize, count);
+  
+  if(!rydb_file_ensure_writable_address(db, &db->data, newrows_start, ((char *)newrows_end - (char *)newrows_start))) {
+    return 0;
+  }
+  uint_fast16_t sz;
+  rydb_stored_row_t *cur = newrows_start;
+  for(int i=0; i<count; i++) {
+    //copy the data
+    rydb_row_t    *row = &rows[i];
+    uint_fast16_t  rowlen = row->len;
+    rydb_row_cmd_header_t *header;
+    switch(rows[i].type) {
+      case RYDB_ROW_CMD_SET:
+        memcpy(cur->data, row->data, rowlen > 0 ? rowlen : db->config.row_len);
+        break;
+      case RYDB_ROW_CMD_UPDATE:
+        header = (void *)cur->data;
+        header->len = rowlen;
+        header->start = row->start;
+        memcpy((char *)&header[1], row->data, rowlen);
+        break;
+      case RYDB_ROW_CMD_UPDATE1:
+        header = (void *)cur->data;
+        header->len = rowlen;
+        header->start = row->start;
+        break;
+      case RYDB_ROW_CMD_UPDATE2:
+        memcpy(cur->data, row->data, rowlen);
+        break;
+      case RYDB_ROW_CMD_DELETE:
+      case RYDB_ROW_CMD_SWAP1:
+      case RYDB_ROW_CMD_SWAP2:
+      case RYDB_ROW_CMD_COMMIT:
+        //copy no data
+        break;
+      case RYDB_ROW_EMPTY:
+      case RYDB_ROW_DATA:
+        rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Tried to append data %s to transaction log", rydb_rowtype_str(row->type));
+        return 0;
+    }
+    cur->target_rownum = rows[i].num;
+    cur->type = rows[i].type;
+    cur = rydb_row_next(cur, rowsize, 1);
+  }
+  db->cmd_next_row = newrows_end;
+  return 1;
+}
+
 static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
   size_t               rowsz = db->stored_row_size;
   rydb_stored_row_t   *dst = rydb_rownum_to_row(db, cmd->target_rownum);

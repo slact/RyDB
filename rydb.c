@@ -1393,34 +1393,6 @@ int getrandombytes(unsigned char *p, size_t len) {
   return good;
 }
 
-uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row) {
-  switch(row->type) {
-    case RYDB_ROW_EMPTY:
-      return 0;
-    case RYDB_ROW_DATA:
-      return db->config.row_len;
-    case RYDB_ROW_CMD_SET:
-      return row->len == 0 ? db->config.row_len : row->len;
-    case RYDB_ROW_CMD_UPDATE:
-      assert(row->data);
-      return sizeof(rydb_row_cmd_header_t) + *(uint16_t *)&((char *)row->data)[offsetof(rydb_row_cmd_header_t, len)];
-    case RYDB_ROW_CMD_UPDATE1:
-      return sizeof(rydb_row_cmd_header_t);
-    case RYDB_ROW_CMD_UPDATE2:
-      row--;
-      assert(row->data);
-      return *(uint16_t *)&((char *)row->data)[offsetof(rydb_row_cmd_header_t, len)];
-    case RYDB_ROW_CMD_DELETE:
-      return 0;
-    case RYDB_ROW_CMD_SWAP1:
-      return 0;
-    case RYDB_ROW_CMD_SWAP2:
-      return 0;
-    case RYDB_ROW_CMD_COMMIT:
-      return 0;
-  }
-  return 0;
-}
 
 rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum) {
   char *start = db->data.data.start;
@@ -1437,29 +1409,6 @@ rydb_rownum_t rydb_data_next_rownum(rydb_t *db) {
 
 rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row) {
   return (rydb_rownum_t )(1 + ((char *)row - db->data.data.start)/db->stored_row_size);
-}
-
-int rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
-  uint_fast16_t        rowsize = db->stored_row_size;
-  rydb_stored_row_t   *newrows_start = db->cmd_next_row;
-  rydb_stored_row_t   *newrows_end = rydb_row_next(newrows_start, rowsize, count);
-  
-  if(!rydb_file_ensure_writable_address(db, &db->data, newrows_start, ((char *)newrows_end - (char *)newrows_start))) {
-    return 0;
-  }
-  uint_fast16_t sz;
-  rydb_stored_row_t *cur = newrows_start;
-  for(int i=0; i<count; i++) {
-    sz = rydb_row_data_size(db, &rows[i]);
-    cur->type = rows[i].type;
-    cur->target_rownum = rows[i].num;
-    if(sz > 0 && rows[i].data) {
-      memcpy(&cur->data, rows[i].data, sz);
-    }
-    cur = rydb_row_next(cur, rowsize, 1);
-  }
-  db->cmd_next_row = newrows_end;
-  return 1;
 }
 
 void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_just_emptied) {
@@ -1535,27 +1484,17 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
   int txstarted;
   rydb_transaction_start_or_continue(db, &txstarted);
   
-  rydb_row_cmd_header_t header = {.start = start, .len = len};
-  uint16_t max_sz_for_1cmd_update = db->config.row_len - RYDB_ROW_DATA_OFFSET;
+  uint16_t max_sz_for_1cmd_update = db->config.row_len - sizeof(rydb_row_cmd_header_t);
   rydb_row_t rows[3];
   
   if(len < max_sz_for_1cmd_update) {
-    char  *buf = rydb_mem.malloc(sizeof(header) + len);
-    if(!buf) {
-      if(txstarted) db->transaction.active = 0;
-      rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Cannot allocate temporary memory for row update");
-      return 0;
-    }
-    memcpy(buf, &header, sizeof(header));
-    memcpy(&buf[sizeof(header)], data, len);
-    rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .num = rownum, .data = buf};
+    rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE, .num = rownum, .start = start, .len = len, .data = data};
     rows[1] = (rydb_row_t ){.type = RYDB_ROW_CMD_COMMIT, .num = 0};
     rc = rydb_data_append_cmd_rows(db, rows, 1 + txstarted);
-    rydb_mem.free(buf);
   }
   else {
-    rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE1, .num = rownum, .data = (char *)&header};
-    rows[1] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE2, .num = 0, .data = data};
+    rows[0] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE1, .num = rownum, .start = start, .len = len, .data = NULL};
+    rows[1] = (rydb_row_t ){.type = RYDB_ROW_CMD_UPDATE2, .num = 0, .len = len, .data = data};
     rows[2] = (rydb_row_t ){.type = RYDB_ROW_CMD_COMMIT, .num = 0};
     rc = rydb_data_append_cmd_rows(db, rows, 2 + txstarted);
   }
