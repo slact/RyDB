@@ -3,4 +3,7 @@ container:
 task:
   build_script: make CCACHE="" CC=gcc all
   tests_script: make CCACHE="" CC=gcc test
-  
+  coverage_script:
+    - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-gcov
+    - bash <(curl -s https://codecov.io/bash)
+
