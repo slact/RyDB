@@ -12,10 +12,14 @@ gcc_task:
 osx_task:
   osx_instance:
     image: mojave-xcode-10.1
-  test_script: make CCACHE="" test
+  test_script:
+    - make CCACHE="" all
+    - make CCACHE="" -C tests static
+    - make CCACHE="" -C tests run
 
 freebsd_task:
   freebsd_instance:
     image: freebsd-12-0-release-amd64
+  setup_script: pkg install -y gmake
   test_script: gmake CCACHE="" test
  
