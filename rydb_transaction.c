@@ -2,18 +2,25 @@
 #include <string.h>
 #include <assert.h>
 
-static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
-  size_t               rowsz = db->stored_row_size;
-  rydb_stored_row_t   *dst = rydb_rownum_to_row(db, cmd->target_rownum);
+static int rydb_cmd_rangecheck(rydb_t *db, const char *cmdname, rydb_stored_row_t *cmd, rydb_stored_row_t *dst) {
   if(!dst) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SET [%i] failed: rownum out of range", cmd->target_rownum);
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command %s [%i] failed: rownum out of range", cmdname, cmd->target_rownum);
     cmd->type = RYDB_ROW_EMPTY;
     return 0;
   }
   if(dst > cmd) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SET [%i] failed: rownum sets row after command", cmd->target_rownum);
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command %s [%i] failed: rownum is beyond command rownum", cmdname, cmd->target_rownum);
     cmd->type = RYDB_ROW_EMPTY;
     return 0;
+  }
+  return 1;
+}
+
+static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
+  size_t               rowsz = db->stored_row_size;
+  rydb_stored_row_t   *dst = rydb_rownum_to_row(db, cmd->target_rownum);
+  if(!rydb_cmd_rangecheck(db, "SET", cmd, dst)) {
+    return(0);
   }
   if(cmd == dst) {
     //set this very rownum
@@ -34,9 +41,8 @@ static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
 static inline int rydb_cmd_update(rydb_t *db, rydb_stored_row_t *cmd) {
   rydb_row_cmd_header_t    *header = (rydb_row_cmd_header_t *)(void *)cmd->data;
   rydb_stored_row_t  *dst = rydb_rownum_to_row(db, cmd->target_rownum);
-  if(!dst) {
-     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE [%i] failed: rownum out of range", cmd->target_rownum);
-    return 0;
+  if(!rydb_cmd_rangecheck(db, "UPDATE", cmd, dst)) {
+    return(0);
   }
   memcpy(&dst->data[header->start], (char *)&header[1], header->len);
   cmd->type = RYDB_ROW_EMPTY;
@@ -65,10 +71,7 @@ static inline int rydb_cmd_update2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_sto
     return 0;
   }
   rydb_stored_row_t  *dst = rydb_rownum_to_row(db, cmd1->target_rownum);
-  if(!dst) {
-     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%i] failed: rownum out of range", cmd1->target_rownum);
-    cmd1->type = RYDB_ROW_EMPTY;
-    cmd2->type = RYDB_ROW_EMPTY;
+  if(!rydb_cmd_rangecheck(db, "UPDATE2", cmd1, dst)) {
     return 0;
   }
   memcpy(&dst->data[header->start], cmd2->data, header->len);
@@ -78,9 +81,7 @@ static inline int rydb_cmd_update2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_sto
 }
 static inline int rydb_cmd_delete(rydb_t *db, rydb_stored_row_t *cmd) {
   rydb_stored_row_t  *dst = rydb_rownum_to_row(db, cmd->target_rownum);
-  if(!dst) {
-     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command DELETE [%i] failed: rownum out of range", cmd->target_rownum);
-     cmd->type = RYDB_ROW_EMPTY;
+  if(!rydb_cmd_rangecheck(db, "DELETE", cmd, dst)) {
     return 0;
   }
   dst->type = RYDB_ROW_EMPTY;
@@ -108,10 +109,7 @@ static inline int rydb_cmd_swap1(rydb_t *db, rydb_stored_row_t *cmd1, rydb_store
       //run the swap now, the temp src copy has already been written
       src = rydb_rownum_to_row(db, cmd1->target_rownum);
       dst = rydb_rownum_to_row(db, cmd2->target_rownum);
-      if(!src || !dst) {
-        rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP failed: rownum out of range");
-        cmd1->type = RYDB_ROW_EMPTY;
-        cmd2->type = RYDB_ROW_EMPTY;
+      if(!rydb_cmd_rangecheck(db, "SWAP", cmd1, src) || !rydb_cmd_rangecheck(db, "SWAP", cmd1, dst)) {
         return 0;
       }
       memcpy(src, dst, db->stored_row_size);
@@ -134,8 +132,7 @@ static inline int rydb_cmd_swap1(rydb_t *db, rydb_stored_row_t *cmd1, rydb_store
 static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_stored_row_t *cmd2) {
   rydb_stored_row_t  *src = rydb_rownum_to_row(db, cmd1->target_rownum);
   rydb_stored_row_t  *dst = rydb_rownum_to_row(db, cmd2->target_rownum);
-  if(!dst || !src) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command SWAP [%i][%i] failed: rownum out of range", cmd1->target_rownum, cmd2->target_rownum);
+  if(!rydb_cmd_rangecheck(db, "SWAP2", cmd1, src) || !rydb_cmd_rangecheck(db, "SWAP2", cmd1, dst)) {
     return 0;
   }
   
@@ -191,58 +188,66 @@ int rydb_transaction_run(rydb_t *db) {
     return 0;
   }
   int rc = 1;
+  rydb_stored_row_t *commit_row = NULL;
   RYDB_EACH_CMD_ROW(db, cur) {
-    switch((rydb_row_type_t )cur->type) {
-      case RYDB_ROW_EMPTY:
-      case RYDB_ROW_DATA:
-        //do nothing, these are weird.
-        break;
-      case RYDB_ROW_CMD_SET:
-        rc = rydb_cmd_set(db, cur);
-        break;
-      case RYDB_ROW_CMD_UPDATE:
-        rc = rydb_cmd_update(db, cur);
-        break;
-      case RYDB_ROW_CMD_UPDATE1:
-        next = rydb_row_next(cur, db->stored_row_size, 1);
-        if(next >= db->cmd_next_row) next = NULL;
-        rc = rydb_cmd_update1(db, cur, next);
-        break;
-      case RYDB_ROW_CMD_UPDATE2:
-        rc = rydb_cmd_update2(db, prev, cur);
-        break;
-      case RYDB_ROW_CMD_DELETE:
-        rc = rydb_cmd_delete(db, cur);
-        break;
-      case RYDB_ROW_CMD_SWAP1:
-        next = rydb_row_next(cur, db->stored_row_size, 1);
-        if(next >= db->cmd_next_row) next = NULL;
-        rc = rydb_cmd_swap1(db, cur, next);
-        break;
-      case RYDB_ROW_CMD_SWAP2:
-        rc = rydb_cmd_swap2(db, prev, cur);
-        break;
-      case RYDB_ROW_CMD_COMMIT:
-        //clear it
-        cur->type = RYDB_ROW_EMPTY;
-        break;
+    if(rc) {
+      switch((rydb_row_type_t )cur->type) {
+        case RYDB_ROW_EMPTY:
+        case RYDB_ROW_DATA:
+          //do nothing, these are weird.
+          break;
+        case RYDB_ROW_CMD_SET:
+          rc = rydb_cmd_set(db, cur);
+          break;
+        case RYDB_ROW_CMD_UPDATE:
+          rc = rydb_cmd_update(db, cur);
+          break;
+        case RYDB_ROW_CMD_UPDATE1:
+          next = rydb_row_next(cur, db->stored_row_size, 1);
+          if(next >= db->cmd_next_row) next = NULL;
+          rc = rydb_cmd_update1(db, cur, next);
+          break;
+        case RYDB_ROW_CMD_UPDATE2:
+          rc = rydb_cmd_update2(db, prev, cur);
+          break;
+        case RYDB_ROW_CMD_DELETE:
+          rc = rydb_cmd_delete(db, cur);
+          break;
+        case RYDB_ROW_CMD_SWAP1:
+          next = rydb_row_next(cur, db->stored_row_size, 1);
+          if(next >= db->cmd_next_row) next = NULL;
+          rc = rydb_cmd_swap1(db, cur, next);
+          break;
+        case RYDB_ROW_CMD_SWAP2:
+          rc = rydb_cmd_swap2(db, prev, cur);
+          break;
+        case RYDB_ROW_CMD_COMMIT:
+          //clear it
+          commit_row = cur;
+          cur->type = RYDB_ROW_EMPTY;
+          break;
+      }
+      prev = cur;
     }
-    prev = cur;
-    if(!rc) {
-      return 0;
+    else if(cur->type != RYDB_ROW_DATA) {
+      //the transaction failed -- clear it from the log
+      cur->type = RYDB_ROW_EMPTY;
     }
+  }
+  if(commit_row != prev) {
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Transaction was committed without ending on a COMMIT command");
+    return 0;
   }
   return rc;
 }
 
 int rydb_transaction_finish_or_continue(rydb_t *db, int finish) {
   if(finish && db->transaction.active) {
-    if(!rydb_transaction_run(db)) {
-      return 0;
-    }
+    int rc = rydb_transaction_run(db);
+    //succeed or fail -- the transaction should be cleared
     db->transaction.active = 0;
     db->cmd_next_row = db->data_next_row;
-    return 1;
+    return rc;
   }
   return 1;
 }
