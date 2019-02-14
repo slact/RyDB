@@ -12,7 +12,7 @@ linux_task:
     #- wget https://bootstrap.pypa.io/get-pip.py
     #- python get-pip.py
     - pip install --user wheel
-    - pip install --user pyYAM
+    - pip install --user pyYAML
     - pip install --user cpp-coveralls
     - make CCACHE="" CC=gcc coverage-gcc-create
     - /root/.local/bin/coveralls --exclude ./tests --verbose --gcov-options '\-lp'
