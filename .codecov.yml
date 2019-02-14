@@ -1,0 +1,3 @@
+ignore:
+  - tests/snow.h
+  - tests/test_util.c
