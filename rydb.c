@@ -1640,16 +1640,33 @@ void rydb_print_stored_data(rydb_t *db) {
   header[RYDB_DATA_START_OFFSET] = '\00';
   char datacpy[64];
   printf("\n>>%s\n", header);
+  char rowtype_symbol[10];
+  
   RYDB_EACH_ROW(db, cur) {
+    if(cur->type == 0) {
+      sprintf(rowtype_symbol, "\u2400");
+    }
+    else if(cur->type >= 32 && cur->type <= 126) {
+      sprintf(rowtype_symbol, "%c", cur->type);
+    }
+    else {
+      sprintf(rowtype_symbol, "\ufffd");
+    }
     char *trail = "";
     rowtype = rydb_rowtype_str(cur->type);
     rowtype = &rowtype[strlen("RYDB_ROW_")];
+    char *command = " ";
+    
+    if(memcmp(rowtype, "CMD_", 4) == 0) {
+      command = "\u21b5";
+      rowtype = &rowtype[strlen("CMD_")];
+    }
     size_t len = db->stored_row_size - RYDB_ROW_DATA_OFFSET;
     if(len > 62) {
       len = 60;
       trail = "...";
     }
     memcpy(datacpy, cur->data, len);
-    printf("[%4"PRIu32"] %8s <%4"PRIu32"> %s%s\n", rydb_row_to_rownum(db, cur), rowtype, cur->target_rownum, datacpy, trail);
+    printf("[%3"PRIu32"]%s%7s%s <%3"PRIu32"> %s%s\n", rydb_row_to_rownum(db, cur), rowtype_symbol, rowtype, command, cur->target_rownum, datacpy, trail);
   }
 }
