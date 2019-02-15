@@ -518,6 +518,7 @@ describe(rydb_open) {
           {"format_revision", "1234", RYDB_ERROR_FILE_INVALID, "[Ff]ormat version mismatch"},
           {"endianness", "banana", RYDB_ERROR_FILE_INVALID, "unexpected"},
           {"endianness", is_little_endian()?"big":"little", RYDB_ERROR_WRONG_ENDIANNESS, ".*"},
+          {"start_offset", "9000", RYDB_ERROR_FILE_INVALID, ".*"},
           {"type_offset", "9000", RYDB_ERROR_FILE_INVALID, "format mismatch"},
           {"reserved_offset", "9001", RYDB_ERROR_FILE_INVALID, "format mismatch"},
           {"data_offset", "9001", RYDB_ERROR_FILE_INVALID, "format mismatch"},
@@ -526,6 +527,7 @@ describe(rydb_open) {
           {"hash_key_quality", "32", RYDB_ERROR_FILE_INVALID, "[Ii]nvalid hash key quality"},
           //skip row_len check -- it's always a number, and is compared to the preconfigged value later
           {"id_len", "900000", RYDB_ERROR_BAD_CONFIG, "cannot exceed"},
+          {"index_count", "1000", RYDB_ERROR_FILE_INVALID, "too many indices"},
           {"index_count", "10", RYDB_ERROR_FILE_INVALID, "[Ii]ndex specification.* invalid"},
           {"index_count", "1", RYDB_ERROR_FILE_INVALID, ".*"},
           {"name", "Non-alpha-numeric!", RYDB_ERROR_BAD_CONFIG, ".*"},
@@ -547,6 +549,14 @@ describe(rydb_open) {
             sed_meta_file_prop(db, chk->name, chk->val);
             assert_db_fail_match_errstr(db, rydb_reopen(&db), chk->err, chk->match);
           }
+        }
+        it("fails on bad index specification") {
+          sed_meta_file(db, "s/ - name:/ - notname:/");
+          assert_db_fail(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID, "index.* invalid");
+        }
+        it("fails on missing link specification") {
+          sed_meta_file(db, "s/link_pair:/banana:/");
+          assert_db_fail(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID, "link.* invalid");
         }
         it("fails on bad links") {
           sed_meta_file(db, "s/\\[ fwd , rew \\]/[bananas, morebananas]/");
