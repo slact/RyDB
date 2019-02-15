@@ -68,6 +68,8 @@ void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_
 
 
 int getrandombytes(unsigned char *p, size_t len);
+uint64_t crc32(const uint8_t *data, size_t data_len);
+uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k);
 
 extern rydb_allocator_t rydb_mem;
 

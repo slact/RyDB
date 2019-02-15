@@ -144,6 +144,11 @@ do { \
   
   
 const uint8_t vectors_siphash_2_4_64[64][8];
+struct vector_crc32_s {
+  const char *in;
+  uint64_t out;
+};
+const struct vector_crc32_s vector_crc32[32];
 
 
 #endif // __TEST_UTIL_H

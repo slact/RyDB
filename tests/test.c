@@ -8,20 +8,25 @@ void test_errhandler(rydb_t *db, rydb_error_t *err, void *privdata) {
 }
 
 describe(hashing) {
-  subdesc(siphash_2_4_64bit) {
-    it("has the expected output") {
-      uint8_t in[64], k[16], out[8];
-      
-      //initialize key
-      for (int i = 0; i < 16; ++i) k[i] = i;
-      
-      for (int i = 0; i < 64; ++i) {
-        in[i] = i;
-        *(uint64_t *)out = siphash(in, i, k);
-        if(memcmp(out, vectors_siphash_2_4_64[i], 8)!=0) {
-          fail("mismatch at test vector %i", i);
-        }
+  test("siphash_2_4_64bit") {
+    uint8_t in[64], k[16], out[8];
+    
+    //initialize key
+    for (int i = 0; i < 16; ++i) k[i] = i;
+    
+    for (int i = 0; i < 64; ++i) {
+      in[i] = i;
+      *(uint64_t *)out = siphash(in, i, k);
+      if(memcmp(out, vectors_siphash_2_4_64[i], 8)!=0) {
+        fail("mismatch at test vector %i", i);
       }
+    }
+  }
+  
+  test("crc32") {
+    for(unsigned i=0; vector_crc32[i].in; i++) {
+      uint64_t out = crc32((uint8_t *)vector_crc32[i].in, strlen(vector_crc32[i].in));
+      asserteq(out, vector_crc32[i].out);
     }
   }
 }
