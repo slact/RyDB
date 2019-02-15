@@ -5,6 +5,7 @@
 #include "snow.h"
 #include <signal.h>
 #include <regex.h>
+#include <stdarg.h>
 
 #undef snow_main_decls
 #define snow_main_decls \
