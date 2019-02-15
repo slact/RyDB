@@ -361,7 +361,6 @@ describe(sizing) {
       mkdtemp(path);
       config_testdb(db);
       assert_db_ok(db, rydb_open(db, path, "test"));
-      printf("&db=%p", &db);
     }
     after_each() {
       rydb_close(db);
