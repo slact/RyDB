@@ -47,7 +47,7 @@ int is_little_endian(void) {
   return u.c[0] == 0x04;
 }
 
-int sed_meta_file_prop(rydb_t *db, const char *prop, char *val) {
+int sed_meta_file_prop(rydb_t *db, const char *prop, const char *val) {
   char regex[128];
   sprintf(regex,"s/%s: .*/%s: %s/", prop, prop, val);
   return sed_meta_file(db, regex);

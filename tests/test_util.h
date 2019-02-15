@@ -41,7 +41,7 @@ int rydb_reopen(rydb_t **db);
 int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_code_t expected_error_code, const char *errmsg_match, char *errmsg_result);
 
 int sed_meta_file(rydb_t *db, char *regex);
-int sed_meta_file_prop(rydb_t *db, const char *prop, char *val);
+int sed_meta_file_prop(rydb_t *db, const char *prop, const char *val);
 
 #define assert_ptr_aligned(ptr, alignment) \
 do { \
