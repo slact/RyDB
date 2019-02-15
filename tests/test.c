@@ -44,8 +44,8 @@ describe(rydb_new) {
   }
 }
 describe(config) {
-  rydb_t *db;
-  char path[64];
+  static rydb_t *db = 0x0101;
+  static char path[64];
   
   before_each() {
     reset_malloc();
@@ -53,6 +53,7 @@ describe(config) {
     assert_db(db);
     strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
+    (void)(&db);
   }
   after_each() {
     rydb_close(db);
@@ -60,7 +61,7 @@ describe(config) {
     rmdir_recursive(path);
   }
   
-  subdesc(row)   {
+  subdesc(row)   {    
     it("fails on bad length params") {
       rydb_config_row(db, 10, 20);
       assert_db_fail(db, rydb_config_row(db, 10, 20), RYDB_ERROR_BAD_CONFIG, "cannot exceed row length");
@@ -340,8 +341,8 @@ describe(config) {
 }
 
 describe(sizing) {
-    rydb_t *db;
-  char path[64];
+  static rydb_t *db;
+  static char path[64];
   
   subdesc(struct_padding) {
     test("rydb_row_cmd_header_t is unpadded") {
@@ -360,6 +361,7 @@ describe(sizing) {
       mkdtemp(path);
       config_testdb(db);
       assert_db_ok(db, rydb_open(db, path, "test"));
+      printf("&db=%p", &db);
     }
     after_each() {
       rydb_close(db);
@@ -431,8 +433,8 @@ describe(errors_and_debug) {
 }
 
 describe(rydb_open) {
-  rydb_t *db;
-  char path[64];
+  static rydb_t *db;
+  static char path[64];
   
   before_each() {
     reset_malloc();
@@ -482,15 +484,15 @@ describe(rydb_open) {
   it("initializes the hash key") {
     rydb_config_row(db, 20, 5);
     assert_db_ok(db, rydb_open(db, path, "test"));
-    assert(memcmp(db->config.hash_key, "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00", 16) != 0);
+    assert(memcmp(db->config.hash_key.value, "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00", 16) != 0);
   }
 #if RYDB_DEBUG
   it("initializes the hash key without /dev/urandom") {
     rydb_debug_disable_urandom = 1;
     rydb_config_row(db, 20, 5);
     assert_db_ok(db, rydb_open(db, path, "test"));
-    assert(memcmp(db->config.hash_key, "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00", 16) != 0);
-    asserteq(db->config.hash_key_quality, 0);
+    assert(memcmp(db->config.hash_key.value, "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00", 16) != 0);
+    assert(db->config.hash_key.quality == 0);
     rydb_debug_disable_urandom = 0;
   }
 #endif
@@ -617,10 +619,10 @@ describe(rydb_open) {
 }
 
 describe(row_operations) {
-  rydb_t *db = NULL;
-  char path[64];
+  static rydb_t *db = NULL;
+  static char path[64];
   
-  char *rowdata[] = {
+  static char *rowdata[] = {
     "1.hello this is not terribly long of a string",
     "2.and this is another one that exceeds the length",
     "3.this one's short",
@@ -628,7 +630,7 @@ describe(row_operations) {
     "5.here's another one",
     "6.zzzzzzzzzzzzzz"
   };
-  int nrows = sizeof(rowdata)/sizeof(char *);
+  static int nrows = sizeof(rowdata)/sizeof(char *);
   
   before_each() {
     asserteq(db, NULL, "previous test not closed out correctly");
@@ -1004,10 +1006,10 @@ void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_ch
 }
 
 describe(transactions) {
-  rydb_t *db = NULL;
-  char path[64];
+  static rydb_t *db = NULL;
+  static char path[64];
   
-  char *rowdata[] = {
+  static char *rowdata[] = {
     "1.hello this is not terribly long of a string",
     "2.and this is another one that exceeds the length",
     "3.this one's short",
@@ -1015,7 +1017,7 @@ describe(transactions) {
     "5.here's another one",
     "6.zzzzzzzzzzzzzz"
   };
-  int nrows = sizeof(rowdata)/sizeof(char *);
+  static int nrows = sizeof(rowdata)/sizeof(char *);
   struct cmd_rownum_out_of_range_check_s rangecheck;
   
   before_each() {
