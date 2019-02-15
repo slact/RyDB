@@ -6,6 +6,7 @@ linux_task:
     
   build_script: make CCACHE="" CC=gcc all
   tests_script: make CCACHE="" CC=gcc test
+  test_optimized_script: make CCACHE="" CC=gcc O=3 test
   coveralls_script:
     - apt-get update
     #- apt-get install -y --no-install-recommends python python-dev python-pip python-setuptools
@@ -30,10 +31,16 @@ osx_task:
     - make CCACHE="" all
     - make CCACHE="" -C tests static
     - make CCACHE="" -C tests run
+  test_optimized_script:
+    - make CCACHE="" O=3 all
+    - make CCACHE="" -C tests static
+    - make CCACHE="" -C tests run
+
 
 freebsd_task:
   freebsd_instance:
     image: freebsd-12-0-release-amd64
   setup_script: pkg install -y gmake
   test_script: gmake CCACHE="" test
+  test_optimized_script: gmake CCACHE="" O=3 test
  
