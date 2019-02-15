@@ -3,6 +3,85 @@
 #include <stdlib.h>
 #include <ftw.h>
 
+#if RYDB_DEBUG
+char intercepted_printf_buf[4096];
+
+int intercepted_printf( const char * format, ... ) {
+  int rc;
+  va_list ap;
+  memset(intercepted_printf_buf, '-', 4096);
+  va_start(ap, format);
+  rc = vsnprintf(intercepted_printf_buf, 4096, format, ap);
+  va_end(ap);
+  return rc;
+}
+int intercepted_fprintf( FILE * stream, const char * format, ... ) {
+  (void) (stream);
+  int rc;
+  va_list ap;
+  memset(intercepted_printf_buf, '-', 4096);
+  va_start(ap, format);
+  rc = vsnprintf(intercepted_printf_buf, 4096, format, ap);
+  va_end(ap);
+  return rc;
+}
+
+int sed_meta_file(rydb_t *db, char *regex) {
+  char cmd[1024];
+  
+  //sprintf(cmd, "sed -r -e \"%s\" %s", regex, db->meta.path);
+  //system(cmd);
+  sprintf(cmd, "sed -r -e \"%s\" %s > %s.tmp", regex, db->meta.path, db->meta.path);
+  system(cmd);
+  sprintf(cmd, "mv %s.tmp %s", db->meta.path, db->meta.path);
+  system(cmd);
+  return 1;
+}
+
+int is_little_endian(void) {
+  volatile union {
+    uint8_t  c[4];
+    uint32_t i;
+  } u;
+  u.i = 0x01020304;
+  return u.c[0] == 0x04;
+}
+
+int sed_meta_file_prop(rydb_t *db, const char *prop, char *val) {
+  char regex[128];
+  sprintf(regex,"s/%s: .*/%s: %s/", prop, prop, val);
+  return sed_meta_file(db, regex);
+}
+
+int rydb_reopen(rydb_t **db) {
+  char path[1023], name[1024];
+  strcpy(path, (*db)->path);
+  strcpy(name, (*db)->name);
+  rydb_close(*db);
+  *db = rydb_new();
+  return rydb_open(*db, path, name);
+}
+
+int rydb_intercept_printfs(void) {
+  rydb_printf = intercepted_printf;
+  rydb_fprintf = intercepted_fprintf;
+  return 1;
+}
+int rydb_unintercept_printfs(void) {
+  rydb_printf = printf;
+  rydb_fprintf = fprintf;
+  return 1;
+}
+#endif
+
+void config_testdb(rydb_t *db) {
+  assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
+  assert_db_ok(db, rydb_config_add_index_hashtable(db, "foo", 5, 5, RYDB_INDEX_DEFAULT, NULL));
+  assert_db_ok(db, rydb_config_add_index_hashtable(db, "bar", 10, 5, RYDB_INDEX_DEFAULT, NULL));
+  assert_db_ok(db, rydb_config_add_row_link(db, "next", "prev"));
+  assert_db_ok(db, rydb_config_add_row_link(db, "fwd", "rew"));
+}
+
 
 int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_code_t expected_error_code, const char *errmsg_match, char *errmsg_result) {
   rydb_error_t *err = rydb_error(db);

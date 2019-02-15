@@ -14,7 +14,12 @@
 	int _snow_inited = 0
 
 #define skip(name) while(0) 
-  
+
+int is_little_endian(void);
+
+#define ROW_LEN 20
+void config_testdb(rydb_t *db);
+
 void test_errhandler(rydb_t *db, rydb_error_t *err, void *privdata);
 
 void fail_malloc_after(int n);
@@ -24,7 +29,18 @@ void reset_malloc(void);
 int rmdir_recursive(const char *path);
 void rydb_print_stored_data(rydb_t *db);
 
+#if RYDB_DEBUG
+char intercepted_printf_buf[4096];
+int rydb_intercept_printfs(void);
+int rydb_unintercept_printfs(void);
+#endif
+
+int rydb_reopen(rydb_t **db);
+
 int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_code_t expected_error_code, const char *errmsg_match, char *errmsg_result);
+
+int sed_meta_file(rydb_t *db, char *regex);
+int sed_meta_file_prop(rydb_t *db, const char *prop, char *val);
 
 #define assert_ptr_aligned(ptr, alignment) \
 do { \
@@ -37,9 +53,9 @@ do { \
 #define assert_db_ok(db, cmd) \
   do { \
     char ___buf[1024]; \
-    int ___cmd_rc = cmd;\
+    int ___rc = (cmd);\
     rydb_error_snprint(db, ___buf, 1024); \
-    if(___cmd_rc != 1) \
+    if(___rc != 1) \
       fail("%s", ___buf); \
   } while(0)
 
@@ -48,7 +64,8 @@ do { \
     snow_fail_update(); \
     char ___buf[1024]; \
     char *___rxpattern = "" __VA_ARGS__; \
-    if(___rydb_failed_as_expected(db, #cmd, (cmd), expected_error, ___rxpattern, ___buf) == 0 ) { \
+    int ___rc = (cmd); \
+    if(___rydb_failed_as_expected(db, #cmd, ___rc, expected_error, ___rxpattern, ___buf) == 0 ) { \
       rydb_error_clear(db); \
       snow_fail("%s", ___buf); \
     } \
@@ -58,7 +75,8 @@ do { \
   do { \
     snow_fail_update(); \
     char ___buf[1024]; \
-    if(___rydb_failed_as_expected(db, #cmd, (cmd), expected_error, match,  ___buf) == 0 ) { \
+    int ___rc = (cmd); \
+    if(___rydb_failed_as_expected(db, #cmd, ___rc, expected_error, match,  ___buf) == 0 ) { \
       rydb_error_clear(db); \
       snow_fail("%s", ___buf); \
     } \

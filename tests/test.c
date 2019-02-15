@@ -6,14 +6,6 @@ void test_errhandler(rydb_t *db, rydb_error_t *err, void *privdata) {
   asserteq(db, privdata);
   asserteq(err->code, RYDB_ERROR_BAD_CONFIG);
 }
-#define ROW_LEN 20
-static void config_testdb(rydb_t *db) {
-  assert_db_ok(db, rydb_config_row(db, 20, 5));
-  assert_db_ok(db, rydb_config_add_index_hashtable(db, "foo", 5, 5, RYDB_INDEX_DEFAULT, NULL));
-  assert_db_ok(db, rydb_config_add_index_hashtable(db, "bar", 10, 5, RYDB_INDEX_DEFAULT, NULL));
-  assert_db_ok(db, rydb_config_add_row_link(db, "next", "prev"));
-  assert_db_ok(db, rydb_config_add_row_link(db, "fwd", "rew"));
-}
 
 describe(hashing) {
   subdesc(siphash_2_4_64bit) {
@@ -380,7 +372,15 @@ describe(sizing) {
   }
 }
 
-describe(debug) {
+describe(errors_and_debug) {
+#if RYDB_DEBUG
+  before_each() {
+    rydb_intercept_printfs();
+  }
+  after_each() {
+    rydb_unintercept_printfs();
+  }
+#endif
   it("stringifies error codes") {
     for(int i=0; i<100; i++) {
       assertneq(rydb_error_code_str(i), NULL);
@@ -392,6 +392,36 @@ describe(debug) {
       assertneq(rydb_rowtype_str(i), NULL);
     }
   }
+  
+  it("clears errors on request") {
+    rydb_t *db;
+    db = rydb_new();
+    asserteq(rydb_config_row(db, 0, 0), 0);
+    rydb_error_t *err = rydb_error(db);
+    assert(err);
+    rydb_error_clear(db);
+    err = rydb_error(db);
+    asserteq(err, NULL);
+    rydb_close(db);
+  }
+#if RYDB_DEBUG
+  it("prints errors as one would expect") {
+    rydb_t *db;
+    db = rydb_new();
+    asserteq(rydb_config_row(db, 0, 0), 0);
+    rydb_error_t *err = rydb_error(db);
+    assertneq(err, NULL);
+    char errstr[1024];
+    rydb_error_snprint(db, errstr, 1024);
+    FILE *f = NULL;
+    rydb_error_fprint(db, f);
+    asserteq(intercepted_printf_buf, errstr);
+    memset(intercepted_printf_buf, '\00', sizeof(intercepted_printf_buf));
+    rydb_error_print(db);
+    asserteq(intercepted_printf_buf, errstr);
+    rydb_close(db);
+  }
+#endif
 }
 
 describe(rydb_open) {
@@ -432,6 +462,12 @@ describe(rydb_open) {
     
   }
   
+  it("fails to do stuff when not open") {
+    config_testdb(db);
+    assert_db_fail(db, rydb_row_insert_str(db, "hello"), RYDB_ERROR_DATABASE_CLOSED);
+    
+  }
+  
   subdesc(metadata) {
     before_each() {
       db = rydb_new();
@@ -458,12 +494,65 @@ describe(rydb_open) {
       db = rydb_new();
       assert_db_ok(db, rydb_open(db, path, "test"));
     }
-  }
-  
-  it("fails to do stuff when not open") {
-    config_testdb(db);
-    assert_db_fail(db, rydb_row_insert_str(db, "hello"), RYDB_ERROR_DATABASE_CLOSED);
     
+      subdesc(metadata_format_check) {
+        before_each() {
+          db = rydb_new();
+          strcpy(path, "test.db.XXXXXX");
+          mkdtemp(path);
+          config_testdb(db);
+          assert_db_ok(db, rydb_open(db, path, "test"));
+        }
+        after_each() {
+          rydb_close(db);
+          rmdir_recursive(path);
+        }
+        struct metafail_test_s {
+          const char *name;
+          const char *val;
+          rydb_error_code_t err;
+          const char *match;
+        };
+        
+        struct metafail_test_s metachecks[] = {
+          {"format_revision", "1234", RYDB_ERROR_FILE_INVALID, "[Ff]ormat version mismatch"},
+          {"endianness", "banana", RYDB_ERROR_FILE_INVALID, "unexpected"},
+          {"endianness", is_little_endian()?"big":"little", RYDB_ERROR_WRONG_ENDIANNESS, ".*"},
+          {"type_offset", "9000", RYDB_ERROR_FILE_INVALID, "format mismatch"},
+          {"reserved_offset", "9001", RYDB_ERROR_FILE_INVALID, "format mismatch"},
+          {"data_offset", "9001", RYDB_ERROR_FILE_INVALID, "format mismatch"},
+          {"rownum_width", "101", RYDB_ERROR_FILE_INVALID, ".*"},
+          {"hash_key", "bzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzt", RYDB_ERROR_FILE_INVALID, "[Ii]nvalid hash key"},
+          {"hash_key_quality", "32", RYDB_ERROR_FILE_INVALID, "[Ii]nvalid hash key quality"},
+          //skip row_len check -- it's always a number, and is compared to the preconfigged value later
+          {"id_len", "900000", RYDB_ERROR_BAD_CONFIG, "cannot exceed"},
+          {"index_count", "10", RYDB_ERROR_FILE_INVALID, "[Ii]ndex specification.* invalid"},
+          {"index_count", "1", RYDB_ERROR_FILE_INVALID, ".*"},
+          {"name", "Non-alpha-numeric!", RYDB_ERROR_BAD_CONFIG, ".*"},
+          {"type", "invalidtype", RYDB_ERROR_FILE_INVALID, "type.* invalid"},
+          {"start", "9000", RYDB_ERROR_BAD_CONFIG, "out of bounds"},
+          {"len", "9000", RYDB_ERROR_BAD_CONFIG, "out of bounds"},
+          {"unique", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
+          {"hash_function", "BananaHash", RYDB_ERROR_FILE_INVALID, ".*"},
+          {"store_value", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
+          {"direct_mapping", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
+          {"link_pair_count", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
+        };
+        
+        for(unsigned i=0; i< sizeof(metachecks)/sizeof(metachecks[0]); i++) {
+          char testname[128];
+          struct metafail_test_s *chk = &metachecks[i];
+          sprintf(testname, "fails on bad %s", chk->name);
+          it(testname) {
+            sed_meta_file_prop(db, chk->name, chk->val);
+            assert_db_fail_match_errstr(db, rydb_reopen(&db), chk->err, chk->match);
+          }
+        }
+        it("fails on bad links") {
+          sed_meta_file(db, "s/\\[ fwd , rew \\]/[bananas, morebananas]/");
+          assert_db_fail_match_errstr(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID, "link.* invalid");
+        }
+      }
   }
 }
 

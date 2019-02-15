@@ -26,6 +26,9 @@
 
 #ifdef RYDB_DEBUG
 int rydb_refuse_to_run_transaction_without_commit = 1; //turning this off lets us test more invalid inputs to commands
+int (*rydb_printf)( const char * format, ... ) = printf;
+int (*rydb_fprintf)( FILE * stream, const char * format, ... ) = fprintf;
+
 #endif
 
 rydb_allocator_t rydb_mem = {
@@ -142,19 +145,19 @@ const char *rydb_rowtype_str(rydb_row_type_t type) {
 
 
 #define RETURN_ERROR_PRINTF(err, func, ...) \
-  if(err->errno_val != 0 && err->code >= 4 && err->code <=8) {            \
+  if(err->errno_val != 0 && ((err->code >= RYDB_ERROR_FILE_NOT_FOUND && err->code <= RYDB_ERROR_FILE_ACCESS) || err->code == RYDB_ERROR_NOMEMORY)) {            \
     return func(__VA_ARGS__ "%s [%d]: %s, errno [%d]: %s\n", rydb_error_code_str(err->code), err->code, err->str, err->errno_val, strerror(err->errno_val));\
   } \
   return func(__VA_ARGS__ "%s [%d]: %s\n", rydb_error_code_str(err->code), err->code, err->str)
 
 int rydb_error_print(const rydb_t *db) {
   const rydb_error_t *err = &db->error;
-  RETURN_ERROR_PRINTF(err, printf, "");
+  RETURN_ERROR_PRINTF(err, rydb_printf, "");
 }
 
 int rydb_error_fprint(const rydb_t *db, FILE *file) {
   const rydb_error_t *err = &db->error;
-  RETURN_ERROR_PRINTF(err, fprintf, file, "");
+  RETURN_ERROR_PRINTF(err, rydb_fprintf, file, "");
 }
 int rydb_error_snprint(const rydb_t *db, char *buf, size_t buflen) {
   const rydb_error_t *err = &db->error;
@@ -936,7 +939,7 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   
   if(rownum_width != sizeof(rydb_rownum_t)) {
     //TODO: convert data to host rownum size
-    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "File rownum is a %" PRIu16"-bit integer, expected %i-bit", rownum_width * 8, sizeof(rydb_rownum_t) * 8);
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Rownum is a %" PRIu16"-bit integer, expected %i-bit", rownum_width * 8, sizeof(rydb_rownum_t) * 8);
     return 0;
   }
   
