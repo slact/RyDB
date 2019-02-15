@@ -552,6 +552,10 @@ describe(rydb_open) {
           sed_meta_file(db, "s/\\[ fwd , rew \\]/[bananas, morebananas]/");
           assert_db_fail_match_errstr(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID, "link.* invalid");
         }
+        it("fails on missing reserved_offset") {
+          sed_meta_file(db, "s/reserved_offset: /foobar: /");
+          assert_db_fail_match_errstr(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID, "row format");
+        }
       }
   }
 }
