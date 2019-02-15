@@ -440,7 +440,7 @@ describe(rydb_open) {
     rmdir_recursive(path);
   }
   
-  it ("gracefully fails when out of memory") {
+  it("gracefully fails when out of memory") {
     rydb_config_row(db, 20, 5);
     
     assert_db_fail(db, rydb_open(db, "./fakepath", "test"), RYDB_ERROR_FILE_ACCESS, "[Ff]ailed to open file .* errno \\[2\\]");
@@ -468,6 +468,21 @@ describe(rydb_open) {
     
   }
   
+  it("initializes the hash key") {
+    rydb_config_row(db, 20, 5);
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    assert(memcmp(db->config.hash_key, "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00", 16) != 0);
+  }
+#if RYDB_DEBUG
+  it("initializes the hash key without /dev/urandom") {
+    rydb_debug_disable_urandom = 1;
+    rydb_config_row(db, 20, 5);
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    assert(memcmp(db->config.hash_key, "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00", 16) != 0);
+    asserteq(db->config.hash_key_quality, 0);
+    rydb_debug_disable_urandom = 0;
+  }
+#endif
   subdesc(metadata) {
     before_each() {
       db = rydb_new();
@@ -1140,14 +1155,14 @@ describe(transactions) {
      subdesc(SWAP2) {
 #ifdef RYDB_DEBUG
       it("fails when SWAP1 is the last command in the transaction") {
-        rydb_refuse_to_run_transaction_without_commit = 0;
+        rydb_debug_refuse_to_run_transaction_without_commit = 0;
         assert_db_ok(db, rydb_transaction_start(db));
         rydb_row_t row[] = {
           {.type = RYDB_ROW_CMD_SWAP1, .num=3}
         };
         assert_db_ok(db, rydb_data_append_cmd_rows(db, row, 1));
         assert_db_fail(db, rydb_transaction_run(db), RYDB_ERROR_TRANSACTION_FAILED, "SWAP.* missing"); 
-        rydb_refuse_to_run_transaction_without_commit = 1;
+        rydb_debug_refuse_to_run_transaction_without_commit = 1;
       }
 #endif
       it("fails when SWAP1 is followed by anything but SWAP2") {
@@ -1243,9 +1258,9 @@ describe(transactions) {
         assert_db_ok(db, rydb_transaction_start(db));
         assert_db_ok(db, rydb_row_swap(db, 1, 2));
         assert_db_ok(db, rydb_row_swap(db, 2, 3));
-        rydb_refuse_to_run_transaction_without_commit = 0;
+        rydb_debug_refuse_to_run_transaction_without_commit = 0;
         assert_db_fail(db, rydb_transaction_run(db), RYDB_ERROR_TRANSACTION_FAILED, "committed without ending on a COMMIT");
-        rydb_refuse_to_run_transaction_without_commit = 1;
+        rydb_debug_refuse_to_run_transaction_without_commit = 1;
 #endif
       }
     }

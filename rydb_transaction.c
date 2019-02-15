@@ -254,7 +254,7 @@ int rydb_transaction_run(rydb_t *db) {
   rydb_stored_row_t *prev = NULL, *next;
   rydb_stored_row_t *lastcmd = rydb_row_next(db->cmd_next_row, db->stored_row_size, -1);
   if(lastcmd < db->data_next_row || 
-    (rydb_refuse_to_run_transaction_without_commit && lastcmd->type != RYDB_ROW_CMD_COMMIT)) {
+    (rydb_debug_refuse_to_run_transaction_without_commit && lastcmd->type != RYDB_ROW_CMD_COMMIT)) {
     // no CMD_COMMIT at the end -- bail
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_INCOMPLETE, "Refused to run a transaction that doesn't end with a COMMIT");
     return 0;

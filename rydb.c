@@ -25,7 +25,8 @@
 #endif
 
 #ifdef RYDB_DEBUG
-int rydb_refuse_to_run_transaction_without_commit = 1; //turning this off lets us test more invalid inputs to commands
+int rydb_debug_refuse_to_run_transaction_without_commit = 1; //turning this off lets us test more invalid inputs to commands
+int rydb_debug_disable_urandom = 0;
 int (*rydb_printf)( const char * format, ... ) = printf;
 int (*rydb_fprintf)( FILE * stream, const char * format, ... ) = fprintf;
 
@@ -1372,8 +1373,11 @@ int rydb_close(rydb_t *db) {
  * returns 1 if bytes are good quality, 0 of they're shit
  */
 int getrandombytes(unsigned char *p, size_t len) {
-  FILE *fp = fopen("/dev/urandom","r");
+  FILE *fp = NULL;
   int good = 0;
+  if(!rydb_debug_disable_urandom) {
+    fp = fopen("/dev/urandom","r");
+  }
   if (fp && fread(p,len,1,fp) == 1) {
     good = 1;
   }
