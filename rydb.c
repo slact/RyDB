@@ -738,10 +738,10 @@ static int rydb_meta_save(rydb_t *db) {
   }
   
   char hash_key_hexstr_buf[33];
-  for (unsigned i = 0; i < sizeof(db->config.hash_key); i ++) {
-    sprintf(&hash_key_hexstr_buf[i*2], "%02x", db->config.hash_key[i]);
+  for (unsigned i = 0; i < sizeof(db->config.hash_key.value); i ++) {
+    sprintf(&hash_key_hexstr_buf[i*2], "%02x", db->config.hash_key.value[i]);
   }
-  hash_key_hexstr_buf[sizeof(db->config.hash_key)*2]='\00';
+  hash_key_hexstr_buf[sizeof(db->config.hash_key.value)*2]='\00';
   
   
   const char *fmt =
@@ -773,7 +773,7 @@ static int rydb_meta_save(rydb_t *db) {
                RYDB_ROW_DATA_OFFSET,
                (uint16_t)sizeof(rydb_rownum_t),
                hash_key_hexstr_buf,
-               db->config.hash_key_quality,
+               (uint8_t )db->config.hash_key.quality,
                db->config.row_len,
                db->config.id_len,
                db->config.index_count,
@@ -834,7 +834,7 @@ static int rydb_meta_save(rydb_t *db) {
       total_written += rc;
     }
   }
-  
+  fflush(fp);
   return total_written;
 }
 
@@ -967,8 +967,9 @@ static int rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
     return 0;
   }
   
-  db->config.hash_key_quality = hashkey_quality;
-  memcpy(db->config.hash_key, hashkey, sizeof(hashkey));
+  db->config.hash_key.quality = hashkey_quality;
+  memcpy(db->config.hash_key.value, hashkey, sizeof(hashkey));
+  db->config.hash_key.permanent = 1; //this comes from a saved db. its hashkey can't be changed.
   
   if(!rydb_config_row(db, row_len, id_len)) {
     return 0;
@@ -1074,11 +1075,10 @@ static int rydb_config_match(rydb_t *db, const rydb_t *db2, const char *db_lbl, 
     return 0;
   }
   
-  // if db's hash key is zeroes, ignore this comparison as it is never set by the user and is only set during initialization
-  // if it's not initialized, it's not comparable.
-  // otherwise, check it.
-  if(memcmp(db->config.hash_key, "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00", 16) != 0) {
-    if(memcmp(db->config.hash_key, db2->config.hash_key, sizeof(db->config.hash_key)) != 0) {
+  // if both dbs have permanent hash keys, check 'em. otherwise don't bother, 
+  // one of them hasn't been used yet and can be set to the other's
+  if(db->config.hash_key.permanent && db2->config.hash_key.permanent) {
+    if(memcmp(db->config.hash_key.value, db2->config.hash_key.value, sizeof(db->config.hash_key.value)) != 0) {
       rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching hash keys");
       return 0;
     }
@@ -1139,10 +1139,14 @@ static int rydb_data_scan_tail(rydb_t *db) {
   rydb_stored_row_t *firstrow = (void *)(db->data.data.start);
   rydb_stored_row_t *last_possible_row = (void *)((char *)firstrow + stored_row_size * ((db->data.file.end - (char *)firstrow)/stored_row_size));
   uint_fast8_t  lastrow_found=0, data_lastrow_found = 0;
+  rydb_stored_row_t *last_commit_row = NULL;
   for(rydb_stored_row_t *cur = last_possible_row; cur && cur >= firstrow; cur = rydb_row_next(cur, stored_row_size, -1)) {
     if(!lastrow_found && cur->type != RYDB_ROW_EMPTY) {
       db->cmd_next_row = rydb_row_next(cur, stored_row_size, 1);
       lastrow_found = 1;
+    }
+    if(cur->type == RYDB_ROW_CMD_COMMIT) {
+      last_commit_row = cur;
     }
     if(!data_lastrow_found && cur->type == RYDB_ROW_DATA) {
       db->data_next_row = rydb_row_next(cur, stored_row_size, 1);
@@ -1242,7 +1246,6 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
       rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Cannot create new unconfigured database: row length not set");
       return rydb_open_abort(db);
     }
-    rydb_meta_save(db);
   }
   else {
     if(db->config.row_len == 0) { //unconfigured db
@@ -1266,12 +1269,19 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
       
       //compare configs
       if(!rydb_config_match(db, loaded_db, "configured", "loaded")) {
-        //copy over hash_key stuff
-        memcpy(db->config.hash_key, loaded_db->config.hash_key, sizeof(loaded_db->config.hash_key));
-        db->config.hash_key_quality = loaded_db->config.hash_key_quality;
         rydb_close(loaded_db);
         return rydb_open_abort(db);
       }
+      if(db->config.hash_key.permanent && memcmp(db->config.hash_key.value, loaded_db->config.hash_key.value, sizeof(db->config.hash_key.value)) != 0) {
+        //i don't think this could happen in operation, but just in case...
+        rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Refusing to overwrite a permanent hash key with the loaded one");
+        rydb_close(loaded_db);
+        return rydb_open_abort(db);
+      }
+      
+      //copy over hash_key stuff
+      db->config.hash_key = loaded_db->config.hash_key;
+        
       //ok, everything matches
       rydb_close(loaded_db);
     }
@@ -1325,11 +1335,12 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   db->stored_row_size = ry_align(db->config.row_len + db->config.link_pair_count * sizeof(rydb_rownum_t), 8); //let's make sure the data 
   rydb_data_scan_tail(db);
   if(new_db) {
-    db->config.hash_key_quality = getrandombytes(db->config.hash_key, sizeof(db->config.hash_key));
+    db->config.hash_key.quality = getrandombytes(db->config.hash_key.value, sizeof(db->config.hash_key.value));
     rydb_meta_save(db);
   }
   
   db->state = RYDB_STATE_OPEN;
+  db->config.hash_key.permanent = 1;
   return 1;
 }
 
@@ -1372,6 +1383,11 @@ int rydb_close(rydb_t *db) {
  * 
  * returns 1 if bytes are good quality, 0 of they're shit
  */
+    struct shitseed_s {
+      clock_t clocked;
+      struct timeval tv;
+      pid_t pid;
+    };
 int getrandombytes(unsigned char *p, size_t len) {
   FILE *fp = NULL;
   int good = 0;
@@ -1383,11 +1399,8 @@ int getrandombytes(unsigned char *p, size_t len) {
   }
   else {
     //generate shitty seed rydb_row_nextfrom timeofday, pid, and other nonrandom crap
-    struct {
-      clock_t clocked;
-      struct timeval tv;
-      pid_t pid;
-    } shitseed;
+    struct shitseed_s shitseed;
+    memset(&shitseed, '\00', (sizeof(shitseed))); //no this isn't like that Debian OpenSSL bug, but it's for much the same reason... to shut valgrind up.
     shitseed.clocked = clock();
     gettimeofday(&shitseed.tv,NULL);
     shitseed.pid = getpid();

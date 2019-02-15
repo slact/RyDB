@@ -400,7 +400,7 @@ static uint64_t hash_value(rydb_t *db, rydb_config_index_t *idx, char *data, uin
       h = nohash(&data[idx->start], idx->len, trim);
       break;
     case RYDB_HASH_SIPHASH:
-      h = btrim64(siphash((uint8_t *)&data[idx->start], idx->len, db->config.hash_key), trim);
+      h = btrim64(siphash((uint8_t *)&data[idx->start], idx->len, db->config.hash_key.value), trim);
       break;
     default:
     case RYDB_HASH_INVALID:

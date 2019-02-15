@@ -191,8 +191,11 @@ typedef struct {
   rydb_config_row_link_t *link;
   uint16_t index_count;
   rydb_config_index_t *index;
-  uint8_t  hash_key[16];
-  uint8_t  hash_key_quality;
+  struct {
+    uint8_t   value[16];
+    unsigned  quality:2;
+    unsigned  permanent:1;
+  }        hash_key;
 } rydb_config_t;
 
 typedef struct rydb_s rydb_t;

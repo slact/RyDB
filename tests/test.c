@@ -515,6 +515,22 @@ describe(rydb_open) {
       assert_db_ok(db, rydb_open(db, path, "test"));
     }
     
+    it("saves and reloads the hash key correctly") {
+      char hashkey[16];
+      int hashkey_quality;
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      memcpy(hashkey, db->config.hash_key.value, 16);
+      hashkey_quality = db->config.hash_key.quality;
+      rydb_close(db);
+      
+      db = rydb_new();
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      assert(memcmp(db->config.hash_key.value, hashkey, 16) == 0);
+      assert(db->config.hash_key.quality == hashkey_quality);
+      
+    }
       subdesc(metadata_format_check) {
         before_each() {
           db = rydb_new();
