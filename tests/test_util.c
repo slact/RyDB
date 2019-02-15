@@ -31,7 +31,7 @@ int sed_meta_file(rydb_t *db, char *regex) {
   
   //sprintf(cmd, "sed -r -e \"%s\" %s", regex, db->meta.path);
   //system(cmd);
-  sprintf(cmd, "sed -r -e \"%s\" %s > %s.tmp", regex, db->meta.path, db->meta.path);
+  sprintf(cmd, "sed -e \"%s\" %s > %s.tmp", regex, db->meta.path, db->meta.path);
   system(cmd);
   sprintf(cmd, "mv %s.tmp %s", db->meta.path, db->meta.path);
   system(cmd);
