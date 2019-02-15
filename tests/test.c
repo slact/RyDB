@@ -62,6 +62,7 @@ describe(config) {
   
   subdesc(row)   {
     it("fails on bad length params") {
+      rydb_config_row(db, 10, 20);
       assert_db_fail(db, rydb_config_row(db, 10, 20), RYDB_ERROR_BAD_CONFIG, "cannot exceed row length");
       assert_db_fail(db, rydb_config_row(db, 0, 0), RYDB_ERROR_BAD_CONFIG, "length cannot be 0");
       assert_db_fail(db, rydb_config_row(db, RYDB_ROW_LEN_MAX+1, 0), RYDB_ERROR_BAD_CONFIG, "length [0-9]+ cannot exceed [0-9]+");
@@ -449,7 +450,12 @@ describe(rydb_open) {
     rydb_config_row(db, 20, 5);
     
     assert_db_fail(db, rydb_open(db, "./fakepath", "test"), RYDB_ERROR_FILE_ACCESS, "[Ff]ailed to open file .* errno \\[2\\]");
+    assert_db_ok(db, rydb_open(db, path, "open_test"));
+    rydb_close(db);
     
+    
+    db = rydb_new();
+    rydb_config_row(db, 20, 5);
     fail_malloc_later_each_time();
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
