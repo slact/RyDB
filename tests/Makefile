@@ -14,7 +14,7 @@ COLOR = always
 TIMESTAMP = `date +'%y-%m-%d-%H.%M.%S'`
 COLOR_OPT = -fdiagnostics-color=${COLOR}
 CFLAGS = -DSNOW_ENABLED -I../ -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic  -DRYDB_DEBUG
-VALGRIND_FLAGS = --trace-children=yes --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
+VALGRIND_FLAGS = --trace-children=no --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
 CALLGRIND_OUTFILE = callgrind-rydb-$(TIMESTAMP).out
 CALLGRIND_FLAGS = --trace-children=yes --tool=callgrind --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=$(CALLGRIND_OUTFILE)
 
@@ -53,7 +53,7 @@ dynamic: default
 static: LDFLAGS = $(LDFLAGS_S)
 static: LDLIBS  = $(LDLIBS_S)
 static: default
-	
+
 
 run:
 	./$(TARGET)
