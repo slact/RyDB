@@ -550,11 +550,15 @@ describe(rydb_open) {
         }
         it("fails on bad links") {
           sed_meta_file(db, "s/\\[ fwd , rew \\]/[bananas, morebananas]/");
-          assert_db_fail_match_errstr(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID, "link.* invalid");
+          assert_db_fail(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID, "link.* invalid");
         }
         it("fails on missing reserved_offset") {
           sed_meta_file(db, "s/reserved_offset: /foobar: /");
-          assert_db_fail_match_errstr(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID, "row format");
+          assert_db_fail(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID, "row format");
+        }
+        it("fails when the start of the file is wrong") {
+          sed_meta_file(db, "s/--- #rydb/badfile/");
+          assert_db_fail(db, rydb_reopen(&db), RYDB_ERROR_FILE_INVALID);
         }
       }
   }
