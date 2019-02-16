@@ -262,7 +262,10 @@ int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run) {
   int rc = 1;
   rydb_stored_row_t *commit_row = NULL;
   RYDB_EACH_CMD_ROW(db, cur) {
-    if(rc) {
+    if(last_row_to_run && cur > last_row_to_run) {
+      break;
+    }
+    else if(rc) {
       switch((rydb_row_type_t )cur->type) {
         case RYDB_ROW_EMPTY:
         case RYDB_ROW_DATA:
