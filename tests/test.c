@@ -44,7 +44,7 @@ describe(rydb_new) {
   }
 }
 describe(config) {
-  static rydb_t *db = 0x0101;
+  static rydb_t *db;
   static char path[64];
   
   before_each() {
@@ -656,7 +656,7 @@ describe(row_operations) {
       int n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n < nrows-2)
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         else
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
         n++;
@@ -669,7 +669,7 @@ describe(row_operations) {
       n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n < nrows) {
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -693,17 +693,7 @@ describe(row_operations) {
       }
 
       assert_db_ok(db, rydb_transaction_finish(db));
-      n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n < nrows) {
-          assert_db_datarow(db, cur, rowdata, n);
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
-      asserteq(n, nrows+1);
+      assert_data_match(db, rowdata, nrows);
     }
   }
   
@@ -789,7 +779,7 @@ describe(row_operations) {
       int n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n < nrows) {
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_CMD_DELETE);
@@ -803,7 +793,7 @@ describe(row_operations) {
       n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n < nrows - 1) {
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -818,10 +808,10 @@ describe(row_operations) {
       n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n < nrows - 1) {
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         }
         else if(n < nrows) {
-          assert_db_datarow(db, cur, &"after", 0);
+          assert_db_datarow(db, cur, "after");
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -845,13 +835,13 @@ describe(row_operations) {
       
       RYDB_EACH_ROW(db, cur) {
         if(n+1 == 2) { //one of the swapped rows
-          assert_db_datarow(db, cur, rowdata, (nrows-1) - 2);
+          assert_db_datarow(db, cur, rowdata[(nrows-1) - 2]);
         }
         else if(n+1 == nrows - 2) { // the other swapped row
-          assert_db_datarow(db, cur, rowdata, 1);
+          assert_db_datarow(db, cur, rowdata[1]);
         }
         else if(n < nrows) {
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -869,10 +859,10 @@ describe(row_operations) {
       int n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n+1 < nrows) {
-          assert_db_datarow(db, cur, rowdata, n+1);
+          assert_db_datarow(db, cur, rowdata[n+1]);
         }
         else if (n+1 == nrows) {
-          assert_db_datarow(db, cur, rowdata, 0);
+          assert_db_datarow(db, cur, rowdata[0]);
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -888,7 +878,7 @@ describe(row_operations) {
       int n = 0;
       RYDB_EACH_ROW(db, cur) {
         if ( n > 0 && n < nrows) {
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -902,16 +892,16 @@ describe(row_operations) {
       n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n==0) {
-          assert_db_datarow(db, cur, rowdata, 4);
+          assert_db_datarow(db, cur, rowdata[4]);
         }
         else if(n < 3) {
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         }
         else if(n == 3) {
-          assert_db_datarow(db, cur, rowdata, 5);
+          assert_db_datarow(db, cur, rowdata[5]);
         }
         else if(n == 4) {
-          assert_db_datarow(db, cur, &"after", 0);
+          assert_db_datarow(db, cur, "after");
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -941,10 +931,10 @@ describe(row_operations) {
       int n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n<nrows-1) {
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         }
         else if(n == nrows-1) {
-          assert_db_datarow(db, cur, &"6.zheyzzzzzzzzzz", 0);
+          assert_db_datarow(db, cur, "6.zheyzzzzzzzzzz");
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -961,13 +951,13 @@ describe(row_operations) {
       int n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n<nrows-2) {
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         }
         else if(n == nrows-2) {
-          assert_db_datarow(db, cur, &"....................", 0);
+          assert_db_datarow(db, cur, (char *)"....................");
         }
         else if(n == nrows-1) {
-          assert_db_datarow(db, cur, &"6.zheywhatis this ev", 0);
+          assert_db_datarow(db, cur, (char *)"6.zheywhatis this ev");
         }
         else {
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
@@ -1016,6 +1006,8 @@ describe(transactions) {
     "5.here's another one",
     "6.zzzzzzzzzzzzzz"
   };
+
+  
   static int nrows = sizeof(rowdata)/sizeof(char *);
   struct cmd_rownum_out_of_range_check_s rangecheck;
   
@@ -1189,7 +1181,7 @@ describe(transactions) {
           {.type = RYDB_ROW_CMD_SWAP1, .num=3}
         };
         assert_db_ok(db, rydb_data_append_cmd_rows(db, row, 1));
-        assert_db_fail(db, rydb_transaction_run(db), RYDB_ERROR_TRANSACTION_FAILED, "SWAP.* missing"); 
+        assert_db_fail(db, rydb_transaction_run(db, NULL), RYDB_ERROR_TRANSACTION_FAILED, "SWAP.* missing"); 
         rydb_debug_refuse_to_run_transaction_without_commit = 1;
       }
 #endif
@@ -1279,7 +1271,7 @@ describe(transactions) {
         assert_db_ok(db, rydb_transaction_start(db));
         assert_db_ok(db, rydb_row_swap(db, 1, 2));
         assert_db_ok(db, rydb_row_swap(db, 2, 3));
-        assert_db_fail_match_errstr(db, rydb_transaction_run(db), RYDB_ERROR_TRANSACTION_INCOMPLETE, "doesn't end with a COMMIT");
+        assert_db_fail_match_errstr(db, rydb_transaction_run(db, NULL), RYDB_ERROR_TRANSACTION_INCOMPLETE, "doesn't end with a COMMIT");
       }
 #ifdef RYDB_DEBUG
       it("notices if forced to run through an uncommitted transaction") {
@@ -1287,7 +1279,7 @@ describe(transactions) {
         assert_db_ok(db, rydb_row_swap(db, 1, 2));
         assert_db_ok(db, rydb_row_swap(db, 2, 3));
         rydb_debug_refuse_to_run_transaction_without_commit = 0;
-        assert_db_fail(db, rydb_transaction_run(db), RYDB_ERROR_TRANSACTION_FAILED, "committed without ending on a COMMIT");
+        assert_db_fail(db, rydb_transaction_run(db, NULL), RYDB_ERROR_TRANSACTION_FAILED, "committed without ending on a COMMIT");
         rydb_debug_refuse_to_run_transaction_without_commit = 1;
 #endif
       }
@@ -1312,12 +1304,63 @@ describe(transactions) {
       int n = 0;
       RYDB_EACH_ROW(db, cur) {
         if(n < nrows)
-          assert_db_datarow(db, cur, rowdata, n);
+          assert_db_datarow(db, cur, rowdata[n]);
         else
           assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
         n++;
       }
       asserteq(n, nrows + 2);
+    }
+  }
+  
+#define RYDB_ROW_TXTEST_COMMANDS(db) \
+  assert_db_ok(db, rydb_row_swap(db, 1, 2)); \
+  assert_db_ok(db, rydb_row_delete(db, 2)); \
+  assert_db_ok(db, rydb_row_delete(db, 6)); \
+  assert_db_ok(db, rydb_row_insert_str(db, "7.an insertion")); \
+  assert_db_ok(db, rydb_row_swap(db, 5, 6))
+  
+  subdesc(restore_log) {
+    static char *result_rowdata[] = {
+      "2.and this is another one that exceeds the length",
+      NULL,
+      "3.this one's short",
+      "4.tiny",
+      NULL,
+      "5.here's another one",
+      "7.an insertion",
+    };
+    static int result_nrows = 7;
+    
+    it("runs committed commands") {
+      assert_db_ok(db, rydb_transaction_start(db));
+      RYDB_ROW_TXTEST_COMMANDS(db);
+      rydb_row_t row = {.type = RYDB_ROW_CMD_COMMIT};
+      assert_db_ok(db, rydb_data_append_cmd_rows(db, &row, 1));
+      assert_data_match(db, rowdata, nrows);
+      //rydb_print_stored_data(db);
+      rydb_close(db);
+      
+      db = rydb_new();
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      //rydb_print_stored_data(db);
+      
+      assert_data_match(db, result_rowdata, result_nrows);
+    }
+    it("discards uncommitted commands") {
+      assert_db_ok(db, rydb_transaction_start(db));
+      RYDB_ROW_TXTEST_COMMANDS(db);
+      assert_data_match(db, rowdata, nrows);
+      //rydb_print_stored_data(db);
+      rydb_close(db);
+      
+      db = rydb_new();
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      //rydb_print_stored_data(db);
+      
+      assert_data_match(db, rowdata, nrows);
     }
   }
 }

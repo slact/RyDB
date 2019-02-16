@@ -101,6 +101,13 @@ do { \
       fail("(rydb_row_type_t) Expected " #row " (rownum %i) to be " #rowtype ", but got %s", (int )rydb_row_to_rownum(db, row), rydb_rowtype_str(row->type)); \
     } \
   } while(0)
+  
+#define assert_db_row_type_not(db, row, rowtype) \
+  do { \
+    if(row->type == rowtype) { \
+      fail("(rydb_row_type_t) Expected " #row " (rownum %i) to NOT be " #rowtype ", but got %s", (int )rydb_row_to_rownum(db, row), rydb_rowtype_str(row->type)); \
+    } \
+  } while(0)
 
 #define assert_db_row_target_rownum(db, row, trownum) \
   do { \
@@ -112,26 +119,40 @@ do { \
   
 #define assert_db_row_data(db, row, compare_data) \
   do { \
-    char *___cmp = malloc(db->config.row_len+1); \
-    if(!___cmp) { \
-      fail("assert_db_row_data because malloc() failed"); \
-    } \
+    char *___cmp[1024]; \
     memset(___cmp, '\00', db->config.row_len+1); \
     strncpy(___cmp, compare_data, db->config.row_len); \
     int ___rc = strcmp(___cmp, row->data); \
-    free(___cmp); \
     if(___rc != 0) { \
-      fail("(rydb_stored_row_t) " #row " (rownum %i) data does not match.", (int )rydb_row_to_rownum(db, row)); \
+      fail("(rydb_stored_row_t) " #row " (rownum %i) data does not match. expected \"%s\", got \"%s\".", (int )rydb_row_to_rownum(db, row), ___cmp, row->data); \
     } \
   } while(0)
 
-#define assert_db_datarow(db, row, compare_data, n) \
+#define assert_db_datarow(db, row, compare_data) \
   do { \
-    assert_db_row_type(db, row, RYDB_ROW_DATA); \
-    assert_db_row_target_rownum(db, row, 0); \
-    assert_db_row_data(db, row, compare_data[n]); \
+    if(compare_data) { \
+      assert_db_row_type(db, row, RYDB_ROW_DATA); \
+      assert_db_row_data(db, row, compare_data); \
+    } \
+    else { \
+      assert_db_row_type(db, row, RYDB_ROW_EMPTY); \
+    } \
   } while(0)
 
+#define assert_data_match(db, rows, n) \
+  do { \
+    int ___n = 0; \
+    RYDB_EACH_ROW(db, cur) { \
+      if(___n < n) { \
+        assert_db_datarow(db, cur, rows[___n]); \
+      } \
+      else { \
+        assert_db_row_type_not(db, cur, RYDB_ROW_DATA); \
+      } \
+      ___n++; \
+    } \
+  } while(0)
+  
 #define assert_db_insert_rows(db, rows, nrows) \
   do { \
     int ___maxrows = nrows; \
