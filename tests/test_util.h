@@ -119,7 +119,7 @@ do { \
   
 #define assert_db_row_data(db, row, compare_data) \
   do { \
-    char *___cmp[1024]; \
+    char ___cmp[1024]; \
     memset(___cmp, '\00', db->config.row_len+1); \
     strncpy(___cmp, compare_data, db->config.row_len); \
     int ___rc = strcmp(___cmp, row->data); \
@@ -151,6 +151,26 @@ do { \
       } \
       ___n++; \
     } \
+  } while(0)
+  
+#define assert_data_rownum_match(db, n, match) \
+  do { \
+    int ___rownum = n; \
+    rydb_stored_row_t *___row = rydb_rownum_to_row(db, ___rownum); \
+    if(!___row) { \
+      fail("Row %i does not exist", ___rownum); \
+    } \
+    assert_db_datarow(db, ___row, match); \
+  } while(0)
+  
+  #define assert_data_rownum_type(db, n, match_type) \
+  do { \
+    int ___rownum = n; \
+    rydb_stored_row_t *___row = rydb_rownum_to_row(db, ___rownum); \
+    if(!___row) { \
+      fail("Row %i does not exist", ___rownum); \
+    } \
+    assert_db_row_type(db, ___row, match_type); \
   } while(0)
   
 #define assert_db_insert_rows(db, rows, nrows) \

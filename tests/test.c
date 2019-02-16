@@ -629,7 +629,7 @@ describe(row_operations) {
     "5.here's another one",
     "6.zzzzzzzzzzzzzz"
   };
-  static int nrows = sizeof(rowdata)/sizeof(char *);
+  static int nrows = 6;
   
   before_each() {
     asserteq(db, NULL, "previous test not closed out correctly");
@@ -653,30 +653,12 @@ describe(row_operations) {
       db = rydb_new();
       config_testdb(db);
       assert_db_ok(db, rydb_open(db, path, "test"));
-      int n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n < nrows-2)
-          assert_db_datarow(db, cur, rowdata[n]);
-        else
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        n++;
-      }
-      assert(n - 1 == nrows-2);
+      assert_data_match(db, rowdata, nrows - 2);  
       
       //now insert the remainder
       assert_db_insert_rows(db, &rowdata[nrows-2], 2);
       
-      n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n < nrows) {
-          assert_db_datarow(db, cur, rowdata[n]);
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
-      assert(n - 1 == nrows);
+      assert_data_match(db, rowdata, nrows);
     }
     
     it("inserts in a transaction") {
@@ -776,48 +758,20 @@ describe(row_operations) {
       assert_db_ok(db, rydb_row_delete(db, nrows));
       assert_db_ok(db, rydb_row_delete(db, nrows));
       assert_db_ok(db, rydb_row_delete(db, nrows));
-      int n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n < nrows) {
-          assert_db_datarow(db, cur, rowdata[n]);
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_CMD_DELETE);
-          assert_db_row_target_rownum(db, cur, nrows);
-        }
-        n++;
-      }
-      asserteq(n, nrows + 3);
+      assert_data_match(db, rowdata, nrows);
+      assert_data_rownum_type(db, nrows+1, RYDB_ROW_CMD_DELETE);
+      assert_data_rownum_type(db, nrows+2, RYDB_ROW_CMD_DELETE);
+      assert_data_rownum_type(db, nrows+3, RYDB_ROW_CMD_DELETE);
       assert_db_ok(db, rydb_transaction_finish(db));
       
-      n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n < nrows - 1) {
-          assert_db_datarow(db, cur, rowdata[n]);
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
-      asserteq(n, nrows + 4);
+      assert_data_match(db, rowdata, nrows - 1);
       
       //and it works fine afterwards
       assert_db_ok(db, rydb_row_insert_str(db, "after"));
-      //rydb_print_stored_data(db);
-      n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n < nrows - 1) {
-          assert_db_datarow(db, cur, rowdata[n]);
-        }
-        else if(n < nrows) {
-          assert_db_datarow(db, cur, "after");
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
+      char *rowdata_results2[] = {
+        rowdata[0], rowdata[1], rowdata[2], rowdata[3], rowdata[4], "after"
+      };
+      assert_data_match(db, rowdata_results2, nrows);
     }
   }
   
@@ -831,23 +785,10 @@ describe(row_operations) {
     it("swaps two rows close to the middle") {
       assert_db_insert_rows(db, rowdata, nrows);
       assert_db_ok(db, rydb_row_swap(db, 2, nrows-2));
-      int n = 0;
-      
-      RYDB_EACH_ROW(db, cur) {
-        if(n+1 == 2) { //one of the swapped rows
-          assert_db_datarow(db, cur, rowdata[(nrows-1) - 2]);
-        }
-        else if(n+1 == nrows - 2) { // the other swapped row
-          assert_db_datarow(db, cur, rowdata[1]);
-        }
-        else if(n < nrows) {
-          assert_db_datarow(db, cur, rowdata[n]);
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
+      char *rowdata_results[] = {
+        rowdata[0], rowdata[3], rowdata[2], rowdata[1], rowdata[4], rowdata[5]
+      };
+      assert_data_match(db, rowdata_results, nrows);
     }
     
     it("swaps all the rows one by one") {
@@ -856,58 +797,31 @@ describe(row_operations) {
       for(int i = 2; i <= nrows; i++) {
         assert_db_ok(db, rydb_row_swap(db, i, i-1));
       }
-      int n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n+1 < nrows) {
-          assert_db_datarow(db, cur, rowdata[n+1]);
-        }
-        else if (n+1 == nrows) {
-          assert_db_datarow(db, cur, rowdata[0]);
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
+      //rydb_print_stored_data(db);
+      char *rowdata_results[] = {
+        rowdata[1], rowdata[2], rowdata[3], rowdata[4], rowdata[5], rowdata[0]
+      };
+      assert_data_match(db, rowdata_results, nrows);
     }
     
     it("swaps rows with an empty row") {
       assert_db_insert_rows(db, rowdata, nrows);
       assert_db_ok(db, rydb_row_delete(db, 1));
       
-      int n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if ( n > 0 && n < nrows) {
-          assert_db_datarow(db, cur, rowdata[n]);
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
+      char *rowdata_results[] = {
+        NULL, rowdata[1], rowdata[2], rowdata[3], rowdata[4], rowdata[5]
+      };
+      assert_data_match(db, rowdata_results, nrows);
+      
       assert_db_ok(db, rydb_row_swap(db, 1, nrows-1));
       assert_db_ok(db, rydb_row_delete(db, nrows-2));
       assert_db_ok(db, rydb_row_swap(db, nrows, nrows-2));
       assert_db_ok(db, rydb_row_insert_str(db, "after"));
-      n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n==0) {
-          assert_db_datarow(db, cur, rowdata[4]);
-        }
-        else if(n < 3) {
-          assert_db_datarow(db, cur, rowdata[n]);
-        }
-        else if(n == 3) {
-          assert_db_datarow(db, cur, rowdata[5]);
-        }
-        else if(n == 4) {
-          assert_db_datarow(db, cur, "after");
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
+      
+      char *rowdata_results2[] = {
+        rowdata[4], rowdata[1], rowdata[2], rowdata[5], "after", NULL
+      };
+      assert_data_match(db, rowdata_results2, nrows);
     }
   }
   
@@ -927,43 +841,21 @@ describe(row_operations) {
     it("updates a small part of a row") {
       assert_db_insert_rows(db, rowdata, nrows);
       assert_db_ok(db, rydb_row_update(db, nrows, "hey", 3, 3));
-      //rydb_print_stored_data(db);
-      int n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n<nrows-1) {
-          assert_db_datarow(db, cur, rowdata[n]);
-        }
-        else if(n == nrows-1) {
-          assert_db_datarow(db, cur, "6.zheyzzzzzzzzzz");
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
+      char *rowdata_results[] = {
+        rowdata[0], rowdata[1], rowdata[2], rowdata[3], rowdata[4], "6.zheyzzzzzzzzzz"
+      };
+      assert_data_match(db, rowdata_results, nrows);
     }
     
     it("updates a large part of a row") {
       assert_db_insert_rows(db, rowdata, nrows);
       assert_db_ok(db, rydb_row_update(db, nrows, "heywhatis this even", 3, 17));
       assert_db_ok(db, rydb_row_update(db, nrows-1, "................................", 0, ROW_LEN));
-      //rydb_print_stored_data(db);
-      int n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n<nrows-2) {
-          assert_db_datarow(db, cur, rowdata[n]);
-        }
-        else if(n == nrows-2) {
-          assert_db_datarow(db, cur, (char *)"....................");
-        }
-        else if(n == nrows-1) {
-          assert_db_datarow(db, cur, (char *)"6.zheywhatis this ev");
-        }
-        else {
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        }
-        n++;
-      }
+      rydb_print_stored_data(db);
+      char *rowdata_results[] = {
+        rowdata[0], rowdata[1], rowdata[2], rowdata[3], "....................", "6.zheywhatis this ev"
+      };
+      assert_data_match(db, rowdata_results, nrows);
     }
     
   }
@@ -1301,15 +1193,8 @@ describe(transactions) {
       assert_db_ok(db, rydb_row_delete(db, 1));
       assert_db_ok(db, rydb_row_delete(db, 2));
       assert_db_ok(db, rydb_transaction_cancel(db));
-      int n = 0;
-      RYDB_EACH_ROW(db, cur) {
-        if(n < nrows)
-          assert_db_datarow(db, cur, rowdata[n]);
-        else
-          assert_db_row_type(db, cur, RYDB_ROW_EMPTY);
-        n++;
-      }
-      asserteq(n, nrows + 2);
+      
+      assert_data_match(db, rowdata, nrows);
     }
   }
   
