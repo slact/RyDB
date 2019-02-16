@@ -711,6 +711,7 @@ describe(row_operations) {
       assert_db_insert_rows(db, rowdata, nrows);
       
       //set a couple of rows before the last row as empty
+      rydb_print_stored_data(db);
       for(int i=1; i<3; i++) {
         rydb_stored_row_t *row = rydb_rownum_to_row(db, nrows - i);
         row->type = RYDB_ROW_EMPTY;
@@ -851,7 +852,6 @@ describe(row_operations) {
       assert_db_insert_rows(db, rowdata, nrows);
       assert_db_ok(db, rydb_row_update(db, nrows, "heywhatis this even", 3, 17));
       assert_db_ok(db, rydb_row_update(db, nrows-1, "................................", 0, ROW_LEN));
-      rydb_print_stored_data(db);
       char *rowdata_results[] = {
         rowdata[0], rowdata[1], rowdata[2], rowdata[3], "....................", "6.zheywhatis this ev"
       };
