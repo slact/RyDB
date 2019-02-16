@@ -250,7 +250,7 @@ static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_store
   return 1;
 }
 
-int rydb_transaction_run(rydb_t *db) {
+int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run) {
   rydb_stored_row_t *prev = NULL, *next;
   rydb_stored_row_t *lastcmd = rydb_row_next(db->cmd_next_row, db->stored_row_size, -1);
   if(lastcmd < db->data_next_row || 
@@ -318,7 +318,7 @@ int rydb_transaction_run(rydb_t *db) {
 
 int rydb_transaction_finish_or_continue(rydb_t *db, int finish) {
   if(finish && db->transaction.active) {
-    int rc = rydb_transaction_run(db);
+    int rc = rydb_transaction_run(db, NULL);
     //succeed or fail -- the transaction should be cleared
     db->transaction.active = 0;
     db->cmd_next_row = db->data_next_row;

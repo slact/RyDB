@@ -57,7 +57,7 @@ int rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum); //save an error
 //these always succeed
 int rydb_transaction_finish_or_continue(rydb_t *db, int finish);
 int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started);
-int rydb_transaction_run(rydb_t *db);
+int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run);
 
 rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum);
 rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row);

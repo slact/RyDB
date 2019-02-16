@@ -566,6 +566,15 @@ int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, si
   
   return 1;
 }
+int rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz) {
+  size_t current_sz = f->file.end - f->file.start;
+  if(current_sz > desired_sz && ftruncate(f->fd, desired_sz) == -1) {
+    rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to shrink file to size %zu", desired_sz);
+    return 0;
+  }
+  return 1;
+}
+
 
 int rydb_ensure_open(rydb_t *db) {
   if(db->state != RYDB_STATE_OPEN) {
@@ -1160,7 +1169,14 @@ static int rydb_data_scan_tail(rydb_t *db) {
   if(!data_lastrow_found) {
     db->data_next_row = (void *)db->data.data.start;
   }
-  return 1;
+  
+  if(last_commit_row) {
+    if(!rydb_transaction_run(db, last_commit_row)) {
+      return 0;
+    }
+  }
+  //truncate the tx log
+  return rydb_file_shrink_to_size(db, &db->data, (char *)db->data_next_row - db->data.file.start);
 }
 
 static int rydb_data_file_exists(const rydb_t *db) {
@@ -1333,14 +1349,16 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   }
   
   db->stored_row_size = ry_align(db->config.row_len + db->config.link_pair_count * sizeof(rydb_rownum_t), 8); //let's make sure the data 
-  rydb_data_scan_tail(db);
   if(new_db) {
     db->config.hash_key.quality = getrandombytes(db->config.hash_key.value, sizeof(db->config.hash_key.value));
     rydb_meta_save(db);
   }
-  
-  db->state = RYDB_STATE_OPEN;
   db->config.hash_key.permanent = 1;
+  
+  if(!rydb_data_scan_tail(db)) {
+    return 0;
+  }
+  db->state = RYDB_STATE_OPEN;
   return 1;
 }
 
