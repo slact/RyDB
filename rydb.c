@@ -572,6 +572,11 @@ int rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz) {
     rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to shrink file to size %zu", desired_sz);
     return 0;
   }
+  f->file.end = f->file.start + desired_sz;
+  if(f->data.end > f->file.end) {
+    f->data.end = f->file.end;
+  }
+  
   return 1;
 }
 
@@ -1154,7 +1159,7 @@ static int rydb_data_scan_tail(rydb_t *db) {
       db->cmd_next_row = rydb_row_next(cur, stored_row_size, 1);
       lastrow_found = 1;
     }
-    if(cur->type == RYDB_ROW_CMD_COMMIT) {
+    if(!last_commit_row && cur->type == RYDB_ROW_CMD_COMMIT) {
       last_commit_row = cur;
     }
     if(!data_lastrow_found && cur->type == RYDB_ROW_DATA) {
@@ -1176,7 +1181,13 @@ static int rydb_data_scan_tail(rydb_t *db) {
     }
   }
   //truncate the tx log
-  return rydb_file_shrink_to_size(db, &db->data, (char *)db->data_next_row - db->data.file.start);
+  if(!rydb_file_shrink_to_size(db, &db->data, (char *)db->data_next_row - db->data.file.start)) {
+    return 0;
+  }
+  assert(db->data_next_row >= db->data.file.end);
+  assert(db->data_next_row >= db->data.data.end);
+  return 1;
+  
 }
 
 static int rydb_data_file_exists(const rydb_t *db) {

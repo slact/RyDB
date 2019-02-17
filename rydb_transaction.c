@@ -252,7 +252,13 @@ static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_store
 
 int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run) {
   rydb_stored_row_t *prev = NULL, *next;
-  rydb_stored_row_t *lastcmd = rydb_row_next(db->cmd_next_row, db->stored_row_size, -1);
+  rydb_stored_row_t *lastcmd;
+  if(last_row_to_run) {
+    lastcmd = last_row_to_run;
+  }
+  else {
+    lastcmd = rydb_row_next(db->cmd_next_row, db->stored_row_size, -1);
+  }
   if(lastcmd < db->data_next_row || 
     (rydb_debug_refuse_to_run_transaction_without_commit && lastcmd->type != RYDB_ROW_CMD_COMMIT)) {
     // no CMD_COMMIT at the end -- bail

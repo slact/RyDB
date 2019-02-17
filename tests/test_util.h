@@ -6,6 +6,8 @@
 #include <signal.h>
 #include <regex.h>
 #include <stdarg.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #undef snow_main_decls
 #define snow_main_decls \
@@ -191,5 +193,6 @@ struct vector_crc32_s {
 };
 const struct vector_crc32_s vector_crc32[32];
 
+off_t filesize(const char *filename);
 
 #endif // __TEST_UTIL_H

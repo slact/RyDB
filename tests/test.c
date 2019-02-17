@@ -1247,6 +1247,55 @@ describe(transactions) {
       
       assert_data_match(db, rowdata, nrows);
     }
+    
+    it("runs commands up to the last COMMIT but no further") {
+      rydb_row_t commit = {.type = RYDB_ROW_CMD_COMMIT};
+      assert_db_ok(db, rydb_data_append_cmd_rows(db, &commit, 1));
+      assert_db_ok(db, rydb_transaction_start(db));
+      RYDB_ROW_TXTEST_COMMANDS(db);
+      assert_data_match(db, rowdata, nrows);
+      assert_db_ok(db, rydb_data_append_cmd_rows(db, &commit, 1));
+      assert_db_ok(db, rydb_row_insert_str(db, "yeaps"));
+      assert_db_ok(db, rydb_data_append_cmd_rows(db, &commit, 1));
+      assert_db_ok(db, rydb_row_delete(db, 1)); //this should be discarded
+      assert_db_ok(db, rydb_row_swap(db, 5, 6)); //and this
+      // (because a commit does not follow
+      //don't finish the transaction
+      rydb_close(db);
+      
+      db = rydb_new();
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      char *results[] = {
+        rowdata[1], NULL, rowdata[2], rowdata[3], NULL, rowdata[4], "7.an insertion", "yeaps"
+      };
+      assert_data_match(db, results, 8);
+    }
+    
+    it("truncates the filesize to the end of the data rows") {
+      off_t old_sz = filesize(db->data.path);
+      assert_db_ok(db, rydb_transaction_start(db));
+      assert_db_ok(db, rydb_row_swap(db, 1, 2));
+      assert_db_ok(db, rydb_row_delete(db, 2));
+      assert_db_ok(db, rydb_row_delete(db, 6));
+      assert_db_ok(db, rydb_row_swap(db, 5, 6));
+      //rydb_print_stored_data(db);
+      //don't finish the transaction
+      rydb_close(db);
+      
+      db = rydb_new();
+      config_testdb(db);
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      //rydb_print_stored_data(db);
+      assert_data_match(db, rowdata, nrows);
+      int n=0;
+      RYDB_EACH_ROW(db, cur) {
+        n++;
+      }
+      off_t new_sz = filesize(db->data.path);
+      assert(new_sz <= old_sz);
+      asserteq(n, nrows, "no rows should follow data after a reload");
+    }
   }
 }
 
