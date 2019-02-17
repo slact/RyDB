@@ -73,6 +73,10 @@ static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
   if(!rydb_cmd_rangecheck(db, "SET", cmd, dst)) {
     return(0);
   }
+  if(cmd != dst || dst->type != RYDB_ROW_EMPTY) {
+    rydb_indices_remove_row(db, dst);
+  }
+  
   if(cmd == dst) {
     //set this very rownum
     cmd->type = RYDB_ROW_DATA;
@@ -83,6 +87,7 @@ static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
     dst->type = RYDB_ROW_DATA;
     cmd->type = RYDB_ROW_EMPTY;
   }
+  rydb_indices_add_row(db, dst);
   if(dst >= db->data_next_row) {
     db->data_next_row = rydb_row_next(dst, rowsz, 1);
   }
@@ -95,7 +100,10 @@ static inline int rydb_cmd_update(rydb_t *db, rydb_stored_row_t *cmd) {
   if(!rydb_cmd_rangecheck(db, "UPDATE", cmd, dst)) {
     return(0);
   }
+  char *update_data = (char *)&header[1];
+  rydb_indices_update_remove_row(db, dst, header->start, header->len);
   memcpy(&dst->data[header->start], (char *)&header[1], header->len);
+  rydb_indices_update_add_row(db, dst, header->start, header->len);
   cmd->type = RYDB_ROW_EMPTY;
   return 1;
 }
@@ -129,9 +137,11 @@ static inline int rydb_cmd_update2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_sto
   if(!rydb_cmd_rangecheck(db, "UPDATE2", cmd1, dst)) {
     return 0;
   }
+  rydb_indices_update_remove_row(db, dst, header->start, header->len);
   memcpy(&dst->data[header->start], cmd2->data, header->len);
   cmd2->type = RYDB_ROW_EMPTY;
   cmd1->type = RYDB_ROW_EMPTY;
+  rydb_indices_update_add_row(db, dst, header->start, header->len);
   return 1;
 }
 static inline int rydb_cmd_delete(rydb_t *db, rydb_stored_row_t *cmd) {
@@ -139,6 +149,7 @@ static inline int rydb_cmd_delete(rydb_t *db, rydb_stored_row_t *cmd) {
   if(!rydb_cmd_rangecheck(db, "DELETE", cmd, dst)) {
     return 0;
   }
+  rydb_indices_remove_row(db, dst);
   dst->type = RYDB_ROW_EMPTY;
   cmd->type = RYDB_ROW_EMPTY;
   // remove contiguous empty rows at the end of the data from the data range
@@ -196,6 +207,8 @@ static inline int rydb_cmd_swap2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_store
   if(!rydb_cmd_rangecheck(db, "SWAP2", cmd1, src) || !rydb_cmd_rangecheck(db, "SWAP2", cmd1, dst)) {
     return 0;
   }
+  
+  //TODO: figure out efficient implementation for reindexing swaps
   
   size_t              rowsz = db->stored_row_size;
   

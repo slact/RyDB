@@ -1184,8 +1184,8 @@ static int rydb_data_scan_tail(rydb_t *db) {
   if(!rydb_file_shrink_to_size(db, &db->data, (char *)db->data_next_row - db->data.file.start)) {
     return 0;
   }
-  assert(db->data_next_row >= db->data.file.end);
-  assert(db->data_next_row >= db->data.data.end);
+  assert((char *)db->data_next_row >= db->data.file.end);
+  assert((char *)db->data_next_row >= db->data.data.end);
   return 1;
   
 }
@@ -1607,6 +1607,22 @@ int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
   }
   return rydb_transaction_finish_or_continue(db, txstarted);
 }
+
+//indexing entry-points
+//indexing stuff
+int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row) {
+  return 1;
+}
+int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row) {
+  return 1;
+}
+int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end) {
+  return 1;
+}
+int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end) {
+  return 1;
+}
+
 
 /*
 int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, char *data, uint16_t start, uint16_t len) {

@@ -77,6 +77,12 @@ char *rydb_strdup(const char *str);
 
 const char *rydb_rowtype_str(rydb_row_type_t type);
 
+//indexing stuff
+int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row);
+int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row);
+int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end);
+int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end);
+
 
 //NOTE: this only works correctly if the struct is made without padding
 typedef struct {
