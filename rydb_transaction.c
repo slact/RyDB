@@ -102,7 +102,7 @@ static inline int rydb_cmd_update(rydb_t *db, rydb_stored_row_t *cmd) {
   }
   char *update_data = (char *)&header[1];
   rydb_indices_update_remove_row(db, dst, header->start, header->len);
-  memcpy(&dst->data[header->start], (char *)&header[1], header->len);
+  memcpy(&dst->data[header->start], update_data, header->len);
   rydb_indices_update_add_row(db, dst, header->start, header->len);
   cmd->type = RYDB_ROW_EMPTY;
   return 1;

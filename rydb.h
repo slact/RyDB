@@ -125,6 +125,7 @@ typedef struct {
 typedef struct {
   rydb_file_t          index;
   rydb_file_t          data;
+  rydb_config_index_t *config;
   rydb_index_state_t   state;
 } rydb_index_t;
 

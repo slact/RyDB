@@ -38,12 +38,12 @@
 #define RYDB_EACH_ROW(db, cur) for(rydb_stored_row_t *cur = (void *)db->data.data.start; (char *)cur <= (char *)db->data.file.end - db->stored_row_size; cur = rydb_row_next(cur, db->stored_row_size, 1))
 
 int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f);
-int rydb_file_open_index(rydb_t *db, int index_n);
-int rydb_file_open_index_data(rydb_t *db, int index_n);
+int rydb_file_open_index(rydb_t *db, rydb_index_t *idx);
+int rydb_file_open_index_data(rydb_t *db, rydb_index_t *idx);
 
 int rydb_file_close(rydb_t *db, rydb_file_t *f);
-int rydb_file_close_index(rydb_t *db, off_t index_n);
-int rydb_file_close_data(rydb_t *db, off_t index_n);
+int rydb_file_close_index(rydb_t *db, rydb_index_t *idx);
+int rydb_file_close_data(rydb_t *db, rydb_index_t *idx);
 
 int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz);
 int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, size_t sz);
@@ -82,9 +82,9 @@ int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row);
 int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row);
 int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end);
 int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end);
-int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, char *data, off_t start, off_t end);
+int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end);
 #define RYDB_EACH_INDEX(db, idx) \
-  for(rydb_config_index_t *idx=&db->config.index[0], *idx_max = &db->config.index[db->config.index_count]; idx < idx_max; idx++) 
+  for(rydb_index_t *idx=&db->index[0], *idx_max = &db->index[db->config.index_count]; idx < idx_max; idx++) 
 
 
 

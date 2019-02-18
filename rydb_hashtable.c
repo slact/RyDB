@@ -339,17 +339,17 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
   return 1;
 }
 
-int rydb_index_hashtable_open(rydb_t *db, off_t i) {
-  rydb_config_index_t  *cf = &db->config.index[i];
+int rydb_index_hashtable_open(rydb_t *db,  rydb_index_t *idx) {
+  rydb_config_index_t  *cf = idx->config;
   
   assert(cf->type == RYDB_INDEX_HASHTABLE);
-  if(!rydb_file_open_index(db, i)) {
+  if(!rydb_file_open_index(db, idx)) {
     return 0;
   }
   
   if(!cf->type_config.hashtable.direct_mapping) {
-    if(!rydb_file_open_index_data(db, i)) {
-      rydb_file_close_index(db, i);
+    if(!rydb_file_open_index_data(db, idx)) {
+      rydb_file_close_index(db, idx);
       return 0;
     }
   }
@@ -410,15 +410,31 @@ static uint64_t hash_value(rydb_t *db, rydb_config_index_t *idx, char *data, uin
   return h;
 }
 
-int rydb_index_hashtable_add_row(rydb_row_t *db, rydb_config_index_t *idx, rydb_stored_row_t *row) {
+int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
+  (void)(db);
+  (void)(idx);
+  (void)(row);
   return 1;
 }
-int rydb_index_hashtable_remove_row(rydb_row_t *db, rydb_config_index_t *idx, rydb_stored_row_t *row) {
+int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
+  (void)(db);
+  (void)(idx);
+  (void)(row);
   return 1;
 }
-int rydb_index_hashtable_update_add_row(rydb_row_t *db,  rydb_config_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end) {
+int rydb_index_hashtable_update_add_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end) {
+  (void)(db);
+  (void)(idx);
+  (void)(row);
+  (void)(start);
+  (void)(end);
   return 1; 
 }
-int rydb_index_hashtable_update_remove_row(rydb_row_t *db,  rydb_config_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end) {
+int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end) {
+  (void)(db);
+  (void)(idx);
+  (void)(row);
+  (void)(start);
+  (void)(end);
   return 1;
 }

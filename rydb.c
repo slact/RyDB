@@ -645,11 +645,11 @@ int rydb_file_close(rydb_t *db, rydb_file_t *f) {
   return ok;
 }
 
-int rydb_file_close_index(rydb_t *db, off_t index_n) {
-  return rydb_file_close(db, &db->index[index_n].index);
+int rydb_file_close_index(rydb_t *db, rydb_index_t *idx) {
+  return rydb_file_close(db, &idx->index);
 }
-int rydb_file_close_data(rydb_t *db, off_t index_n) {
-  return rydb_file_close(db, &db->index[index_n].data);
+int rydb_file_close_data(rydb_t *db, rydb_index_t *idx) {
+  return rydb_file_close(db, &idx->data);
 }
 
 int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
@@ -696,15 +696,15 @@ int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
   return 1;
 }
 
-int rydb_file_open_index(rydb_t *db, int index_n) {
+int rydb_file_open_index(rydb_t *db, rydb_index_t *idx) {
   char index_name[128];
-  snprintf(index_name, 128, "index.%s", db->config.index[index_n].name);
-  return rydb_file_open(db, index_name, &db->index[index_n].index);
+  snprintf(index_name, 128, "index.%s", idx->config->name);
+  return rydb_file_open(db, index_name, &idx->index);
 }
-int rydb_file_open_index_data(rydb_t *db, int index_n) {
+int rydb_file_open_index_data(rydb_t *db, rydb_index_t *idx) {
   char index_name[128];
-  snprintf(index_name, 128, "index.%s.data", db->config.index[index_n].name);
-  return rydb_file_open(db, index_name, &db->index[index_n].data);
+  snprintf(index_name, 128, "index.%s.data", idx->config->name);
+  return rydb_file_open(db, index_name, &idx->data);
 }
 
 static int rydb_index_type_valid(rydb_index_type_t index_type) {
@@ -1328,6 +1328,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
       if(db->config.index[i].flags & RYDB_INDEX_UNIQUE) {
         db->unique_index_count++;
       }
+      db->index[i].config = &db->config.index[i];
       db->index[i].index.fd = -1;
       db->index[i].data.fd = -1;
       switch(db->config.index[i].type) {
@@ -1336,7 +1337,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
           rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Tried opening unsupported index \"%s\" type", db->config.index[i].name);
           return rydb_open_abort(db);
         case RYDB_INDEX_HASHTABLE:
-          if(!rydb_index_hashtable_open(db, i)) {
+          if(!rydb_index_hashtable_open(db, &db->index[i])) {
             return rydb_open_abort(db);
           }
           break;
@@ -1367,7 +1368,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   db->config.hash_key.permanent = 1;
   
   if(!rydb_data_scan_tail(db)) {
-    return 0;
+    return rydb_open_abort(db);
   }
   db->state = RYDB_STATE_OPEN;
   return 1;
@@ -1624,7 +1625,7 @@ int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
 int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row) {
   int rc = 1;
   RYDB_EACH_INDEX(db, idx) {
-    switch(idx->type) {
+    switch(idx->config->type) {
       case RYDB_INDEX_HASHTABLE:
         rc = rydb_index_hashtable_remove_row(db, idx, row);
         break;
@@ -1642,7 +1643,7 @@ int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row) {
 int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row) {
   int rc = 1;
   RYDB_EACH_INDEX(db, idx) {
-    switch(idx->type) {
+    switch(idx->config->type) {
       case RYDB_INDEX_HASHTABLE:
         rc = rydb_index_hashtable_add_row(db, idx, row);
         break;
@@ -1661,7 +1662,7 @@ int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row) {
 int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *row, off_t start, off_t end) {
   int rc = 1;
   RYDB_EACH_INDEX(db, idx) {
-    switch(idx->type) {
+    switch(idx->config->type) {
       case RYDB_INDEX_HASHTABLE:
         rc = rydb_index_hashtable_update_remove_row(db, idx, row, start, end);
         break;
@@ -1680,7 +1681,7 @@ int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *row, off_t sta
 int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *row, off_t start, off_t end) {
   int rc = 1;
   RYDB_EACH_INDEX(db, idx) {
-    switch(idx->type) {
+    switch(idx->config->type) {
       case RYDB_INDEX_HASHTABLE:
         rc = rydb_index_hashtable_update_add_row(db, idx, row, start, end);
         break;
@@ -1695,7 +1696,13 @@ int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *row, off_t start,
   }
   return rc;
 }
-int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, char *data, off_t start, off_t end) {
+
+int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end) {
+  (void)(db);
+  (void)(rownum);
+  (void)(data);
+  (void)(start);
+  (void)(end);
   return 1;
 }
 
