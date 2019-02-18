@@ -44,8 +44,8 @@ describe(rydb_new) {
   }
 }
 describe(config) {
-  static rydb_t *db;
-  static char path[64];
+  rydb_t *db;
+  char path[64];
   
   before_each() {
     reset_malloc();
@@ -341,8 +341,8 @@ describe(config) {
 }
 
 describe(sizing) {
-  static rydb_t *db;
-  static char path[64];
+  rydb_t *db;
+  char path[64];
   
   subdesc(struct_padding) {
     test("rydb_row_cmd_header_t is unpadded") {
@@ -432,8 +432,8 @@ describe(errors_and_debug) {
 }
 
 describe(rydb_open) {
-  static rydb_t *db;
-  static char path[64];
+  rydb_t *db;
+  char path[64];
   
   before_each() {
     reset_malloc();
@@ -618,10 +618,10 @@ describe(rydb_open) {
 }
 
 describe(row_operations) {
-  static rydb_t *db = NULL;
-  static char path[64];
+  rydb_t *db = NULL;
+  char path[64];
   
-  static char *rowdata[] = {
+  char *rowdata[] = {
     "1.hello this is not terribly long of a string",
     "2.and this is another one that exceeds the length",
     "3.this one's short",
@@ -629,7 +629,7 @@ describe(row_operations) {
     "5.here's another one",
     "6.zzzzzzzzzzzzzz"
   };
-  static int nrows = 6;
+  int nrows = 6;
   
   before_each() {
     asserteq(db, NULL, "previous test not closed out correctly");
@@ -887,10 +887,10 @@ void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_ch
 }
 
 describe(transactions) {
-  static rydb_t *db = NULL;
-  static char path[64];
+  rydb_t *db = NULL;
+  char path[64];
   
-  static char *rowdata[] = {
+  char *rowdata[] = {
     "1.hello this is not terribly long of a string",
     "2.and this is another one that exceeds the length",
     "3.this one's short",
@@ -900,7 +900,7 @@ describe(transactions) {
   };
 
   
-  static int nrows = sizeof(rowdata)/sizeof(char *);
+  int nrows = sizeof(rowdata)/sizeof(char *);
   struct cmd_rownum_out_of_range_check_s rangecheck;
   
   before_each() {
@@ -1206,7 +1206,7 @@ describe(transactions) {
   assert_db_ok(db, rydb_row_swap(db, 5, 6))
   
   subdesc(restore_log) {
-    static char *result_rowdata[] = {
+    char *result_rowdata[] = {
       "2.and this is another one that exceeds the length",
       NULL,
       "3.this one's short",
@@ -1215,7 +1215,7 @@ describe(transactions) {
       "5.here's another one",
       "7.an insertion",
     };
-    static int result_nrows = 7;
+    int result_nrows = 7;
     
     it("runs committed commands") {
       assert_db_ok(db, rydb_transaction_start(db));
