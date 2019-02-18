@@ -1492,6 +1492,10 @@ int rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
     len = db->config.row_len;
   }
   
+  if(!rydb_indices_check_unique(db, 0, data, 0, len)) {
+    return 0;
+  }
+  
   int txstarted;
   rydb_transaction_start_or_continue(db, &txstarted);
   
@@ -1534,8 +1538,11 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
     return 0;
   }
   
+  if(!rydb_indices_check_unique(db, rownum, data, start, len)) {
+    return 0;
+  }
+  
   int rc = 0;
-
   int txstarted;
   rydb_transaction_start_or_continue(db, &txstarted);
   
@@ -1568,6 +1575,8 @@ int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum) {
     return 0;
   }
   
+  //deletes are always ok, no need to check unique indices
+  
   int txstarted;
   rydb_transaction_start_or_continue(db, &txstarted);
   
@@ -1594,6 +1603,8 @@ int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
     return 1;
   }
   
+  //swaps are always ok, no need to check unique indices
+  
   int txstarted;
   rydb_transaction_start_or_continue(db, &txstarted);
   rydb_row_t rows[]={
@@ -1611,18 +1622,82 @@ int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
 //indexing entry-points
 //indexing stuff
 int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row) {
-  return 1;
+  int rc = 1;
+  RYDB_EACH_INDEX(db, idx) {
+    switch(idx->type) {
+      case RYDB_INDEX_HASHTABLE:
+        rc = rydb_index_hashtable_remove_row(db, idx, row);
+        break;
+      case RYDB_INDEX_BTREE:
+        assert(0); //not implemented
+        break;
+      case RYDB_INDEX_INVALID:
+        assert(0); //not supported
+        break;
+    }
+    if(rc == 0) break;
+  }
+  return rc;
 }
 int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row) {
-  return 1;
-}
-int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end) {
-  return 1;
-}
-int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end) {
-  return 1;
+  int rc = 1;
+  RYDB_EACH_INDEX(db, idx) {
+    switch(idx->type) {
+      case RYDB_INDEX_HASHTABLE:
+        rc = rydb_index_hashtable_add_row(db, idx, row);
+        break;
+      case RYDB_INDEX_BTREE:
+        assert(0); //not implemented
+        break;
+      case RYDB_INDEX_INVALID:
+        assert(0); //not supported
+        break;
+    }
+    if(rc == 0) break;
+  }
+  return rc;
 }
 
+int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *row, off_t start, off_t end) {
+  int rc = 1;
+  RYDB_EACH_INDEX(db, idx) {
+    switch(idx->type) {
+      case RYDB_INDEX_HASHTABLE:
+        rc = rydb_index_hashtable_update_remove_row(db, idx, row, start, end);
+        break;
+      case RYDB_INDEX_BTREE:
+        assert(0); //not implemented
+        break;
+      case RYDB_INDEX_INVALID:
+        assert(0); //not supported
+        break;
+    }
+    if(rc == 0) break;
+  }
+  return rc;
+}
+
+int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *row, off_t start, off_t end) {
+  int rc = 1;
+  RYDB_EACH_INDEX(db, idx) {
+    switch(idx->type) {
+      case RYDB_INDEX_HASHTABLE:
+        rc = rydb_index_hashtable_update_add_row(db, idx, row, start, end);
+        break;
+      case RYDB_INDEX_BTREE:
+        assert(0); //not implemented
+        break;
+      case RYDB_INDEX_INVALID:
+        assert(0); //not supported
+        break;
+    }
+    if(rc == 0) break;
+  }
+  return rc;
+}
+int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, char *data, off_t start, off_t end) {
+  return 1;
+}
 
 /*
 int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, char *data, uint16_t start, uint16_t len) {

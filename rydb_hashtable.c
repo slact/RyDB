@@ -409,3 +409,16 @@ static uint64_t hash_value(rydb_t *db, rydb_config_index_t *idx, char *data, uin
   }
   return h;
 }
+
+int rydb_index_hashtable_add_row(rydb_row_t *db, rydb_config_index_t *idx, rydb_stored_row_t *row) {
+  return 1;
+}
+int rydb_index_hashtable_remove_row(rydb_row_t *db, rydb_config_index_t *idx, rydb_stored_row_t *row) {
+  return 1;
+}
+int rydb_index_hashtable_update_add_row(rydb_row_t *db,  rydb_config_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end) {
+  return 1; 
+}
+int rydb_index_hashtable_update_remove_row(rydb_row_t *db,  rydb_config_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end) {
+  return 1;
+}

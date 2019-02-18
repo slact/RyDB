@@ -82,6 +82,10 @@ int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row);
 int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row);
 int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end);
 int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end);
+int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, char *data, off_t start, off_t end);
+#define RYDB_EACH_INDEX(db, idx) \
+  for(rydb_config_index_t *idx=&db->config.index[0], *idx_max = &db->config.index[db->config.index_count]; idx < idx_max; idx++) 
+
 
 
 //NOTE: this only works correctly if the struct is made without padding
