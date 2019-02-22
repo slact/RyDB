@@ -85,17 +85,17 @@ void config_testdb(rydb_t *db) {
 int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_code_t expected_error_code, const char *errmsg_match, char *errmsg_result) {
   rydb_error_t *err = rydb_error(db);
   if(rc == 1) {
-    snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i], but succeeded instead", callstr, rydb_error_code_str(expected_error_code), expected_error_code);
+    snprintf(errmsg_result, MAXERRLEN, "Expected %s to fail with error %s [%i], but succeeded instead", callstr, rydb_error_code_str(expected_error_code), expected_error_code);
     return 0;
   }
   if(!err) {
-    snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i], but failed without setting an errir instead", callstr, rydb_error_code_str(expected_error_code), expected_error_code);
+    snprintf(errmsg_result, MAXERRLEN, "Expected %s to fail with error %s [%i], but failed without setting an errir instead", callstr, rydb_error_code_str(expected_error_code), expected_error_code);
     return 0;
   }
   char buf[900];
   rydb_error_snprint(db, buf, 1024);
   if(err->code != expected_error_code) {
-    snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i], but instead got %s", callstr, rydb_error_code_str(expected_error_code), expected_error_code, buf);
+    snprintf(errmsg_result, MAXERRLEN, "Expected %s to fail with error %s [%i], but instead got %s", callstr, rydb_error_code_str(expected_error_code), expected_error_code, buf);
     return 0;
   }
   if(strlen(errmsg_match) > 0) {
@@ -104,18 +104,18 @@ int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_cod
     char      rxerrbuf[100];
     rcx = regcomp(&regex, errmsg_match, REG_EXTENDED);
     if (rcx != 0) {
-      snprintf(errmsg_result, 1024, "Bad regex %s", errmsg_match);
+      snprintf(errmsg_result, MAXERRLEN, "Bad regex %s", errmsg_match);
       return 0;
     }
     rcx = regexec(&regex, buf, 0, NULL, 0);
     if(rcx == REG_NOMATCH) {
-      snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i] matching /%s/, but instead got %s", callstr, rydb_error_code_str(expected_error_code), expected_error_code, errmsg_match, buf);
+      snprintf(errmsg_result, MAXERRLEN, "Expected %s to fail with error %s [%i] matching /%s/, but instead got %s", callstr, rydb_error_code_str(expected_error_code), expected_error_code, errmsg_match, buf);
       regfree(&regex);
       return 0;
     }
     if(rcx != 0) {
       regerror(rcx, &regex, rxerrbuf, 100);
-      snprintf(errmsg_result, 1024, "Expected %s to fail with error %s [%i] matching %s, but instead got regex error %s", callstr, rydb_error_code_str(expected_error_code), expected_error_code, errmsg_match, rxerrbuf);
+      snprintf(errmsg_result, MAXERRLEN, "Expected %s to fail with error %s [%i] matching %s, but instead got regex error %s", callstr, rydb_error_code_str(expected_error_code), expected_error_code, errmsg_match, rxerrbuf);
       regfree(&regex);
       return 0;
     }

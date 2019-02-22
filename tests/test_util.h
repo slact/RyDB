@@ -61,12 +61,13 @@ do { \
   } \
 } while(0)
 
+#define MAXERRLEN 2048
 
 #define assert_db_ok(db, cmd) \
   do { \
-    char ___buf[1024]; \
+    char ___buf[MAXERRLEN]; \
     int ___rc = (cmd);\
-    rydb_error_snprint(db, ___buf, 1024); \
+    rydb_error_snprint(db, ___buf, MAXERRLEN); \
     if(___rc != 1) \
       fail("%s", ___buf); \
   } while(0)
@@ -74,7 +75,7 @@ do { \
 #define assert_db_fail(db, cmd, expected_error, ...) \
   do { \
     snow_fail_update(); \
-    char ___buf[1024]; \
+    char ___buf[MAXERRLEN]; \
     char *___rxpattern = "" __VA_ARGS__; \
     int ___rc = (cmd); \
     if(___rydb_failed_as_expected(db, #cmd, ___rc, expected_error, ___rxpattern, ___buf) == 0 ) { \
@@ -86,7 +87,7 @@ do { \
 #define assert_db_fail_match_errstr(db, cmd, expected_error, match) \
   do { \
     snow_fail_update(); \
-    char ___buf[1024]; \
+    char ___buf[MAXERRLEN]; \
     int ___rc = (cmd); \
     if(___rydb_failed_as_expected(db, #cmd, ___rc, expected_error, match,  ___buf) == 0 ) { \
       rydb_error_clear(db); \
@@ -96,11 +97,11 @@ do { \
 
 #define assert_db(db) \
   do { \
-    char ___cmd_rc[1024]; \
+    char ___cmd_rc[MAXERRLEN]; \
     assertneq(db, NULL, "rydb struct pointer cannot be NULL"); \
     rydb_error_t *err = rydb_error(db); \
     if(err) { \
-      rydb_error_snprint(db, ___cmd_rc, 1024); \
+      rydb_error_snprint(db, ___cmd_rc, MAXERRLEN); \
     } \
     if(err) \
       fail("Expected no error, got %s", ___cmd_rc); \
