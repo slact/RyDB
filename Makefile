@@ -105,7 +105,7 @@ coverage-gcc-create:
 	-$(MAKE) -C $(TEST_DIR) run
 
 coverage-gcc: coverage-gcc-create
-	gcovr --html-details --exclude snow.h --exclude test_util.h -o coverage.html
+	gcovr --html-details --exclude tests/snow.h --exclude tests/ -o coverage.html
 	xdg-open ./coverage.html
 
 coverage-gcc-gcov: coverage-gcc-create
