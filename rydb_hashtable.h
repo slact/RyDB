@@ -21,7 +21,7 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb
 
 typedef struct {
   rydb_rownum_t count;
-  uint8_t       bitsize;
+  uint8_t       bits;
   /* whoa that's a lot of padding at the end there here...*/
 }rydb_hashtable_bitlevel_count_t;
 
