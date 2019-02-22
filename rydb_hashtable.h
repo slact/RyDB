@@ -20,17 +20,26 @@ int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_
 int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb_row_t *row);
 
 typedef struct {
+  rydb_rownum_t count;
+  uint8_t       bitsize;
+  /* whoa that's a lot of padding at the end there here...*/
+}rydb_hashtable_bitlevel_count_t;
+
+typedef struct {
+  int8_t          reserved; //reserved for writing
+  uint8_t         active;
   struct {
     struct {
       rydb_rownum_t   total;
       rydb_rownum_t   used;
       rydb_rownum_t   load_factor_max;
-      size_t          bits;
+      uint8_t         sub_bitlevels;
     }               count;
+    struct {
+      rydb_hashtable_bitlevel_count_t top; //top bitlevel count
+      rydb_hashtable_bitlevel_count_t sub[8*(sizeof(rydb_rownum_t)+1)];
+    }              bitlevel;
   }               bucket;
-  uint16_t        incomplete_migration_count;
-  int8_t          reserved; //reserved for writing
-  uint8_t         active;
 } rydb_hashtable_header_t;
 
 void rydb_hashtable_print(rydb_t *db, rydb_index_t *idx);

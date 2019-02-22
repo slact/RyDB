@@ -1308,13 +1308,14 @@ describe(hashtable) {
     for(int i=1; i<200; i++) {
       sprintf(str, "%izzz", i);
       assert_db_ok(db, rydb_row_insert_str(db, str));
+      //rydb_hashtable_print(db, &db->index[0]);
     }
   }
   
   test("finding rows in hashtable") {
     char str[128], searchstr[128];
     const char *fmt = "%izzz, yes,%i!";
-    int maxrows = 615;
+    int maxrows = 1000;
     for(int i=0; i<maxrows; i++) {
       //printf("i: %i\n", i);
       sprintf(str, fmt, i, i);

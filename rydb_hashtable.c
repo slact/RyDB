@@ -417,31 +417,60 @@ static inline rydb_hashtable_header_t *hashtable_header(rydb_index_t *idx) {
   return (void *)idx->index.file.start;
 }
 
-static inline void hashtable_reserve(rydb_index_t *idx) {
-  rydb_hashtable_header_t *header = hashtable_header(idx);
+static inline void hashtable_reserve(rydb_hashtable_header_t *header) {
   assert(header->reserved < INT8_MAX);
   header->reserved++;
 }
-static inline void hashtable_release(rydb_index_t *idx) {
-  rydb_hashtable_header_t *header = hashtable_header(idx);
+static inline void hashtable_release(rydb_hashtable_header_t *header) {
   header->reserved--;
   assert(header->reserved >= 0);
 }
 
+static void hashtable_bitlevel_subtract(rydb_hashtable_header_t *header, int level) {
+  if(--header->bucket.bitlevel.sub[level].count == 0) {
+    for(int i =  level+1; i < header->bucket.count.sub_bitlevels; i++) {
+      header->bucket.bitlevel.sub[i] = header->bucket.bitlevel.sub[i+1];
+    }
+    header->bucket.count.sub_bitlevels--;
+    assert(header->bucket.bitlevel.sub[header->bucket.count.sub_bitlevels].count == 0);
+    assert(header->bucket.bitlevel.sub[header->bucket.count.sub_bitlevels].bitsize == 0);
+  }
+}
+
+static const rydb_hashtable_bitlevel_count_t *hashtable_bitlevel_next(const rydb_hashtable_header_t *header, const rydb_hashtable_bitlevel_count_t *bitlevel) {
+  if(bitlevel == NULL) {
+    return &header->bucket.bitlevel.top;
+  }
+  const rydb_hashtable_bitlevel_count_t *end = &header->bucket.bitlevel.sub[header->bucket.count.sub_bitlevels];
+  if(bitlevel < end) {
+    return &bitlevel[1];
+  }
+  return NULL;
+}
+
+static void hashtable_bitlevel_push(rydb_hashtable_header_t *header) {
+  for(int i = header->bucket.count.sub_bitlevels - 1; i >= 0; i--) {
+    header->bucket.bitlevel.sub[i+1] = header->bucket.bitlevel.sub[i];
+  }
+  header->bucket.bitlevel.sub[0] = header->bucket.bitlevel.top;
+  header->bucket.count.sub_bitlevels++;
+}
 
 static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   rydb_hashtable_header_t *header = hashtable_header(idx);
   rydb_config_index_t *cf = idx->config;
-  hashtable_reserve(idx);
-  if(header->bucket.count.bits != 0) {
-    header->incomplete_migration_count++;
+  hashtable_reserve(header);
+  if(header->bucket.bitlevel.top.bitsize != 0) {
+    hashtable_bitlevel_push(header);
   }
-  header->bucket.count.bits++;
-  uint64_t max_bucket = (1 << header->bucket.count.bits);
+  header->bucket.bitlevel.top.bitsize++;
+  header->bucket.bitlevel.top.count = 0;
+  
+  uint64_t max_bucket = (1 << header->bucket.bitlevel.top.bitsize);
   header->bucket.count.load_factor_max = max_bucket * cf->type_config.hashtable.load_factor_max;
   size_t sz = max_bucket * hashtable_entry_size(cf);
   header->bucket.count.total = max_bucket;
-  hashtable_release(idx);
+  hashtable_release(header);
   int rc = rydb_file_ensure_size(db, &idx->index, RYDB_INDEX_HASHTABLE_START_OFFSET + sz);
   if(rc) {
     idx->index.data.end = idx->index.file.end;
@@ -493,23 +522,24 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb
   rydb_rownum_t *bucket_rownum, rownum;
   rydb_rownum_t *buckets_end = (void *)&idx->index.data.start[bucket_sz * header->bucket.count.total];
   //rydb_hashtable_print(db, idx);
-  for(uint16_t migrant_wave=0, last_wave = header->incomplete_migration_count; migrant_wave <= last_wave; migrant_wave++) {
-    trimmed_hashvalue = btrim64(hashvalue, 64 - header->bucket.count.bits + migrant_wave);
+  
+  const rydb_hashtable_bitlevel_count_t *bitlevel = NULL;
+  while((bitlevel = hashtable_bitlevel_next(header, bitlevel)) != NULL) {
+    trimmed_hashvalue = btrim64(hashvalue, 64 - bitlevel->bitsize);
     bucket_rownum = (rydb_rownum_t *)(idx->index.data.start + bucket_sz * trimmed_hashvalue);
-    do {
-      rownum = bucket_rownum < buckets_end ? *bucket_rownum : 0;
-      //printf("hash: %"PRIu64", wave: %"PRIu16" trimmed: %"PRIu64" rownum: %"PRIu32"%s", hashvalue, migrant_wave, trimmed_hashvalue, rownum, rownum ? "" : "\n");
-      if(!rownum) {
-        break; //next wave
-      }
+    while((rownum = bucket_rownum < buckets_end ? *bucket_rownum : 0) != 0) {
       datarow = rydb_rownum_to_row(db, rownum);
+      //printf("hash: %"PRIu64", bits: %"PRIu8" trimmed: %"PRIu64" rownum: %"PRIu32"%s", hashvalue, bitlevel->bitsize, trimmed_hashvalue, rownum, rownum ? "" : "\n");
       //printf("val: %s found: %s\n", val, &datarow->data[cf->start]);
       if(datarow && memcmp(val, &datarow->data[cf->start], cf->len) == 0) {
+        if(bitlevel != &header->bucket.bitlevel.top) {
+          //TODO: migrate this bucket to the top layer
+        }
         rydb_storedrow_to_row(db, datarow, row);
         return 1;
       }
       bucket_rownum = (void *)((char *)bucket_rownum + bucket_sz);
-    } while(1);
+    }
   }
   
   return 0;
@@ -523,9 +553,9 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
     }
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
   }
-  uint64_t  hashvalue = hash_value(db, cf, row->data, 64 - header->bucket.count.bits);
+  uint64_t  hashvalue = hash_value(db, cf, row->data, 64 - header->bucket.bitlevel.top.bitsize);
   rydb_rownum_t rownum = rydb_row_to_rownum(db, row);
-  //printf("added rownum %"PRIu32" bits: %"PRIu64 " hashvalue %"PRIu64" trimmed to %"PRIu64" str: \"%s\"\n", rownum, header->bucket.count.bits, hash_value(db, cf, row->data, 0), hashvalue, row->data);
+  //printf("added rownum %"PRIu32" bits: %"PRIu8 " hashvalue %"PRIu64" trimmed to %"PRIu64" str: \"%s\"\n", rownum, header->bucket.bitlevel.top.bitsize, hash_value(db, cf, row->data, 0), hashvalue, row->data);
   char     *bucket = &idx->index.data.start[entry_sz * hashvalue];
   
   rydb_rownum_t *bucket_rownum = (void *)bucket;
@@ -547,7 +577,7 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
     }
     buckets_skipped ++;
   }
-  hashtable_reserve(idx);
+  hashtable_reserve(header);
   if(bucket_rownum >= buckets_end) {
     header->bucket.count.total++; //record bucket overflow
   }
@@ -557,7 +587,8 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
   *bucket_rownum = rownum;
   //rydb_hashtable_print(db, idx);
   header->bucket.count.used ++;
-  hashtable_release(idx);
+  header->bucket.bitlevel.top.count++;
+  hashtable_release(header);
   return 1;
 }
 int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
@@ -593,21 +624,27 @@ void rydb_hashtable_print(rydb_t *db, rydb_index_t *idx) {
   hash_key_hexstr_buf[sizeof(db->config.hash_key.value)*2]='\00';
   const char *fmt = "\nhashtable %s\n"
     "  key: %s\n"
+    "  reserved:             %"PRIi8"\n"
+    "  active:               %"PRIu8"\n"
     "  bucket count total:   %"PRIu32"\n"
     "  bucket count used:    %"PRIu32"\n"
     "  bucket count LF max:  %"PRIu32"\n"
-    "  bucket count bits:    %"PRIu32"\n"
-    "  incomplete mig count: %"PRIu16"\n"
     "  bucket size:          %"PRIu32"\n"
-    "  reserved:             %"PRIi8"\n"
-    "  active:               %"PRIu8"\n";
-  
+    "  bitlevels: top: bits:%2"PRIu8" n: %"PRIu32"\n";
+    
   size_t    entry_sz = hashtable_entry_size(idx->config);
   
-  printf(fmt, idx->config->name, hash_key_hexstr_buf, header->bucket.count.total, header->bucket.count.used, header->bucket.count.load_factor_max,
-         (uint32_t)header->bucket.count.bits, header->incomplete_migration_count, (uint32_t) entry_sz, header->reserved, header->active);
-  
-  
+  printf(fmt, idx->config->name, hash_key_hexstr_buf, 
+         header->reserved,
+         header->active,
+         header->bucket.count.total,
+         header->bucket.count.used,
+         header->bucket.count.load_factor_max,
+         (uint32_t) entry_sz,
+         header->bucket.bitlevel.top.bitsize,  header->bucket.bitlevel.top.count);
+  for(int i=0; i<header->bucket.count.sub_bitlevels; i++) {
+    printf("           %4d: bits: %2"PRIu8" n: %"PRIu32"\n", i+1, header->bucket.bitlevel.sub[i].bitsize, header->bucket.bitlevel.sub[i].count);
+  }
   
   rydb_rownum_t *buckets_end = (void *)&idx->index.data.start[entry_sz * header->bucket.count.total];
   int i = 0;
