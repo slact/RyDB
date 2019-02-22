@@ -557,6 +557,7 @@ int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, si
 #if HAVE_MREMAP
     remapped = mremap(f->mmap.start, current_sz, current_sz * 2, MREMAP_MAYMOVE);
 #else
+    //msync(f->mmap.start, current_sz, MS_ASYNC);
     if(munmap(f->mmap.start, current_sz) != 0) {
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "failed to munmap file %s", f->path);
       return 0;
@@ -575,6 +576,8 @@ int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, si
     //printf("remapped file %s from %p-%p to %p-%p\n", f->path, (void *)f->mmap.start, (void *)&f->mmap.start[current_sz], (void *)remapped, (void *)&remapped[current_sz * 2]);
     char *prevstart = f->mmap.start;
     if(prevstart != remapped) {
+      addr = &remapped[(char *)addr - f->mmap.start];
+      end = (char *)addr + sz;
       f->mmap.start = remapped;
       f->mmap.end = &remapped[current_sz * 2];
       f->file.start = &remapped[f->file.start - prevstart];
