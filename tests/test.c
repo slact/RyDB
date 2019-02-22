@@ -45,8 +45,8 @@ describe(rydb_new) {
   }
 }
 describe(config) {
-  rydb_t *db;
-  char path[64];
+  static rydb_t *db;
+  static char path[64];
   
   before_each() {
     reset_malloc();
@@ -346,8 +346,8 @@ describe(config) {
 }
 
 describe(sizing) {
-  rydb_t *db;
-  char path[64];
+  static rydb_t *db;
+  static char path[64];
   
   subdesc(struct_padding) {
     test("rydb_row_cmd_header_t is unpadded") {
@@ -437,8 +437,8 @@ describe(errors_and_debug) {
 }
 
 describe(rydb_open) {
-  rydb_t *db;
-  char path[64];
+  static rydb_t *db;
+  static char path[64];
   
   before_each() {
     reset_malloc();
@@ -623,8 +623,8 @@ describe(rydb_open) {
 }
 
 describe(row_operations) {
-  rydb_t *db = NULL;
-  char path[64];
+  static rydb_t *db = NULL;
+  static char path[64];
   
   char *rowdata[] = {
     "1.hello this is not terribly long of a string",
@@ -867,8 +867,8 @@ describe(row_operations) {
 }
 
 describe(transactions) {
-  rydb_t *db = NULL;
-  char path[64];
+  static rydb_t *db = NULL;
+  static char path[64];
   
   char *rowdata[] = {
     "1.hello this is not terribly long of a string",
@@ -1186,7 +1186,7 @@ describe(transactions) {
   assert_db_ok(db, rydb_row_swap(db, 5, 6))
   
   subdesc(restore_log) {
-    char *result_rowdata[] = {
+    static char *result_rowdata[] = {
       "2.and this is another one that exceeds the length",
       NULL,
       "3.this one's short",
@@ -1195,7 +1195,7 @@ describe(transactions) {
       "5.here's another one",
       "7.an insertion",
     };
-    int result_nrows = 7;
+    static int result_nrows = 7;
     
     it("runs committed commands") {
       assert_db_ok(db, rydb_transaction_start(db));
@@ -1280,8 +1280,8 @@ describe(transactions) {
 }
 
 describe(hashtable) {
-  rydb_t *db;
-  char path[256];
+  static rydb_t *db;
+  static char path[256];
   
   before_each() {
 #ifdef RYDB_DEBUG
