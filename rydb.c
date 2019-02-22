@@ -1756,10 +1756,9 @@ int rydb_find_row(rydb_t *db, char *val, size_t len, rydb_row_t *result) {
   else {
     searchval = val;
   }
-  
   switch(idx->config->type) {
     case RYDB_INDEX_HASHTABLE:
-      return rydb_index_hashtable_find_row(db, idx, val, result);
+      return rydb_index_hashtable_find_row(db, idx, searchval, result);
     case RYDB_INDEX_BTREE:
       assert(0); //not implemented
       break;
