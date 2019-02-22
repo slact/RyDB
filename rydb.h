@@ -81,7 +81,7 @@ typedef struct {
     RYDB_HASH_NOHASH =    2, //treat the value as if it's already a good hash
     RYDB_HASH_SIPHASH =   3
   }            hash_function;
-  
+  float      load_factor_max;
   //storing the value in the hashtable prevents extra datafile reads at the cost of possibly much larger hashtable entries
   unsigned     store_value: 1;
   
@@ -124,7 +124,7 @@ typedef struct {
 
 typedef struct {
   rydb_file_t          index;
-  rydb_file_t          data;
+  rydb_file_t          map;
   rydb_config_index_t *config;
   rydb_index_state_t   state;
 } rydb_index_t;
@@ -205,7 +205,8 @@ struct rydb_s {
   const char         *path;
   const char         *name;
   uint16_t            stored_row_size;
-  rydb_stored_row_t  *data_next_row; //row after last for RYDB_ROW_DATA
+  rydb_rownum_t       data_next_rownum; //row after last for RYDB_ROW_DATA
+  rydb_rownum_t       cmd_next_rownum;
   rydb_stored_row_t  *cmd_next_row; //row after last for RYDB_ROW_CMD_*, also the next after the last row (of any type) in the data file
   rydb_file_t         data;
   rydb_file_t         meta;
@@ -259,6 +260,9 @@ void rydb_error_clear(rydb_t *db);
 int rydb_transaction_start(rydb_t *db);
 int rydb_transaction_finish(rydb_t *db);
 int rydb_transaction_cancel(rydb_t *db);
+
+int rydb_find_row(rydb_t *db, char *val, size_t len, rydb_row_t *result);
+int rydb_find_row_str(rydb_t *db, char *str, rydb_row_t *result);
 
 int rydb_close(rydb_t *db); //also free()s db
 int rydb_delete(rydb_t *db); //deletes all files in an open db

@@ -29,7 +29,7 @@ int rydb_debug_refuse_to_run_transaction_without_commit = 1; //turning this off 
 int rydb_debug_disable_urandom = 0;
 int (*rydb_printf)( const char * format, ... ) = printf;
 int (*rydb_fprintf)( FILE * stream, const char * format, ... ) = fprintf;
-
+const char *rydb_debug_hash_key = NULL;
 #endif
 
 rydb_allocator_t rydb_mem = {
@@ -546,15 +546,44 @@ static int rydb_unlock(rydb_t *db, uint8_t lockflags) {
 }
 
 int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz) {
-  size_t current_sz = f->file.end - f->file.start;
-  if(current_sz < desired_min_sz && ftruncate(f->fd, desired_min_sz) == -1) {
-    rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to grow file to size %zu", desired_min_sz);
-    return 0;
-  }
-  return 1;
+  return rydb_file_ensure_writable_address(db, f, f->file.start, desired_min_sz);
 }
 int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, size_t sz) {
   char *end = (char *)addr + sz;
+  if(end > f->mmap.end) {
+    size_t current_sz = f->mmap.end - f->mmap.start;
+    char *remapped;
+    //TODO: thoroughly understand if msync() needs to be called here. Probably not.
+#if HAVE_MREMAP
+    remapped = mremap(f->mmap.start, current_sz, current_sz * 2, MREMAP_MAYMOVE);
+#else
+    if(munmap(f->mmap.start, current_sz) != 0) {
+      rydb_set_error(db, RYDB_ERROR_NOMEMORY, "failed to munmap file %s", f->path);
+      return 0;
+    }
+    remapped = mmap(f->mmap.start, current_sz * 2, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
+    if(!remapped) {
+      //didn't work? try mmapping it anywhere
+      remapped = mmap(NULL, current_sz * 2, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
+    }
+#endif
+    if(!remapped) {
+      //printf("failed to remap file %s\n", f->path);
+      rydb_set_error(db, RYDB_ERROR_NOMEMORY, "failed to remap file %s", f->path);
+      return 0;
+    }
+    //printf("remapped file %s from %p-%p to %p-%p\n", f->path, (void *)f->mmap.start, (void *)&f->mmap.start[current_sz], (void *)remapped, (void *)&remapped[current_sz * 2]);
+    char *prevstart = f->mmap.start;
+    if(prevstart != remapped) {
+      f->mmap.start = remapped;
+      f->mmap.end = &remapped[current_sz * 2];
+      f->file.start = &remapped[f->file.start - prevstart];
+      f->file.end = &remapped[f->file.end - prevstart];
+      f->data.start = &remapped[f->data.start - prevstart];
+      f->data.end = &remapped[f->data.end - prevstart];
+    }
+    
+  }
   if(end > f->file.end) {
     if(ftruncate(f->fd, (size_t )((char *)end - (char *)f->file.start)) == -1) {
       rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to grow file to size %zu", (size_t )((char *)end - (char *)f->file.end));
@@ -648,8 +677,8 @@ int rydb_file_close(rydb_t *db, rydb_file_t *f) {
 int rydb_file_close_index(rydb_t *db, rydb_index_t *idx) {
   return rydb_file_close(db, &idx->index);
 }
-int rydb_file_close_data(rydb_t *db, rydb_index_t *idx) {
-  return rydb_file_close(db, &idx->data);
+int rydb_file_close_map(rydb_t *db, rydb_index_t *idx) {
+  return rydb_file_close(db, &idx->map);
 }
 
 int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
@@ -697,14 +726,14 @@ int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
 }
 
 int rydb_file_open_index(rydb_t *db, rydb_index_t *idx) {
-  char index_name[128];
-  snprintf(index_name, 128, "index.%s", idx->config->name);
-  return rydb_file_open(db, index_name, &idx->index);
+  char path[256];
+  snprintf(path, sizeof(path)-1, "index.%s", idx->config->name);
+  return rydb_file_open(db, path, &idx->index);
 }
-int rydb_file_open_index_data(rydb_t *db, rydb_index_t *idx) {
-  char index_name[128];
-  snprintf(index_name, 128, "index.%s.data", idx->config->name);
-  return rydb_file_open(db, index_name, &idx->data);
+int rydb_file_open_index_map(rydb_t *db, rydb_index_t *idx) {
+  char path[256];
+  snprintf(path, sizeof(path)-1, "index.%s.map", idx->config->name);
+  return rydb_file_open(db, path, &idx->map);
 }
 
 static int rydb_index_type_valid(rydb_index_type_t index_type) {
@@ -1156,23 +1185,23 @@ static int rydb_data_scan_tail(rydb_t *db) {
   rydb_stored_row_t *last_commit_row = NULL;
   for(rydb_stored_row_t *cur = last_possible_row; cur && cur >= firstrow; cur = rydb_row_next(cur, stored_row_size, -1)) {
     if(!lastrow_found && cur->type != RYDB_ROW_EMPTY) {
-      db->cmd_next_row = rydb_row_next(cur, stored_row_size, 1);
+      db->cmd_next_rownum = rydb_row_next_rownum(db, cur, 1);
       lastrow_found = 1;
     }
     if(!last_commit_row && cur->type == RYDB_ROW_CMD_COMMIT) {
       last_commit_row = cur;
     }
     if(!data_lastrow_found && cur->type == RYDB_ROW_DATA) {
-      db->data_next_row = rydb_row_next(cur, stored_row_size, 1);
+      db->data_next_rownum = rydb_row_next_rownum(db, cur, 1);
       data_lastrow_found = 1;
       break;
     }
   }
   if(!lastrow_found) {
-    db->cmd_next_row = (void *)db->data.data.start;
+    db->cmd_next_rownum = 1;
   }
   if(!data_lastrow_found) {
-    db->data_next_row = (void *)db->data.data.start;
+    db->data_next_rownum = 1;
   }
   
   if(last_commit_row) {
@@ -1180,12 +1209,11 @@ static int rydb_data_scan_tail(rydb_t *db) {
       return 0;
     }
   }
+  
   //truncate the tx log
-  if(!rydb_file_shrink_to_size(db, &db->data, (char *)db->data_next_row - db->data.file.start)) {
+  if(!rydb_file_shrink_to_size(db, &db->data, (char *)rydb_rownum_to_row(db, db->data_next_rownum) - db->data.file.start)) {
     return 0;
   }
-  assert((char *)db->data_next_row >= db->data.file.end);
-  assert((char *)db->data_next_row >= db->data.data.end);
   return 1;
   
 }
@@ -1203,7 +1231,7 @@ static void rydb_close_nofree(rydb_t *db) {
   if(db->index) {
     for(int i = 0; i < db->config.index_count; i++) {
       rydb_file_close(db, &db->index[i].index);
-      rydb_file_close(db, &db->index[i].data);
+      rydb_file_close(db, &db->index[i].map);
     }
   }
 }
@@ -1330,7 +1358,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
       }
       db->index[i].config = &db->config.index[i];
       db->index[i].index.fd = -1;
-      db->index[i].data.fd = -1;
+      db->index[i].map.fd = -1;
       switch(db->config.index[i].type) {
         case RYDB_INDEX_INVALID:
         case RYDB_INDEX_BTREE:
@@ -1362,8 +1390,14 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   
   db->stored_row_size = ry_align(db->config.row_len + db->config.link_pair_count * sizeof(rydb_rownum_t), 8); //let's make sure the data 
   if(new_db) {
-    db->config.hash_key.quality = getrandombytes(db->config.hash_key.value, sizeof(db->config.hash_key.value));
-    rydb_meta_save(db);
+    if(!rydb_debug_hash_key) {
+      db->config.hash_key.quality = getrandombytes(db->config.hash_key.value, sizeof(db->config.hash_key.value));
+      rydb_meta_save(db);
+    }
+    else {
+      db->config.hash_key.quality = 0;
+      memcpy(db->config.hash_key.value, rydb_debug_hash_key, sizeof(db->config.hash_key.value));
+    }
   }
   db->config.hash_key.permanent = 1;
   
@@ -1389,7 +1423,7 @@ int rydb_delete(rydb_t *db) {
   if(db->index) {
     for(int i = 0; i < db->config.index_count; i++) {
       if(!rydb_file_delete(db, &db->index[i].index)) return 0;
-      if(!rydb_file_delete(db, &db->index[i].data)) return 0;
+      if(!rydb_file_delete(db, &db->index[i].map)) return 0;
     }
   }
   return 1;
@@ -1459,9 +1493,6 @@ rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rown
   return row;
 }
 
-rydb_rownum_t rydb_data_next_rownum(rydb_t *db) {
-  return rydb_row_to_rownum(db, db->data_next_row);
-}
 
 rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row) {
   return (rydb_rownum_t )(1 + ((char *)row - db->data.data.start)/db->stored_row_size);
@@ -1469,7 +1500,7 @@ rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row)
 
 void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_just_emptied) {
   size_t              rowsz = db->stored_row_size;
-  rydb_stored_row_t  *last = rydb_row_next(db->data_next_row, rowsz, -1);
+  rydb_stored_row_t  *last = rydb_rownum_to_row(db, db->data_next_rownum - 1);
   if(last != row_just_emptied) { 
     return; //end of data hasn't changed, the row that was just deleted wasn't at the tail-end of the data rows
   }
@@ -1482,7 +1513,7 @@ void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_
       break;
     }
   }
-  db->data_next_row = rydb_row_next(cur, rowsz, 1);
+  db->data_next_rownum = rydb_row_next_rownum(db, cur, 1);
 }
 
 int rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
@@ -1520,7 +1551,7 @@ int rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum) {
     rydb_set_error(db, RYDB_ERROR_ROWNUM_OUT_OF_RANGE, "Rownum cannot be 0 (valid rownums start at 1)");
     return 0;
   }
-  if(rownum >= rydb_data_next_rownum(db)) {
+  if(rownum >= db->data_next_rownum) {
     rydb_set_error(db, RYDB_ERROR_ROWNUM_OUT_OF_RANGE, "Rownum exceeds total data rows");
     return 0;
   }
@@ -1706,6 +1737,39 @@ int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data
   return 1;
 }
 
+int rydb_find_row_str(rydb_t *db, char *val, rydb_row_t *row) {
+ return rydb_find_row(db, val, strlen(val), row);
+}
+
+int rydb_find_row(rydb_t *db, char *val, size_t len, rydb_row_t *result) {
+  int             indexnum = rydb_find_index_num(db, "primary");
+  rydb_index_t   *idx = &db->index[indexnum];
+  char           *searchval;
+  size_t          indexed_data_len = idx->config->len;
+  if(len < indexed_data_len) {
+    if ((searchval = calloc(1, indexed_data_len)) == NULL) {
+      rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Cannot allocate memory for search string");
+      return 0;
+    }
+    memcpy(searchval, val, indexed_data_len);
+  }
+  else {
+    searchval = val;
+  }
+  
+  switch(idx->config->type) {
+    case RYDB_INDEX_HASHTABLE:
+      return rydb_index_hashtable_find_row(db, idx, val, result);
+    case RYDB_INDEX_BTREE:
+      assert(0); //not implemented
+      break;
+    case RYDB_INDEX_INVALID:
+      assert(0); //not supported
+      break;
+  }
+  return 0;
+}
+
 /*
 int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, char *data, uint16_t start, uint16_t len) {
   rydb_row_t update1 = {.type = RYDB_ROW_CMD_UPDATE1};
@@ -1724,6 +1788,15 @@ int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, char *data, uint16_t start
   }
 }
 */
+
+int rydb_storedrow_to_row(const rydb_t *db, rydb_stored_row_t *datarow, rydb_row_t *row) {
+  row->num = rydb_row_to_rownum(db, datarow);
+  row->type = datarow->type;
+  row->data = datarow->data;
+  row->start = 0;
+  row->len = db->config.row_len;
+  return 1;
+}
 
 void rydb_print_stored_data(rydb_t *db) {
   const char *rowtype;

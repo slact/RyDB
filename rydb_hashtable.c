@@ -255,14 +255,16 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
   const char *fmt =
     "    hash_function: %32s\n"
     "    store_value: %"SCNu16"\n"
-    "    direct_mapping: %"SCNu16"\n";
-    
+    "    direct_mapping: %"SCNu16"\n"
+    "    load_factor_max: %f\n";
+
   char      hash_func_buf[33];
   uint16_t  store_value;
   uint16_t  direct_mapping;
+  float     load_factor_max;
 
-  int rc = fscanf(fp, fmt, hash_func_buf, &store_value, &direct_mapping);
-  if(rc < 3 || store_value > 1 || direct_mapping > 1) {
+  int rc = fscanf(fp, fmt, hash_func_buf, &store_value, &direct_mapping, &load_factor_max);
+  if(rc < 4 || store_value > 1 || direct_mapping > 1 || load_factor_max >= 1 || load_factor_max <= 0) {
     rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Hashtable \"%s\" specification is corrupted or invalid", idx_cf->name);
     return 0;
   }
@@ -280,7 +282,8 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
     return 0;
   }
   idx_cf->type_config.hashtable.store_value = store_value;
-  idx_cf->type_config.hashtable.direct_mapping = store_value;
+  idx_cf->type_config.hashtable.direct_mapping = direct_mapping;
+  idx_cf->type_config.hashtable.load_factor_max = load_factor_max;
   return 1;
 }
 static char *hashfunction_to_str(rydb_config_index_type_t *cf) {
@@ -311,10 +314,11 @@ static int hashfunction_valid(rydb_config_index_hashtable_t *acf) {
 int rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp) {
   const char *fmt =
     "    hash_function: %s\n"
-    "    store_value: %hu\n"
-    "    direct_mapping: %hu\n";
+    "    store_value: %"PRIu16"\n"
+    "    direct_mapping: %"PRIu16"\n"
+    "    load_factor_max: %.4f\n";
   int rc;
-  rc = fprintf(fp, fmt, hashfunction_to_str(&idx_cf->type_config), (uint16_t )idx_cf->type_config.hashtable.store_value, (uint16_t )idx_cf->type_config.hashtable.direct_mapping);
+  rc = fprintf(fp, fmt, hashfunction_to_str(&idx_cf->type_config), (uint16_t )idx_cf->type_config.hashtable.store_value, (uint16_t )idx_cf->type_config.hashtable.direct_mapping, idx_cf->type_config.hashtable.load_factor_max);
   if(rc <= 0) {
     rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "failed writing hashtable \"%s\" config ", idx_cf->name);
     return 0;
@@ -328,32 +332,22 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
     cf->type_config.hashtable.direct_mapping = unique;
     cf->type_config.hashtable.store_value = !unique;
     cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
+    cf->type_config.hashtable.load_factor_max = RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR;
   }
   else if(!hashfunction_valid(advanced_config)) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid hash function for hashtable \"%s\" config ", cf->name);
     return 0;
   }
   else {
-    cf->type_config.hashtable = *advanced_config;
-  }
-  return 1;
-}
-
-int rydb_index_hashtable_open(rydb_t *db,  rydb_index_t *idx) {
-  rydb_config_index_t  *cf = idx->config;
-  
-  assert(cf->type == RYDB_INDEX_HASHTABLE);
-  if(!rydb_file_open_index(db, idx)) {
+    if(advanced_config->load_factor_max >= 1 || advanced_config->load_factor_max < 0) {
+      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid load_factor_max value %f for hashtable \"%s\", must be between 0 and 1", cf->name);
     return 0;
-  }
-  
-  if(!cf->type_config.hashtable.direct_mapping) {
-    if(!rydb_file_open_index_data(db, idx)) {
-      rydb_file_close_index(db, idx);
-      return 0;
+    }
+    cf->type_config.hashtable = *advanced_config;
+    if(cf->type_config.hashtable.load_factor_max == 0) {
+      cf->type_config.hashtable.load_factor_max = RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR;
     }
   }
-  
   return 1;
 }
 
@@ -410,10 +404,160 @@ static uint64_t hash_value(rydb_t *db, rydb_config_index_t *idx, char *data, uin
   return h;
 }
 
+static inline size_t hashtable_entry_size(rydb_config_index_t *cf) {
+  if(cf->type_config.hashtable.direct_mapping) {
+    return sizeof(rydb_rownum_t);
+  }
+  else {
+    return ry_align(sizeof(rydb_rownum_t) + cf->len, sizeof(rydb_rownum_t));
+  }
+}
+
+static inline rydb_hashtable_header_t *hashtable_header(rydb_index_t *idx) {
+  return (void *)idx->index.file.start;
+}
+
+static inline void hashtable_reserve(rydb_index_t *idx) {
+  rydb_hashtable_header_t *header = hashtable_header(idx);
+  assert(header->reserved < INT8_MAX);
+  header->reserved++;
+}
+static inline void hashtable_release(rydb_index_t *idx) {
+  rydb_hashtable_header_t *header = hashtable_header(idx);
+  header->reserved--;
+  assert(header->reserved >= 0);
+}
+
+
+static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
+  rydb_hashtable_header_t *header = hashtable_header(idx);
+  rydb_config_index_t *cf = idx->config;
+  hashtable_reserve(idx);
+  if(header->bucket.count.bits != 0) {
+    header->incomplete_migration_count++;
+  }
+  header->bucket.count.bits++;
+  uint64_t max_bucket = (1 << header->bucket.count.bits);
+  header->bucket.count.load_factor_max = max_bucket * cf->type_config.hashtable.load_factor_max;
+  size_t sz = max_bucket * hashtable_entry_size(cf);
+  header->bucket.count.total = max_bucket;
+  hashtable_release(idx);
+  int rc = rydb_file_ensure_size(db, &idx->index, RYDB_INDEX_HASHTABLE_START_OFFSET + sz);
+  if(rc) {
+    idx->index.data.end = idx->index.file.end;
+  }
+  return rc;
+}
+
+int rydb_index_hashtable_open(rydb_t *db,  rydb_index_t *idx) {
+  rydb_config_index_t  *cf = idx->config;
+  
+  assert(cf->type == RYDB_INDEX_HASHTABLE);
+  if(!rydb_file_open_index(db, idx)) {
+    return 0;
+  }
+  if(!rydb_file_ensure_size(db, &idx->index, RYDB_INDEX_HASHTABLE_START_OFFSET)) {
+    return 0;
+  }
+  idx->index.data.start = idx->index.file.start + RYDB_INDEX_HASHTABLE_START_OFFSET;
+  rydb_hashtable_header_t *header = hashtable_header(idx);
+  
+  if(!header->active) {
+    //write out header
+    header->active = 1;
+  }
+  
+  if(!cf->type_config.hashtable.direct_mapping) {
+    if(!rydb_file_open_index_map(db, idx)) {
+      rydb_file_close_index(db, idx);
+      return 0;
+    }
+  }
+  
+  return 1;
+}
+
+#define HASHTABLE_VARS(db, idx, header, cf, entry_sz) \
+  rydb_hashtable_header_t *header = hashtable_header(idx); \
+  rydb_config_index_t *cf = idx->config; \
+  size_t    entry_sz = hashtable_entry_size(cf);
+
+
+//assumes val is at least as long as the indexed string
+int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb_row_t *row) {
+  //printf("find row with val \"%s\"\n", val);
+  HASHTABLE_VARS(db, idx, header, cf, bucket_sz);
+  uint64_t  hashvalue, trimmed_hashvalue;
+  rydb_stored_row_t *datarow;
+  hashvalue = hash_value(db, cf, val, 0);
+  rydb_rownum_t *bucket_rownum, rownum;
+  rydb_rownum_t *buckets_end = (void *)&idx->index.data.start[bucket_sz * header->bucket.count.total];
+  //rydb_hashtable_print(db, idx);
+  for(uint16_t migrant_wave=0, last_wave = header->incomplete_migration_count; migrant_wave <= last_wave; migrant_wave++) {
+    trimmed_hashvalue = btrim64(hashvalue, 64 - header->bucket.count.bits + migrant_wave);
+    bucket_rownum = (rydb_rownum_t *)(idx->index.data.start + bucket_sz * trimmed_hashvalue);
+    do {
+      rownum = bucket_rownum < buckets_end ? *bucket_rownum : 0;
+      //printf("hash: %"PRIu64", wave: %"PRIu16" trimmed: %"PRIu64" rownum: %"PRIu32"%s", hashvalue, migrant_wave, trimmed_hashvalue, rownum, rownum ? "" : "\n");
+      if(!rownum) {
+        break; //next wave
+      }
+      datarow = rydb_rownum_to_row(db, rownum);
+      //printf("val: %s found: %s\n", val, &datarow->data[cf->start]);
+      if(datarow && memcmp(val, &datarow->data[cf->start], cf->len) == 0) {
+        rydb_storedrow_to_row(db, datarow, row);
+        return 1;
+      }
+      bucket_rownum = (void *)((char *)bucket_rownum + bucket_sz);
+    } while(1);
+  }
+  
+  return 0;
+}
+
 int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
-  (void)(db);
-  (void)(idx);
-  (void)(row);
+  HASHTABLE_VARS(db, idx, header, cf, entry_sz);
+  if(header->bucket.count.used+1 > header->bucket.count.load_factor_max) {
+    if(!hashtable_grow(db, idx)) {
+      return 0;
+    }
+    header = hashtable_header(idx); //file might have gotten remapped, get the header again
+  }
+  uint64_t  hashvalue = hash_value(db, cf, row->data, 64 - header->bucket.count.bits);
+  rydb_rownum_t rownum = rydb_row_to_rownum(db, row);
+  //printf("added rownum %"PRIu32" bits: %"PRIu64 " hashvalue %"PRIu64" trimmed to %"PRIu64" str: \"%s\"\n", rownum, header->bucket.count.bits, hash_value(db, cf, row->data, 0), hashvalue, row->data);
+  char     *bucket = &idx->index.data.start[entry_sz * hashvalue];
+  
+  rydb_rownum_t *bucket_rownum = (void *)bucket;
+  rydb_rownum_t *buckets_end = (void *)&idx->index.data.start[entry_sz * header->bucket.count.total];
+  int buckets_skipped = 0;
+  while(*bucket_rownum != 0) { //bucket is not empty
+    //linear probing -- walk forward until we hit an empty bucket
+    bucket_rownum = (void *)((char *)bucket_rownum + entry_sz);
+    if(bucket_rownum >= buckets_end) {
+      // don't loop around to the beginning -- just append this bucket as "overflow" to the end
+      // we do this so that growing the hashtable is an in-place operation.
+      // if the hashtable looped back to the beginning, the looped-back run from the last bucket would
+      // need to be moved.
+      if(!rydb_file_ensure_writable_address(db, &idx->index, bucket_rownum, entry_sz)) {
+        return 0;
+      }
+      header = hashtable_header(idx); //file might have gotten remapped, get the header again
+      assert(*bucket_rownum == 0); //appended data should be zerofilled
+    }
+    buckets_skipped ++;
+  }
+  hashtable_reserve(idx);
+  if(bucket_rownum >= buckets_end) {
+    header->bucket.count.total++; //record bucket overflow
+  }
+  if(cf->type_config.hashtable.store_value) {
+    memcpy(&bucket_rownum[1], &row->data[cf->start], cf->len);
+  }
+  *bucket_rownum = rownum;
+  //rydb_hashtable_print(db, idx);
+  header->bucket.count.used ++;
+  hashtable_release(idx);
   return 1;
 }
 int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
@@ -437,4 +581,48 @@ int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_
   (void)(start);
   (void)(end);
   return 1;
+}
+
+void rydb_hashtable_print(rydb_t *db, rydb_index_t *idx) {
+  (void)(db);
+  rydb_hashtable_header_t *header = hashtable_header(idx);
+  char hash_key_hexstr_buf[33];
+  for (unsigned i = 0; i < sizeof(db->config.hash_key.value); i ++) {
+    sprintf(&hash_key_hexstr_buf[i*2], "%02x", db->config.hash_key.value[i]);
+  }
+  hash_key_hexstr_buf[sizeof(db->config.hash_key.value)*2]='\00';
+  const char *fmt = "\nhashtable %s\n"
+    "  key: %s\n"
+    "  bucket count total:   %"PRIu32"\n"
+    "  bucket count used:    %"PRIu32"\n"
+    "  bucket count LF max:  %"PRIu32"\n"
+    "  bucket count bits:    %"PRIu32"\n"
+    "  incomplete mig count: %"PRIu16"\n"
+    "  bucket size:          %"PRIu32"\n"
+    "  reserved:             %"PRIi8"\n"
+    "  active:               %"PRIu8"\n";
+  
+  size_t    entry_sz = hashtable_entry_size(idx->config);
+  
+  printf(fmt, idx->config->name, hash_key_hexstr_buf, header->bucket.count.total, header->bucket.count.used, header->bucket.count.load_factor_max,
+         (uint32_t)header->bucket.count.bits, header->incomplete_migration_count, (uint32_t) entry_sz, header->reserved, header->active);
+  
+  
+  
+  rydb_rownum_t *buckets_end = (void *)&idx->index.data.start[entry_sz * header->bucket.count.total];
+  int i = 0;
+  if(idx->index.data.start == (char *)buckets_end) {
+    printf("  <EMPTY>\n");
+  }
+  else {
+    for(rydb_rownum_t *bucket = (void *)idx->index.data.start; bucket < buckets_end; bucket = (void *)((char *)bucket + entry_sz)) {
+      if(*bucket) {
+        printf("  %p [%3"PRIu32"] <%5"PRIu32">\n", (void *)bucket, i, *bucket);
+      }
+      else {
+        printf("  %p [%3"PRIu32"] <EMPTY>\n", (void *)bucket, i);
+      }
+      i++;
+    }
+  }
 }

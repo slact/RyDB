@@ -82,7 +82,6 @@ void config_testdb(rydb_t *db) {
   assert_db_ok(db, rydb_config_add_row_link(db, "fwd", "rew"));
 }
 
-
 int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_code_t expected_error_code, const char *errmsg_match, char *errmsg_result) {
   rydb_error_t *err = rydb_error(db);
   if(rc == 1) {
@@ -194,6 +193,25 @@ off_t filesize(const char *filename) {
     return st.st_size;
   return -1; 
 }
+
+void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_check_s *check, int nrows) {
+  int badrownums[] = {0, nrows + 1000, nrows + 2};
+  for(int j = 0; j<check->n_check; j++) {
+    rydb_row_t *row = &check->rows[j];
+    for(int k = 0; k<3; k++) {
+      row->num = badrownums[k];
+      assert_db_ok(db, rydb_transaction_start(db));
+      assert_db_ok(db, rydb_data_append_cmd_rows(db, check->rows, check->n));
+      char match[128];
+      snprintf(match, 128, "%s.* failed.* rownum.* %s", check->name, k<2 ? "out of range" : "beyond command");
+      //printf("%s %i %i %i\n", check->name, i, j, k);
+      //rydb_print_stored_data(db);
+      assert_db_fail_match_errstr(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, match);
+      row->num = 1;
+    }
+  }
+}
+
 
 const uint8_t vectors_siphash_2_4_64[64][8] = {
   {0x31, 0x0e, 0x0e, 0xdd, 0x47, 0xdb, 0x6f, 0x72,}, {0xfd, 0x67, 0xdc, 0x93, 0xc5, 0x39, 0xf8, 0x74,},

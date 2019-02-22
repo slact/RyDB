@@ -45,6 +45,15 @@ int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_cod
 int sed_meta_file(rydb_t *db, char *regex);
 int sed_meta_file_prop(rydb_t *db, const char *prop, const char *val);
 
+struct cmd_rownum_out_of_range_check_s {
+  char      *name;
+  rydb_row_t rows[2];
+  int        n;
+  int        n_check;
+};
+void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_check_s *check, int nrows);
+
+
 #define assert_ptr_aligned(ptr, alignment) \
 do { \
   if((uintptr_t )ptr % alignment != 0) { \

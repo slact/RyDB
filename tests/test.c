@@ -1,5 +1,6 @@
 #include <rydb_internal.h>
 #include <rydb_hashtable.h>
+#include <math.h>
 #include "test_util.h"
 
 void test_errhandler(rydb_t *db, rydb_error_t *err, void *privdata) {
@@ -254,7 +255,8 @@ describe(config) {
       rydb_config_index_hashtable_t cf = {
         .hash_function = RYDB_HASH_NOHASH,
         .store_value = 1,
-        .direct_mapping = 0
+        .direct_mapping = 0,
+        .load_factor_max = 0.30,
       };
       assert_db_ok(db, rydb_config_add_index_hashtable(db, "caah", 10, 5, RYDB_INDEX_UNIQUE, &cf));
       int i;
@@ -271,6 +273,7 @@ describe(config) {
           //non-unique index defaults
           assert(cur->type_config.hashtable.store_value==1);
           assert(cur->type_config.hashtable.direct_mapping==0);
+          assert(fabs(cur->type_config.hashtable.load_factor_max - RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR) < 0.0001);
         }
         else if(i == 1) {
           asserteq(cur->name, "baah");
@@ -283,6 +286,7 @@ describe(config) {
           //unique index defaults
           assert(cur->type_config.hashtable.store_value==0);
           assert(cur->type_config.hashtable.direct_mapping==1);
+          assert(fabs(cur->type_config.hashtable.load_factor_max - RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR) < 0.0001);
         }
         else if(i == 2) {
           asserteq(cur->name, "caah");
@@ -293,6 +297,7 @@ describe(config) {
           asserteq(cur->type_config.hashtable.hash_function, RYDB_HASH_NOHASH);
           assert(cur->type_config.hashtable.store_value==1);
           assert(cur->type_config.hashtable.direct_mapping==0);
+          assert(fabs(cur->type_config.hashtable.load_factor_max - 0.30) < 0.0001);
         }
         else {
           fail("too many indices found");
@@ -695,8 +700,8 @@ describe(row_operations) {
       for(int i=nrows; i>0; i--) {
         assert_db_ok(db, rydb_row_delete(db, i));
         assert_db_fail(db, rydb_rownum_in_data_range(db, i), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
-        asserteq(rydb_row_to_rownum(db, db->data_next_row)-1, i-1);
-        asserteq(rydb_row_to_rownum(db, db->cmd_next_row)-1, i-1);
+        asserteq(db->data_next_rownum, i);
+        asserteq(db->cmd_next_rownum, i);
         rydb_stored_row_t *row = rydb_rownum_to_row(db, i);
         assertneq(row, NULL);
         assert_db_row_type(db, row, RYDB_ROW_EMPTY);
@@ -711,7 +716,7 @@ describe(row_operations) {
       assert_db_insert_rows(db, rowdata, nrows);
       
       //set a couple of rows before the last row as empty
-      rydb_print_stored_data(db);
+      //rydb_print_stored_data(db);
       for(int i=1; i<3; i++) {
         rydb_stored_row_t *row = rydb_rownum_to_row(db, nrows - i);
         row->type = RYDB_ROW_EMPTY;
@@ -721,8 +726,8 @@ describe(row_operations) {
       
       //now delete the last row, and see if data_next_row is updated correctly
       assert_db_ok(db, rydb_row_delete(db, nrows));
-      asserteq(rydb_row_to_rownum(db, db->data_next_row), nrows-2);
-      asserteq(rydb_row_to_rownum(db, db->cmd_next_row), nrows-2);
+      asserteq(db->data_next_rownum, nrows-2);
+      asserteq(db->cmd_next_rownum, nrows-2);
       //rydb_print_stored_data(db);
       
     }
@@ -741,12 +746,12 @@ describe(row_operations) {
           // since we don't track holes in data (YET)
           assert_db_ok(db, rydb_row_delete(db, i));
           assert_db_ok(db, rydb_rownum_in_data_range(db, i));
-          asserteq(rydb_row_to_rownum(db, db->data_next_row), nrows+1);
-          asserteq(rydb_row_to_rownum(db, db->cmd_next_row), nrows+1);
+          asserteq(db->data_next_rownum, nrows+1);
+          asserteq(db->cmd_next_rownum, nrows+1);
         }
         else {
-          asserteq(rydb_row_to_rownum(db, db->data_next_row), 1);
-          asserteq(rydb_row_to_rownum(db, db->cmd_next_row), 1);
+          asserteq(db->data_next_rownum, 1);
+          asserteq(db->cmd_next_rownum, 1);
         }
       }
       //rydb_print_stored_data(db);
@@ -858,31 +863,6 @@ describe(row_operations) {
       assert_data_match(db, rowdata_results, nrows);
     }
     
-  }
-}
-
-
-struct cmd_rownum_out_of_range_check_s {
-  char      *name;
-  rydb_row_t rows[2];
-  int        n;
-  int        n_check;
-};
-void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_check_s *check, int nrows) {
-  int badrownums[] = {0, nrows + 1000, nrows + 2};
-  for(int j = 0; j<check->n_check; j++) {
-    rydb_row_t *row = &check->rows[j];
-    for(int k = 0; k<3; k++) {
-      row->num = badrownums[k];
-      assert_db_ok(db, rydb_transaction_start(db));
-      assert_db_ok(db, rydb_data_append_cmd_rows(db, check->rows, check->n));
-      char match[128];
-      snprintf(match, 128, "%s.* failed.* rownum.* %s", check->name, k<2 ? "out of range" : "beyond command");
-      //printf("%s %i %i %i\n", check->name, i, j, k);
-      //rydb_print_stored_data(db);
-      assert_db_fail_match_errstr(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED, match);
-      row->num = 1;
-    }
   }
 }
 
@@ -1295,6 +1275,65 @@ describe(transactions) {
       off_t new_sz = filesize(db->data.path);
       assert(new_sz <= old_sz);
       asserteq(n, nrows, "no rows should follow data after a reload");
+    }
+  }
+}
+
+describe(hashtable) {
+  rydb_t *db;
+  char path[256];
+  
+  before_each() {
+#ifdef RYDB_DEBUG
+    //rydb_debug_hash_key = "\xcb\x36\xc8\x85\x43\xf7\x10\x02\xa6\xd2\x55\x9f\x55\xc5\xc4\xea";
+#endif
+    db = rydb_new();
+    assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
+    strcpy(path, "test.db.XXXXXX");
+    mkdtemp(path);
+    assert_db_ok(db, rydb_open(db, path, "test"));
+  }
+
+  after_each() {
+    rydb_close(db);
+    db = NULL;
+    rmdir_recursive(path);
+#ifdef RYDB_DEBUG
+    //rydb_debug_hash_key = NULL;
+#endif
+  }
+  
+  test("adding rows to hashtable") {
+    char str[128];
+    for(int i=1; i<200; i++) {
+      sprintf(str, "%izzz", i);
+      assert_db_ok(db, rydb_row_insert_str(db, str));
+    }
+  }
+  
+  test("finding rows in hashtable") {
+    char str[128], searchstr[128];
+    const char *fmt = "%izzz, yes,%i!";
+    int maxrows = 615;
+    for(int i=0; i<maxrows; i++) {
+      //printf("i: %i\n", i);
+      sprintf(str, fmt, i, i);
+      assert_db_ok(db, rydb_row_insert_str(db, str));
+      //rydb_hashtable_print(db, &db->index[0]);
+      for(int j=0; j<=i; j++) {
+        //printf("i: %i, j: %i\n", i, j);
+        sprintf(searchstr, fmt, j, j);
+        rydb_row_t found_row;
+        int found = rydb_find_row_str(db, searchstr, &found_row);
+        if (j <= i) {
+          asserteq(found, 1);
+          asserteq(strcmp(searchstr, found_row.data), 0);
+          asserteq(found_row.num, j+1);
+        }
+        else {
+          asserteq(found, 0);
+        }
+      }
     }
   }
 }

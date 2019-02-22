@@ -18,12 +18,11 @@ static int rydb_cmd_rangecheck(rydb_t *db, const char *cmdname, rydb_stored_row_
 
 int rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
   uint_fast16_t        rowsize = db->stored_row_size;
-  rydb_stored_row_t   *newrows_start = db->cmd_next_row;
-  rydb_stored_row_t   *newrows_end = rydb_row_next(newrows_start, rowsize, count);
-  
-  if(!rydb_file_ensure_writable_address(db, &db->data, newrows_start, ((char *)newrows_end - (char *)newrows_start))) {
+  if(!rydb_file_ensure_size(db, &db->data, (db->cmd_next_rownum + count) * rowsize)) {
     return 0;
   }
+  rydb_stored_row_t   *newrows_start = rydb_rownum_to_row(db, db->cmd_next_rownum);
+  rydb_stored_row_t   *newrows_end = rydb_row_next(newrows_start, rowsize, count);
   rydb_stored_row_t *cur = newrows_start;
   for(int i=0; i<count; i++) {
     //copy the data
@@ -63,12 +62,11 @@ int rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
     cur->type = rows[i].type;
     cur = rydb_row_next(cur, rowsize, 1);
   }
-  db->cmd_next_row = newrows_end;
+  db->cmd_next_rownum = rydb_row_to_rownum(db, newrows_end);
   return 1;
 }
 
 static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
-  size_t               rowsz = db->stored_row_size;
   rydb_stored_row_t   *dst = rydb_rownum_to_row(db, cmd->target_rownum);
   if(!rydb_cmd_rangecheck(db, "SET", cmd, dst)) {
     return(0);
@@ -88,8 +86,9 @@ static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
     cmd->type = RYDB_ROW_EMPTY;
   }
   rydb_indices_add_row(db, dst);
-  if(dst >= db->data_next_row) {
-    db->data_next_row = rydb_row_next(dst, rowsz, 1);
+  rydb_rownum_t dst_rownum = rydb_row_to_rownum(db, dst);
+  if(dst_rownum >= db->data_next_rownum) {
+    db->data_next_rownum = dst_rownum + 1;
   }
   return 1;
 }
@@ -270,9 +269,9 @@ int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run) {
     lastcmd = last_row_to_run;
   }
   else {
-    lastcmd = rydb_row_next(db->cmd_next_row, db->stored_row_size, -1);
+    lastcmd = rydb_rownum_to_row(db, db->cmd_next_rownum - 1);
   }
-  if(lastcmd < db->data_next_row || 
+  if(lastcmd < rydb_rownum_to_row(db, db->data_next_rownum) || 
     (rydb_debug_refuse_to_run_transaction_without_commit && lastcmd->type != RYDB_ROW_CMD_COMMIT)) {
     // no CMD_COMMIT at the end -- bail
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_INCOMPLETE, "Refused to run a transaction that doesn't end with a COMMIT");
@@ -298,7 +297,7 @@ int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run) {
           break;
         case RYDB_ROW_CMD_UPDATE1:
           next = rydb_row_next(cur, db->stored_row_size, 1);
-          if(next >= db->cmd_next_row) next = NULL;
+          if(next >= rydb_rownum_to_row(db, db->cmd_next_rownum)) next = NULL;
           rc = rydb_cmd_update1(db, cur, next);
           break;
         case RYDB_ROW_CMD_UPDATE2:
@@ -309,7 +308,7 @@ int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run) {
           break;
         case RYDB_ROW_CMD_SWAP1:
           next = rydb_row_next(cur, db->stored_row_size, 1);
-          if(next >= db->cmd_next_row) next = NULL;
+          if(next >= rydb_rownum_to_row(db, db->cmd_next_rownum)) next = NULL;
           rc = rydb_cmd_swap1(db, cur, next);
           break;
         case RYDB_ROW_CMD_SWAP2:
@@ -343,7 +342,7 @@ int rydb_transaction_finish_or_continue(rydb_t *db, int finish) {
     int rc = rydb_transaction_run(db, NULL);
     //succeed or fail -- the transaction should be cleared
     db->transaction.active = 0;
-    db->cmd_next_row = db->data_next_row;
+    db->cmd_next_rownum = db->data_next_rownum;
     return rc;
   }
   return 1;
@@ -367,7 +366,7 @@ int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started) {
     return 1;
   };
   db->transaction.active = 1;
-  db->transaction.future_data_rownum = rydb_row_to_rownum(db, db->data_next_row);
+  db->transaction.future_data_rownum = db->data_next_rownum;
   if(transaction_started) *transaction_started = 1;
   return 1;
 }
@@ -389,7 +388,7 @@ int rydb_transaction_cancel(rydb_t *db) {
   RYDB_REVERSE_EACH_CMD_ROW(db, cur) {
     cur->type = RYDB_ROW_EMPTY;
   }
-  db->cmd_next_row = db->data_next_row;
+  db->cmd_next_rownum = db->data_next_rownum;
   db->transaction.active = 0;
   return 1;
 }

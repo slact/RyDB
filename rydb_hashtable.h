@@ -2,6 +2,8 @@
 #define _RYDB_HASHTABLE_H
 #include "rydb.h"
 
+#define RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR 0.60
+
 int rydb_index_hashtable_open(rydb_t *db, rydb_index_t *idx);
 
 int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
@@ -15,16 +17,24 @@ int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_r
 int rydb_index_hashtable_update_add_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end);
 int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end);
 
+int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb_row_t *row);
 
 typedef struct {
   struct {
-      size_t        sz;
-      struct {
-        size_t        total_count;
-        size_t        used_count;
-      }             count;
+    struct {
+      rydb_rownum_t   total;
+      rydb_rownum_t   used;
+      rydb_rownum_t   load_factor_max;
+      size_t          bits;
+    }               count;
   }               bucket;
   uint16_t        incomplete_migration_count;
-}
-rydb_hashtable_header_t;
+  int8_t          reserved; //reserved for writing
+  uint8_t         active;
+} rydb_hashtable_header_t;
+
+void rydb_hashtable_print(rydb_t *db, rydb_index_t *idx);
+
+#define RYDB_INDEX_HASHTABLE_START_OFFSET ry_align(sizeof(rydb_hashtable_header_t), 8)
+
 #endif //_RYDB_HASHTABLE_H
