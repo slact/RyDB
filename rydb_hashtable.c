@@ -333,6 +333,7 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
     cf->type_config.hashtable.store_value = !unique;
     cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
     cf->type_config.hashtable.load_factor_max = RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR;
+    cf->type_config.hashtable.rehash = RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS;
   }
   else if(!hashfunction_valid(advanced_config)) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid hash function for hashtable \"%s\" config ", cf->name);
@@ -341,9 +342,40 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
   else {
     if(advanced_config->load_factor_max >= 1 || advanced_config->load_factor_max < 0) {
       rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid load_factor_max value %f for hashtable \"%s\", must be between 0 and 1", cf->name);
-    return 0;
+      return 0;
     }
+    uint8_t rehash = advanced_config->rehash;
+    char *flagfail = NULL;
+    if(rehash > RYDB_REHASH_INCREMENTAL_ADJACENT) {
+      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid rehash flags for hashtable \"%s\"", cf->name);
+      return 0;
+    }
+    else if(rehash & RYDB_REHASH_MANUAL) {
+      if(rehash & RYDB_REHASH_ALL_AT_ONCE) {
+        flagfail = "MANUAL and ALL_AT_ONCE";
+      }
+      else if(rehash & (RYDB_REHASH_INCREMENTAL | RYDB_REHASH_INCREMENTAL_ON_READ | RYDB_REHASH_INCREMENTAL_ON_WRITE |RYDB_REHASH_INCREMENTAL_ADJACENT)) {
+        flagfail = "MANUAL and INCREMENTAL";
+      }
+    }
+    else if(rehash & RYDB_REHASH_ALL_AT_ONCE) {
+      if(rehash & (RYDB_REHASH_INCREMENTAL | RYDB_REHASH_INCREMENTAL_ON_READ | RYDB_REHASH_INCREMENTAL_ON_WRITE |RYDB_REHASH_INCREMENTAL_ADJACENT)) {
+        flagfail = "ALL_AT_ONCE and INCREMENTAL";
+      }
+    }
+    if(flagfail) {
+      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid rehash flags for hashtable \"%s\": %s are mutually exclusive.", cf->name);
+      return 0;
+    }
+    
     cf->type_config.hashtable = *advanced_config;
+    
+    if(cf->type_config.hashtable.rehash == RYDB_REHASH_DEFAULT) {
+      cf->type_config.hashtable.rehash = RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS;
+    }
+    else if(cf->type_config.hashtable.rehash == RYDB_REHASH_INCREMENTAL) {
+      cf->type_config.hashtable.rehash = RYDB_HASHTABLE_INCREMENTAL_REHASH_FLAGS;
+    }
     if(cf->type_config.hashtable.load_factor_max == 0) {
       cf->type_config.hashtable.load_factor_max = RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR;
     }

@@ -257,6 +257,7 @@ describe(config) {
         .store_value = 1,
         .direct_mapping = 0,
         .load_factor_max = 0.30,
+        .rehash = RYDB_REHASH_MANUAL
       };
       assert_db_ok(db, rydb_config_add_index_hashtable(db, "caah", 10, 5, RYDB_INDEX_UNIQUE, &cf));
       int i;
@@ -274,6 +275,7 @@ describe(config) {
           assert(cur->type_config.hashtable.store_value==1);
           assert(cur->type_config.hashtable.direct_mapping==0);
           assert(fabs(cur->type_config.hashtable.load_factor_max - RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR) < 0.0001);
+          assert(cur->type_config.hashtable.rehash == RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS);
         }
         else if(i == 1) {
           asserteq(cur->name, "baah");
@@ -287,6 +289,7 @@ describe(config) {
           assert(cur->type_config.hashtable.store_value==0);
           assert(cur->type_config.hashtable.direct_mapping==1);
           assert(fabs(cur->type_config.hashtable.load_factor_max - RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR) < 0.0001);
+          assert(cur->type_config.hashtable.rehash == RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS);
         }
         else if(i == 2) {
           asserteq(cur->name, "caah");
@@ -298,6 +301,7 @@ describe(config) {
           assert(cur->type_config.hashtable.store_value==1);
           assert(cur->type_config.hashtable.direct_mapping==0);
           assert(fabs(cur->type_config.hashtable.load_factor_max - 0.30) < 0.0001);
+          assert(cur->type_config.hashtable.rehash == RYDB_REHASH_MANUAL);
         }
         else {
           fail("too many indices found");

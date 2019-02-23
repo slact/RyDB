@@ -81,6 +81,7 @@ typedef struct {
     RYDB_HASH_NOHASH =    2, //treat the value as if it's already a good hash
     RYDB_HASH_SIPHASH =   3
   }            hash_function;
+  uint8_t    rehash;
   float      load_factor_max;
   //storing the value in the hashtable prevents extra datafile reads at the cost of possibly much larger hashtable entries
   unsigned     store_value: 1;
@@ -89,6 +90,13 @@ typedef struct {
   unsigned     direct_mapping: 1;
 } rydb_config_index_hashtable_t;
 
+#define RYDB_REHASH_DEFAULT                0x00
+#define RYDB_REHASH_MANUAL                (0<<1)
+#define RYDB_REHASH_ALL_AT_ONCE           (0<<2)
+#define RYDB_REHASH_INCREMENTAL           (0<<3)
+#define RYDB_REHASH_INCREMENTAL_ON_READ   (0<<4)
+#define RYDB_REHASH_INCREMENTAL_ON_WRITE  (0<<5)
+#define RYDB_REHASH_INCREMENTAL_ADJACENT  (0<<6)
 
 typedef union {
   rydb_config_index_hashtable_t hashtable;

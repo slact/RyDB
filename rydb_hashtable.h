@@ -3,7 +3,8 @@
 #include "rydb.h"
 
 #define RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR 0.60
-
+#define RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS RYDB_REHASH_INCREMENTAL
+#define RYDB_HASHTABLE_INCREMENTAL_REHASH_FLAGS (RYDB_REHASH_INCREMENTAL_ON_READ | RYDB_REHASH_INCREMENTAL_ON_WRITE)
 int rydb_index_hashtable_open(rydb_t *db, rydb_index_t *idx);
 
 int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
