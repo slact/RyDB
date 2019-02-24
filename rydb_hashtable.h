@@ -4,7 +4,6 @@
 
 #define RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR 0.60
 #define RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS RYDB_REHASH_INCREMENTAL
-#define RYDB_HASHTABLE_INCREMENTAL_REHASH_FLAGS (RYDB_REHASH_INCREMENTAL_ON_READ | RYDB_REHASH_INCREMENTAL_ON_WRITE)
 int rydb_index_hashtable_open(rydb_t *db, rydb_index_t *idx);
 
 int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
@@ -42,6 +41,11 @@ typedef struct {
     }              bitlevel;
   }               bucket;
 } rydb_hashtable_header_t;
+
+typedef char rydb_hashbucket_t;
+#define BUCKET_STORED_HASH(bucket) *(uint64_t *)&bucket[sizeof(rydb_rownum_t)]
+#define BUCKET_STORED_ROWNUM(bucket) *(rydb_rownum_t *)bucket
+#define BUCKET_STORED_VALUE(bucket, cf) (char *)&bucket[sizeof(rydb_rownum_t) + (cf->type_config.hashtable.store_hash ? sizeof(uint64_t) : 0)]
 
 void rydb_hashtable_print(rydb_t *db, rydb_index_t *idx);
 

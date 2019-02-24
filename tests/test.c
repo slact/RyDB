@@ -193,7 +193,8 @@ describe(config) {
       rydb_config_index_hashtable_t cf = {
         .hash_function = -1,
         .store_value = 1,
-        .direct_mapping = 1
+        .store_hash = 1,
+        .collision_resolution = RYDB_OPEN_ADDRESSING
       };
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Ii]nvalid hash");
     }
@@ -255,7 +256,8 @@ describe(config) {
       rydb_config_index_hashtable_t cf = {
         .hash_function = RYDB_HASH_NOHASH,
         .store_value = 1,
-        .direct_mapping = 0,
+        .store_hash = 0,
+        .collision_resolution = RYDB_OPEN_ADDRESSING,
         .load_factor_max = 0.30,
         .rehash = RYDB_REHASH_MANUAL
       };
@@ -272,8 +274,9 @@ describe(config) {
           asserteq(cur->type_config.hashtable.hash_function, RYDB_HASH_SIPHASH);
           
           //non-unique index defaults
-          assert(cur->type_config.hashtable.store_value==1);
-          assert(cur->type_config.hashtable.direct_mapping==0);
+          assert(cur->type_config.hashtable.store_value==0);
+          assert(cur->type_config.hashtable.store_hash==0);
+          assert(cur->type_config.hashtable.collision_resolution==RYDB_OPEN_ADDRESSING);
           assert(fabs(cur->type_config.hashtable.load_factor_max - RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR) < 0.0001);
           assert(cur->type_config.hashtable.rehash == RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS);
         }
@@ -287,7 +290,8 @@ describe(config) {
           
           //unique index defaults
           assert(cur->type_config.hashtable.store_value==0);
-          assert(cur->type_config.hashtable.direct_mapping==1);
+          assert(cur->type_config.hashtable.store_hash==0);
+          assert(cur->type_config.hashtable.collision_resolution==RYDB_OPEN_ADDRESSING);
           assert(fabs(cur->type_config.hashtable.load_factor_max - RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR) < 0.0001);
           assert(cur->type_config.hashtable.rehash == RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS);
         }
@@ -299,7 +303,8 @@ describe(config) {
           //check default configs
           asserteq(cur->type_config.hashtable.hash_function, RYDB_HASH_NOHASH);
           assert(cur->type_config.hashtable.store_value==1);
-          assert(cur->type_config.hashtable.direct_mapping==0);
+          assert(cur->type_config.hashtable.store_hash==0);
+          assert(cur->type_config.hashtable.collision_resolution==RYDB_OPEN_ADDRESSING);
           assert(fabs(cur->type_config.hashtable.load_factor_max - 0.30) < 0.0001);
           assert(cur->type_config.hashtable.rehash == RYDB_REHASH_MANUAL);
         }
@@ -478,6 +483,7 @@ describe(rydb_open) {
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
+    assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_ok(db, rydb_open(db, path, "open_test"));
     reset_malloc();
     
@@ -589,7 +595,8 @@ describe(rydb_open) {
           {"unique", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
           {"hash_function", "BananaHash", RYDB_ERROR_FILE_INVALID, ".*"},
           {"store_value", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
-          {"direct_mapping", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
+          {"store_hash", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
+          {"collision_resolution", "3", RYDB_ERROR_FILE_INVALID, "invalid"},
           {"link_pair_count", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
         };
         

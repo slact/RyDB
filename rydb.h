@@ -85,18 +85,22 @@ typedef struct {
   float      load_factor_max;
   //storing the value in the hashtable prevents extra datafile reads at the cost of possibly much larger hashtable entries
   unsigned     store_value: 1;
+  unsigned     store_hash:  1; //storing the hash adds 8 bytes per bucket entry
   
-  //direct mapping uses open-address linear probing, ideal for a 1-to-1 unique primary index. <2 reads avg.
-  unsigned     direct_mapping: 1;
+  //direct mapping uses closed-address linear probing, ideal for a 1-to-1 unique primary index. <2 reads avg.
+  enum {
+    RYDB_OPEN_ADDRESSING = 0,
+    RYDB_SEPARATE_CHAINING = 1
+  }            collision_resolution;
 } rydb_config_index_hashtable_t;
 
 #define RYDB_REHASH_DEFAULT                0x00
 #define RYDB_REHASH_MANUAL                (0<<1)
 #define RYDB_REHASH_ALL_AT_ONCE           (0<<2)
-#define RYDB_REHASH_INCREMENTAL           (0<<3)
-#define RYDB_REHASH_INCREMENTAL_ON_READ   (0<<4)
-#define RYDB_REHASH_INCREMENTAL_ON_WRITE  (0<<5)
-#define RYDB_REHASH_INCREMENTAL_ADJACENT  (0<<6)
+#define RYDB_REHASH_INCREMENTAL_ON_READ   (0<<3)
+#define RYDB_REHASH_INCREMENTAL_ON_WRITE  (0<<4)
+#define RYDB_REHASH_INCREMENTAL_ADJACENT  (0<<5)
+#define RYDB_REHASH_INCREMENTAL           (RYDB_REHASH_INCREMENTAL_ON_READ | RYDB_REHASH_INCREMENTAL_ON_WRITE | RYDB_REHASH_INCREMENTAL_ADJACENT)
 
 typedef union {
   rydb_config_index_hashtable_t hashtable;
