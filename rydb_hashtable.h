@@ -46,6 +46,7 @@ typedef char rydb_hashbucket_t;
 #define BUCKET_STORED_HASH(bucket) *(uint64_t *)&bucket[sizeof(rydb_rownum_t)]
 #define BUCKET_STORED_ROWNUM(bucket) *(rydb_rownum_t *)bucket
 #define BUCKET_STORED_VALUE(bucket, cf) (char *)&bucket[sizeof(rydb_rownum_t) + (cf->type_config.hashtable.store_hash ? sizeof(uint64_t) : 0)]
+#define BUCKET_NUMBER(bucket, idx) ((bucket - hashtable_bucket(idx, 0)) / bucket_size(idx->config))
 
 void rydb_hashtable_print(rydb_t *db, rydb_index_t *idx);
 

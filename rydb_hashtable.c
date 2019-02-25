@@ -458,7 +458,7 @@ static uint64_t hash_value(const rydb_t *db, const rydb_config_index_t *idx, con
   return h;
 }
 
-static inline rydb_hashtable_header_t *hashtable_header(rydb_index_t *idx) {
+static inline rydb_hashtable_header_t *hashtable_header(const rydb_index_t *idx) {
   return (void *)idx->index.file.start;
 }
 
@@ -524,6 +524,16 @@ static inline rydb_hashbucket_t *hashtable_bucket(const rydb_index_t *idx, off_t
   return (rydb_hashbucket_t *)&idx->index.data.start[bucket_size(idx->config) * bucketnum];
 }
 
+static inline off_t bucket_bitlevel(const rydb_hashtable_header_t *header, uint64_t hashvalue, uint64_t bucketnum) {
+  off_t max = header->bucket.count.sub_bitlevels;
+  for(off_t i=0; i<max; i++) {
+    if(btrim64(hashvalue, 64 - i) == bucketnum) {
+      return i;
+    }
+  }
+  return -1; //must be top-level, or the stored bitlevels are incorrect
+}
+
 //give me a non-empty bucket, and I will return unto you its hash
 static uint64_t bucket_hash(const rydb_t *db, const rydb_index_t *idx, const rydb_hashbucket_t *bucket) {
   assert(*bucket); //bucket rownum really shouldn't be zero at this point
@@ -587,6 +597,43 @@ static inline void bucket_write(const rydb_t *db, const rydb_index_t *idx, rydb_
     memcpy(BUCKET_STORED_VALUE(bucket, cf), &row->data[cf->start], cf->len);
   }
 }
+static inline void bucket_remove(rydb_hashbucket_t *bucket, rydb_hashbucket_t *buckets_end, size_t bucket_sz) {
+  for(bucket += bucket_sz; bucket < buckets_end && !bucket_is_empty(bucket); bucket += bucket_sz) {
+    memcpy(bucket - bucket_sz, bucket, bucket_sz);
+  }
+  memset(bucket - bucket_sz, '\00', sizeof(rydb_rownum_t));
+}
+  
+
+static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucket, uint_fast8_t remove_old_bucket) {
+  rydb_hashtable_header_t   *header = hashtable_header(idx);
+  size_t                     sz = bucket_size(idx->config);
+  uint64_t hash = btrim64(bucket_hash(db, idx, bucket), 64 - header->bucket.bitlevel.top.bits);
+  rydb_hashbucket_t *dst = hashtable_bucket(idx, hash);
+  rydb_hashbucket_t         *buckets_end = hashtable_bucket(idx, header->bucket.count.total);
+  while(dst < buckets_end && !bucket_is_empty(dst)) {
+    dst = bucket_next(idx, dst, 1);
+  }
+  if(dst >= buckets_end) {
+    if(!rydb_file_ensure_writable_address(db, &idx->index, dst, sz)) {
+      return 0;
+    }
+    header = hashtable_header(idx); //file might have gotten remapped, get the header again
+  }
+  if(dst == bucket) {
+    return 1;
+  }
+  memcpy(dst, bucket, sz);
+  if(remove_old_bucket) {
+    bucket_remove(bucket, buckets_end, sz);
+  }
+  else {
+    //just set it as empty;
+    BUCKET_STORED_ROWNUM(bucket) = 0;
+  }
+  return 1;
+}
+
 
 static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
@@ -595,7 +642,7 @@ static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   uint64_t                   max_bucket = (1 << size_bits);
   size_t                     bucket_sz = bucket_size(cf);
   size_t                     new_data_sz = max_bucket * bucket_sz;
-  //uint64_t                   prev_total_buckets = header->bucket.count.total;
+  uint64_t                   prev_total_buckets = header->bucket.count.total;
   if(!rydb_file_ensure_size(db, &idx->index, RYDB_INDEX_HASHTABLE_START_OFFSET + new_data_sz)) {
     return 0;
   }
@@ -603,32 +650,29 @@ static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   
   idx->index.data.end = idx->index.file.end;
   hashtable_reserve(header);
-  if(header->bucket.bitlevel.top.bits != 0) {
+  
+  if(prev_total_buckets > 0 && cf->type_config.hashtable.rehash & RYDB_REHASH_ALL_AT_ONCE) {
+    rydb_hashbucket_t         *bucket;
+    rydb_hashbucket_t         *buckets_start = hashtable_bucket(idx, 0);
+  //rydb_hashtable_print(db, idx);
+    for(bucket = hashtable_bucket(idx, prev_total_buckets - 1); bucket >= buckets_start; bucket = bucket_next(idx, bucket, -1)) {
+      if(bucket_is_empty(bucket)) {
+        continue;
+      }
+      if(!bucket_rehash(db, idx, bucket, 1)) {
+        return 0;
+      }
+    }
+  }
+  else if(header->bucket.bitlevel.top.bits != 0) {
     hashtable_bitlevel_push(header);
+    header->bucket.bitlevel.top.count = 0;
   }
   header->bucket.bitlevel.top.bits++;
-  header->bucket.bitlevel.top.count = 0;
   
   header->bucket.count.load_factor_max = max_bucket * cf->type_config.hashtable.load_factor_max;
   header->bucket.count.total = max_bucket;
   
-  /*
-  if(prev_total_buckets > 0 && cf->type_config.hashtable.rehash & RYDB_REHASH_ALL_AT_ONCE) {
-    rydb_rownum_t       *first = (void *)idx->index.data.start;
-    rydb_rownum_t        rownum;
-    rydb_stored_row_t   *row;
-    for(rydb_rownum_t *cur = (void *)&idx->index.data.start[(prev_total_buckets - 1) * bucket_sz]; cur >= first; cur = (char *)cur - bucket_sz) {
-      //walk through the prev_size hashtable backwards
-      rownum = *cur;
-      if(!rownum) {
-        continue;
-      }
-      datarow = rydb_rownum_to_row(db, rownum);
-      
-      
-    }
-    
-  }*/
   hashtable_release(header);
   return 1;
 }
@@ -675,17 +719,22 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb
   //rydb_hashtable_print(db, idx);
   
   const rydb_hashtable_bitlevel_count_t *bitlevel = NULL;
+  int                        bitlevel_count = -1;
   while((bitlevel = hashtable_bitlevel_next(header, bitlevel)) != NULL) {
+    bitlevel_count ++;
     for(bucket = hashtable_bucket(idx, btrim64(hashvalue, 64 - bitlevel->bits)); bucket < buckets_end && !bucket_is_empty(bucket); bucket = bucket_next(idx, bucket, 1)) {
       //printf("hash: %"PRIu64", bits: %"PRIu8" trimmed: %"PRIu64" rownum: %"PRIu32"%s", hashvalue, bitlevel->bits, trimmed_hashvalue, rownum, rownum ? "" : "\n");
       //printf("val: %s found: %s\n", val, &datarow->data[cf->start]);
       if(bucket_compare(db, idx, bucket, hashvalue, val) == 0) {
         rydb_stored_row_t *datarow = rydb_rownum_to_row(db, BUCKET_STORED_ROWNUM(bucket));
-        if(bitlevel != &header->bucket.bitlevel.top 
-          && (cf->type_config.hashtable.rehash & RYDB_REHASH_INCREMENTAL_ON_READ)) {
-          //TODO: migrate this bucket to the top layer
-        }
         rydb_storedrow_to_row(db, datarow, row);
+        if(bitlevel_count >= 0 && (cf->type_config.hashtable.rehash & RYDB_REHASH_INCREMENTAL_ON_READ)) {
+          hashtable_reserve(header);
+          if(bucket_rehash(db, idx, bucket, 1)) {
+            hashtable_bitlevel_subtract(header, bitlevel_count);
+          }
+          hashtable_release(header);
+        }
         return 1;
       }
     }
@@ -711,10 +760,33 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
   rydb_hashbucket_t     *buckets_end = hashtable_bucket(idx, header->bucket.count.total);
   int                    buckets_skipped = 0;
   
+  int try_to_rehash = (cf->type_config.hashtable.rehash & RYDB_REHASH_INCREMENTAL_ON_WRITE) && cf->type_config.hashtable.store_hash;
   
   //open addressing, linear probing, no loopback to start
   while(bucket < buckets_end && !bucket_is_empty(bucket)) {
     buckets_skipped++;
+    if(try_to_rehash) {
+      uint64_t rehash_candidate_hashvalue = BUCKET_STORED_HASH(bucket);
+      uint64_t rehash_bucket_number = BUCKET_NUMBER(bucket, idx);
+      if(btrim64(rehash_candidate_hashvalue, 64 - header->bucket.bitlevel.top.bits) != rehash_bucket_number) {
+        //this bucket should be rehashed!
+        off_t rehash_bucket_bitlevel = bucket_bitlevel(header, rehash_candidate_hashvalue, rehash_bucket_number);
+        hashtable_reserve(header);
+        if(!bucket_rehash(db, idx, bucket, 0)) {
+          header = hashtable_header(idx); //just in case we got remapped
+          hashtable_release(header);
+        }
+        else {
+          header = hashtable_header(idx); //just in case we got remapped
+          hashtable_bitlevel_subtract(header, rehash_bucket_bitlevel);
+          hashtable_release(header);
+          if(bucket_is_empty(bucket)) {
+            //make sure it didn't rehash to the same slot
+            break; //ok, we can use this slot for the insertion
+          }
+        }
+      }
+    }
     bucket = bucket_next(idx, bucket, 1);
   }
   
