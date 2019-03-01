@@ -665,7 +665,7 @@ describe(row_operations) {
   static rydb_t *db = NULL;
   static char path[64];
   
-  char *rowdata[] = {
+  static char *rowdata[] = {
     "1.hello this is not terribly long of a string",
     "2.and this is another one that exceeds the length",
     "3.this one's short",
@@ -673,7 +673,7 @@ describe(row_operations) {
     "5.here's another one",
     "6.zzzzzzzzzzzzzz"
   };
-  int nrows = 6;
+  static int nrows = 6;
   
   before_each() {
     asserteq(db, NULL, "previous test not closed out correctly");
@@ -909,7 +909,7 @@ describe(transactions) {
   static rydb_t *db = NULL;
   static char path[64];
   
-  char *rowdata[] = {
+  static char *rowdata[] = {
     "1.hello this is not terribly long of a string",
     "2.and this is another one that exceeds the length",
     "3.this one's short",
@@ -919,7 +919,7 @@ describe(transactions) {
   };
 
   
-  int nrows = sizeof(rowdata)/sizeof(char *);
+  static int nrows = sizeof(rowdata)/sizeof(char *);
   struct cmd_rownum_out_of_range_check_s rangecheck;
   
   before_each() {
@@ -1324,7 +1324,7 @@ describe(hashtable) {
   
   before_each() {
 #ifdef RYDB_DEBUG
-    rydb_debug_hash_key = "\xcb\x36\xc8\x85\x43\xf7\x10\x02\xa6\xd2\x55\x9f\x55\xc5\xc4\xea";
+    //rydb_debug_hash_key = "\xcb\x36\xc8\x85\x43\xf7\x10\x02\xa6\xd2\x55\x9f\x55\xc5\xc4\xea";
 #endif
     db = rydb_new();
     assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
@@ -1337,7 +1337,7 @@ describe(hashtable) {
     db = NULL;
     rmdir_recursive(path);
 #ifdef RYDB_DEBUG
-    rydb_debug_hash_key = NULL;
+    //rydb_debug_hash_key = NULL;
 #endif
   }
   
