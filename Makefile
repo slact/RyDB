@@ -58,7 +58,7 @@ clean:
 	-rm -f coverage.*
 	-rm -Rf tests/test.db.*
 	-rm -f *.profraw
-	-rm -r tests/*.profraw
+	-rm -f tests/*.profraw
 	-rm -Rf coverage-report
 
 .compiler_flags: force
@@ -120,7 +120,7 @@ coverage:
 	$(MAKE) -C $(TEST_DIR) coverage
 	-LLVM_PROFILE_FILE=".profraw" $(MAKE) -C $(TEST_DIR) run
 	llvm-profdata merge -sparse $(TEST_DIR)/.profraw -o .profdata
-	llvm-cov show -format="html" -output-dir="coverage-report" -instr-profile=".profdata" "librydb.so" -object "tests/test"
+	llvm-cov show -format="html" -output-dir="coverage-report" -instr-profile=".profdata" "librydb.so" -object "tests/test" -ignore-filename-regex="tests/"
 	xdg-open ./coverage-report/index.html
 
 debug:	$(DNAME)

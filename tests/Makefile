@@ -19,6 +19,7 @@ CALLGRIND_OUTFILE = callgrind-rydb-$(TIMESTAMP).out
 CALLGRIND_FLAGS = --tool=callgrind --dump-instr=yes --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=$(CALLGRIND_OUTFILE)
 
 TEST = *
+TIMER = 
 
 .PHONY: default all clean force run coverage coverage-gcc
 
@@ -56,17 +57,16 @@ static: default
 
 
 run:
-	./$(TARGET) --no-timer "$(TEST)"
+	./$(TARGET) $(TIMER) "$(TEST)"
 
 debug: default
-	kdbg ./$(TARGET) -a '--rerun-failed --no-timer "$(TEST)"'
+	kdbg ./$(TARGET) -a '--rerun-failed $(TIMER) "$(TEST)"'
 
 valgrind:default
-	valgrind $(VALGRIND_FLAGS) ./$(TARGET) --no-timer "$(TEST)"
+	valgrind $(VALGRIND_FLAGS) ./$(TARGET) $(TIMER) "$(TEST)"
 
 callgrind: default
-	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) --no-timer "$(TEST)"
-	kcachegrind ./$(CALLGRIND_OUTFILE)
+	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) $(TIMER) "$(TEST)"
 
 coverage-gcc: O = 0
 coverage-gcc: CC = gcc
