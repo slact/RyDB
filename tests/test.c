@@ -190,13 +190,31 @@ describe(config) {
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, 0xFF, NULL), RYDB_ERROR_BAD_CONFIG, "[Uu]nknown flags");
     }
     it("fails on bad hashtable config") {
+      rydb_config_row(db, 20, 5);
       rydb_config_index_hashtable_t cf = {
         .hash_function = -1,
         .store_value = 1,
         .store_hash = 1,
+        .load_factor_max = 0.4,
+        .rehash = RYDB_REHASH_DEFAULT,
         .collision_resolution = RYDB_OPEN_ADDRESSING
       };
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Ii]nvalid hash");
+      
+      cf.hash_function = RYDB_HASH_SIPHASH;
+      cf.load_factor_max = 1.3;
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Ii]nvalid load_factor_max");
+      
+      cf.load_factor_max = 0.3;
+      cf.rehash = RYDB_REHASH_ALL_AT_ONCE | RYDB_REHASH_INCREMENTAL;
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Ii]nvalid rehash flags");
+      
+      cf.rehash = RYDB_REHASH_ALL_AT_ONCE | RYDB_REHASH_MANUAL;
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Ii]nvalid rehash flags");
+      
+      cf.rehash = RYDB_REHASH_INCREMENTAL_ON_WRITE | RYDB_REHASH_MANUAL;
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Ii]nvalid rehash flags");
+      
     }
     it("fails if index name is weird") {
       char bigname[RYDB_NAME_MAX_LEN+10];
@@ -275,7 +293,7 @@ describe(config) {
           
           //non-unique index defaults
           assert(cur->type_config.hashtable.store_value==0);
-          assert(cur->type_config.hashtable.store_hash==0);
+          assert(cur->type_config.hashtable.store_hash==1);
           assert(cur->type_config.hashtable.collision_resolution==RYDB_OPEN_ADDRESSING);
           assert(fabs(cur->type_config.hashtable.load_factor_max - RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR) < 0.0001);
           assert(cur->type_config.hashtable.rehash == RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS);
@@ -290,7 +308,7 @@ describe(config) {
           
           //unique index defaults
           assert(cur->type_config.hashtable.store_value==0);
-          assert(cur->type_config.hashtable.store_hash==0);
+          assert(cur->type_config.hashtable.store_hash==1);
           assert(cur->type_config.hashtable.collision_resolution==RYDB_OPEN_ADDRESSING);
           assert(fabs(cur->type_config.hashtable.load_factor_max - RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR) < 0.0001);
           assert(cur->type_config.hashtable.rehash == RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS);
@@ -565,14 +583,14 @@ describe(rydb_open) {
           rydb_close(db);
           rmdir_recursive(path);
         }
-        struct metafail_test_s {
+        struct metaload_test_s {
           const char *name;
           const char *val;
           rydb_error_code_t err;
           const char *match;
         };
         
-        struct metafail_test_s metachecks[] = {
+        struct metaload_test_s metachecks[] = {
           {"format_revision", "1234", RYDB_ERROR_FILE_INVALID, "[Ff]ormat version mismatch"},
           {"endianness", "banana", RYDB_ERROR_FILE_INVALID, "unexpected"},
           {"endianness", is_little_endian()?"big":"little", RYDB_ERROR_WRONG_ENDIANNESS, ".*"},
@@ -594,6 +612,11 @@ describe(rydb_open) {
           {"len", "9000", RYDB_ERROR_BAD_CONFIG, "out of bounds"},
           {"unique", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
           {"hash_function", "BananaHash", RYDB_ERROR_FILE_INVALID, ".*"},
+          {"hash_function", "CRC32", RYDB_NO_ERROR, NULL},
+          {"hash_function", "none", RYDB_NO_ERROR, NULL},
+          {"hash_function", "SipHash", RYDB_NO_ERROR, NULL},
+          {"load_factor_max", "10", RYDB_ERROR_FILE_INVALID, "invalid"},
+          {"rehash_flags", "30", RYDB_ERROR_FILE_INVALID, "invalid"},
           {"store_value", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
           {"store_hash", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
           {"collision_resolution", "3", RYDB_ERROR_FILE_INVALID, "invalid"},
@@ -602,11 +625,16 @@ describe(rydb_open) {
         
         for(unsigned i=0; i< sizeof(metachecks)/sizeof(metachecks[0]); i++) {
           char testname[128];
-          struct metafail_test_s *chk = &metachecks[i];
+          struct metaload_test_s *chk = &metachecks[i];
           sprintf(testname, "fails on bad %s", chk->name);
           it(testname) {
             sed_meta_file_prop(db, chk->name, chk->val);
-            assert_db_fail_match_errstr(db, rydb_reopen(&db), chk->err, chk->match);
+            if(chk->err == RYDB_NO_ERROR) {
+              assert_db_ok(db, rydb_reopen(&db));
+            }
+            else {
+              assert_db_fail_match_errstr(db, rydb_reopen(&db), chk->err, chk->match);
+            }
           }
         }
         it("fails on bad index specification") {
@@ -1296,13 +1324,12 @@ describe(hashtable) {
   
   before_each() {
 #ifdef RYDB_DEBUG
-    //rydb_debug_hash_key = "\xcb\x36\xc8\x85\x43\xf7\x10\x02\xa6\xd2\x55\x9f\x55\xc5\xc4\xea";
+    rydb_debug_hash_key = "\xcb\x36\xc8\x85\x43\xf7\x10\x02\xa6\xd2\x55\x9f\x55\xc5\xc4\xea";
 #endif
     db = rydb_new();
     assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
     strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
-    assert_db_ok(db, rydb_open(db, path, "test"));
   }
 
   after_each() {
@@ -1310,11 +1337,12 @@ describe(hashtable) {
     db = NULL;
     rmdir_recursive(path);
 #ifdef RYDB_DEBUG
-    //rydb_debug_hash_key = NULL;
+    rydb_debug_hash_key = NULL;
 #endif
   }
   
   test("adding rows to hashtable") {
+    assert_db_ok(db, rydb_open(db, path, "test"));
     char str[128];
     for(int i=1; i<200; i++) {
       sprintf(str, "%izzz", i);
@@ -1323,27 +1351,44 @@ describe(hashtable) {
     }
   }
   
-  test("finding rows in hashtable") {
-    char str[128], searchstr[128];
-    const char *fmt = "%izzz, yes,%i!";
-    int maxrows = 1000;
-    for(int i=0; i<maxrows; i++) {
-      //printf("i: %i\n", i);
-      sprintf(str, fmt, i, i);
-      assert_db_ok(db, rydb_row_insert_str(db, str));
-      //rydb_hashtable_print(db, &db->index[0]);
-      for(int j=0; j<=i; j++) {
-        //printf("i: %i, j: %i\n", i, j);
-        sprintf(searchstr, fmt, j, j);
-        rydb_row_t found_row;
-        int found = rydb_find_row_str(db, searchstr, &found_row);
-        if (j <= i) {
-          asserteq(found, 1);
-          asserteq(strcmp(searchstr, found_row.data), 0);
-          asserteq(found_row.num, j+1);
-        }
-        else {
-          asserteq(found, 0);
+  static char testname[64];
+  static struct {const char *n; int h;} hashfunction[] = {
+    {"SipHash", RYDB_HASH_SIPHASH}, {"CRC32", RYDB_HASH_CRC32}, {"nohash", RYDB_HASH_NOHASH}
+  };
+  
+  for(int t=0; t<3; t++) {
+    sprintf(testname, "finding rows in %s hashtable", hashfunction[t].n);
+    test(testname) {
+      rydb_config_index_hashtable_t cf = {
+        .hash_function = hashfunction[t].h,
+        .store_value = 1,
+        .store_hash = 1,
+        .collision_resolution = RYDB_OPEN_ADDRESSING
+      };
+      rydb_config_add_index_hashtable(db, "primary", 0, 5, RYDB_INDEX_UNIQUE, &cf);
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      char str[128], searchstr[128];
+      const char *fmt = "%izzz, yes,%i!";
+      int maxrows = 1000;
+      for(int i=0; i<maxrows; i++) {
+        //printf("i: %i\n", i);
+        sprintf(str, fmt, i, i);
+        assert_db_ok(db, rydb_row_insert_str(db, str));
+        //rydb_hashtable_print(db, &db->index[0]);
+        for(int j=0; j<=i; j++) {
+          sprintf(searchstr, fmt, j, j);
+          rydb_row_t found_row;
+          //raise(SIGSTOP);
+          //printf("i: %i, j: %i, finding \"%s\"\n", i, j, searchstr);
+          int found = rydb_find_row_str(db, searchstr, &found_row);
+          if (j <= i) {
+            asserteq(found, 1);
+            asserteq(strcmp(searchstr, found_row.data), 0);
+            asserteq(found_row.num, j+1);
+          }
+          else {
+            asserteq(found, 0);
+          }
         }
       }
     }

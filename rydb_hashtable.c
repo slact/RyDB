@@ -7,6 +7,18 @@
 #include <assert.h>
 #include <signal.h>
 
+#define PRINT_DBG 0
+
+#if (PRINT_DBG)
+#define DBG(...) printf(__VA_ARGS__);
+#define DBG_BUCKET(lbl, ...) printf(lbl); rydb_bucket_print(__VA_ARGS__);
+#define DBG_HASHTABLE(...) rydb_hashtable_print(__VA_ARGS__);
+#else
+#define DBG(...)
+#define DBG_BUCKET(...)
+#define DBG_HASHTABLE(...)
+#endif
+
 /**
  * \file pycrc_stdout
  * Functions and types for CRC checks.
@@ -346,7 +358,7 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
   if(!advanced_config) {
     cf->type_config.hashtable.collision_resolution = RYDB_OPEN_ADDRESSING;
     cf->type_config.hashtable.store_value = 0;
-    cf->type_config.hashtable.store_hash = 0;
+    cf->type_config.hashtable.store_hash = 1;
     cf->type_config.hashtable.hash_function = RYDB_HASH_SIPHASH;
     cf->type_config.hashtable.load_factor_max = RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR;
     cf->type_config.hashtable.rehash = RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS;
@@ -357,7 +369,7 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
   }
   else {
     if(advanced_config->load_factor_max >= 1 || advanced_config->load_factor_max < 0) {
-      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid load_factor_max value %f for hashtable \"%s\", must be between 0 and 1", cf->name);
+      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid load_factor_max value %f for hashtable \"%s\", must be between 0 and 1", cf->name, advanced_config->load_factor_max);
       return 0;
     }
     uint8_t rehash = advanced_config->rehash;
@@ -378,6 +390,10 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
       if(rehash & RYDB_REHASH_INCREMENTAL) {
         flagfail = "ALL_AT_ONCE and INCREMENTAL";
       }
+    }
+    else if((rehash * RYDB_REHASH_INCREMENTAL) && !advanced_config->store_hash) {
+      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Rehash flag INCREMENTAL requires store_hash to be on for hashtable \"%s\"", cf->name);
+      return 0;
     }
     if(flagfail) {
       rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid rehash flags for hashtable \"%s\": %s are mutually exclusive", cf->name);
@@ -440,6 +456,7 @@ static inline uint64_t btrim64(uint64_t val, uint8_t bits) {
 
 static uint64_t hash_value(const rydb_t *db, const rydb_config_index_t *idx, const char *data, uint8_t trim) {
   uint64_t h;
+  if(trim < 6) trim = 6; //produce a 58-bit hash at most
   switch(idx->type_config.hashtable.hash_function) {
     case RYDB_HASH_CRC32:
       h = btrim64(crc32((uint8_t *)&data[idx->start], idx->len), trim);
@@ -472,13 +489,14 @@ static inline void hashtable_release(rydb_hashtable_header_t *header) {
 }
 
 static void hashtable_bitlevel_subtract(rydb_hashtable_header_t *header, int level) {
+  assert(level >= 0);
+  assert(header->bucket.bitlevel.sub[level].count > 0);
+  DBG("bitlevel subtract lvl %i\n", level)
   if(--header->bucket.bitlevel.sub[level].count == 0) {
     for(int i =  level+1; i < header->bucket.count.sub_bitlevels; i++) {
-      header->bucket.bitlevel.sub[i] = header->bucket.bitlevel.sub[i+1];
+      header->bucket.bitlevel.sub[i-1] = header->bucket.bitlevel.sub[i];
     }
     header->bucket.count.sub_bitlevels--;
-    assert(header->bucket.bitlevel.sub[header->bucket.count.sub_bitlevels].count == 0);
-    assert(header->bucket.bitlevel.sub[header->bucket.count.sub_bitlevels].bits == 0);
   }
 }
 
@@ -486,9 +504,9 @@ static const rydb_hashtable_bitlevel_count_t *hashtable_bitlevel_next(const rydb
   if(bitlevel == NULL) {
     return &header->bucket.bitlevel.top;
   }
-  const rydb_hashtable_bitlevel_count_t *end = &header->bucket.bitlevel.sub[header->bucket.count.sub_bitlevels];
-  if(bitlevel < end) {
-    return &bitlevel[1];
+  bitlevel++;
+  if(bitlevel < &header->bucket.bitlevel.sub[header->bucket.count.sub_bitlevels]) {
+    return bitlevel;
   }
   return NULL;
 }
@@ -512,7 +530,6 @@ static inline size_t bucket_size(rydb_config_index_t *cf) {
       if(cf->type_config.hashtable.store_value) {
         sz += cf->len;
       }
-      //printf("sz: %i, aligned: %i\n", sz, ry_align(sz, sizeof(rydb_rownum_t)));
       assert(sz <= ry_align(sz, sizeof(rydb_rownum_t)));
       return ry_align(sz, sizeof(rydb_rownum_t));
     case RYDB_SEPARATE_CHAINING:
@@ -524,22 +541,12 @@ static inline rydb_hashbucket_t *hashtable_bucket(const rydb_index_t *idx, off_t
   return (rydb_hashbucket_t *)&idx->index.data.start[bucket_size(idx->config) * bucketnum];
 }
 
-static inline off_t bucket_bitlevel(const rydb_hashtable_header_t *header, uint64_t hashvalue, uint64_t bucketnum) {
-  off_t max = header->bucket.count.sub_bitlevels;
-  for(off_t i=0; i<max; i++) {
-    if(btrim64(hashvalue, 64 - i) == bucketnum) {
-      return i;
-    }
-  }
-  return -1; //must be top-level, or the stored bitlevels are incorrect
-}
-
 //give me a non-empty bucket, and I will return unto you its hash
 static uint64_t bucket_hash(const rydb_t *db, const rydb_index_t *idx, const rydb_hashbucket_t *bucket) {
-  assert(*bucket); //bucket rownum really shouldn't be zero at this point
+  assert(*(rydb_rownum_t *)bucket); //bucket rownum really shouldn't be zero at this point
   rydb_config_index_t       *cf = idx->config;
   if(cf->type_config.hashtable.store_hash) {
-    return BUCKET_STORED_HASH(bucket);
+    return BUCKET_STORED_HASH58(bucket);
   }
   if(cf->type_config.hashtable.store_value) {
     return hash_value(db, cf, (char *)&bucket[sizeof(rydb_rownum_t)], 0);
@@ -569,7 +576,7 @@ static inline const char *bucket_data(const rydb_t *db, const rydb_index_t *idx,
 
 static inline int bucket_compare(const rydb_t *db, const rydb_index_t *idx, const rydb_hashbucket_t *bucket, uint64_t hashvalue, const char*val) {
   rydb_config_index_t       *cf = idx->config;
-  if(cf->type_config.hashtable.store_hash && BUCKET_STORED_HASH(bucket) != hashvalue) {
+  if(cf->type_config.hashtable.store_hash && BUCKET_STORED_HASH58(bucket) != hashvalue) {
     return -1;
   }
   return memcmp(bucket_data(db, idx, bucket), val, cf->len);
@@ -584,34 +591,79 @@ static inline rydb_hashbucket_t *bucket_next(const rydb_index_t *idx, const rydb
   return (rydb_hashbucket_t *)((const char *)bucket + (bucket_size(idx->config) * diff));
 }
 
-static inline void bucket_write(const rydb_t *db, const rydb_index_t *idx, rydb_hashbucket_t *bucket, uint64_t hashvalue, const rydb_stored_row_t *row) {
+static inline void bucket_set_hash_bits(rydb_hashbucket_t *bucket, uint_fast8_t bits) {
+  assert(BUCKET_STORED_HASH_BITS(bucket));
+  uint64_t bits_n_hash = BUCKET_STORED_HASH58(bucket);
+  bits_n_hash |= (uint64_t )bits << 58;
+  *(uint64_t *)&bucket[sizeof(rydb_rownum_t)] = bits_n_hash;
+  assert(BUCKET_STORED_HASH_BITS(bucket));
+}
+
+static inline void bucket_write(const rydb_t *db, const rydb_index_t *idx, rydb_hashbucket_t *bucket, uint64_t hashvalue, uint_fast8_t bitlevel, const rydb_stored_row_t *row) {
   rydb_config_index_t       *cf = idx->config;
   BUCKET_STORED_ROWNUM(bucket) = rydb_row_to_rownum(db, row);
-  //printf("wrote rownum %"PRIu32" to %p (check: %"PRIu32")\n", rydb_row_to_rownum(db, row), (void *)bucket, BUCKET_STORED_ROWNUM(bucket));
+  DBG("writing rownum %"PRIu32" to %p (check: %"PRIu32")\n", rydb_row_to_rownum(db, row), (void *)bucket, BUCKET_STORED_ROWNUM(bucket))
   if(cf->type_config.hashtable.store_hash) {
-    //printf("STORE HASH\n");
-    *(uint64_t *)&bucket[sizeof(rydb_rownum_t)] = hashvalue;
+    assert(bitlevel < 64);
+    uint64_t stored_bitlevel_and_hash = btrim64(hashvalue, 6);
+    stored_bitlevel_and_hash |= (uint64_t )bitlevel << 58;
+    *(uint64_t *)&bucket[sizeof(rydb_rownum_t)] = stored_bitlevel_and_hash;
+    assert(BUCKET_STORED_HASH_BITS(bucket));
   }
   if(cf->type_config.hashtable.store_value) {
-    //printf("STORE VALUE %.*s\n", cf->len, &row->data[cf->start]);
+    DBG("WRITE VALUE %.*s\n", cf->len, &row->data[cf->start])
     memcpy(BUCKET_STORED_VALUE(bucket, cf), &row->data[cf->start], cf->len);
   }
 }
-static inline void bucket_remove(rydb_hashbucket_t *bucket, rydb_hashbucket_t *buckets_end, size_t bucket_sz) {
+static inline void bucket_remove(const rydb_t *db, const rydb_index_t *idx, rydb_hashtable_header_t *header, rydb_hashbucket_t *bucket, rydb_hashbucket_t *buckets_end, size_t bucket_sz) {
+  uint_fast8_t               hashbits = header->bucket.bitlevel.top.bits;
+  uint64_t                   emptybucketnum = BUCKET_NUMBER(bucket, idx);
+  rydb_hashbucket_t         *emptybucket = bucket;
+  uint_fast8_t               have_stored_hash = idx->config->type_config.hashtable.store_hash;
+  DBG_BUCKET("remove bucket  ", idx, bucket)
   for(bucket += bucket_sz; bucket < buckets_end && !bucket_is_empty(bucket); bucket += bucket_sz) {
-    memcpy(bucket - bucket_sz, bucket, bucket_sz);
+    uint64_t hash = bucket_hash(db, idx, bucket);
+    if(have_stored_hash) {
+      hashbits = BUCKET_STORED_HASH_BITS(bucket);
+    }
+    if(btrim64(hash, 64 - hashbits) <= emptybucketnum) {
+      //this bucket is not part of the overflow run
+      DBG_BUCKET("upshift bucket ", idx, bucket)
+      DBG_BUCKET("            to ", idx, emptybucket)
+      memcpy(emptybucket, bucket, bucket_sz);
+      emptybucket = bucket;
+      emptybucketnum = BUCKET_NUMBER(emptybucket, idx);
+    }
+    else {
+      DBG_BUCKET("skip bucket    ", idx, bucket)
+    }
   }
-  memset(bucket - bucket_sz, '\00', sizeof(rydb_rownum_t));
+  DBG_BUCKET("clear bucket   ", idx, emptybucket)
+#ifdef RYDB_DEBUG
+  memset(emptybucket, '\00', bucket_sz);
+#else
+  memset(emptybucket, '\00', sizeof(rydb_rownum_t));
+#endif
 }
-  
 
-static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucket, uint_fast8_t remove_old_bucket) {
+static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucket,  uint_fast8_t old_hashbits, uint_fast8_t transfer_from_old_bitlevel, uint_fast8_t remove_old_bucket) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   size_t                     sz = bucket_size(idx->config);
-  uint64_t hash = btrim64(bucket_hash(db, idx, bucket), 64 - header->bucket.bitlevel.top.bits);
-  rydb_hashbucket_t *dst = hashtable_bucket(idx, hash);
+  uint_fast8_t               new_hashbits = header->bucket.bitlevel.top.bits;
+  uint64_t                   full_hash = bucket_hash(db, idx, bucket);
+  uint64_t                   old_hash = btrim64(full_hash, 64 - old_hashbits);
+  uint64_t                   new_hash = btrim64(full_hash, 64 - new_hashbits);
+  DBG_BUCKET("rehash bucket         ", idx, bucket)
+  if(old_hash == new_hash) {
+    DBG("useless rehash\n")
+    //rehash resulted in the same hash.
+    //this happens half the time for 1-bit increases in hash size, for the obvious reason
+    return 1;
+  }
+  rydb_hashbucket_t         *dst = hashtable_bucket(idx, new_hash);
   rydb_hashbucket_t         *buckets_end = hashtable_bucket(idx, header->bucket.count.total);
-  while(dst < buckets_end && !bucket_is_empty(dst)) {
+  DBG_BUCKET("dst bucket (unwalked) ", idx, dst)
+  while(dst < buckets_end && dst != bucket && !bucket_is_empty(dst)) {
     dst = bucket_next(idx, dst, 1);
   }
   if(dst >= buckets_end) {
@@ -619,17 +671,31 @@ static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucke
       return 0;
     }
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
+    header->bucket.count.total++; //record bucket overflow
   }
-  if(dst == bucket) {
-    return 1;
+  DBG_BUCKET("dst bucket            ", idx, dst);
+  
+  if(dst != bucket) {
+    //rydb_hashtable_print(db, idx);
+    memcpy(dst, bucket, sz);
+    bucket_set_hash_bits(dst, new_hashbits);
+    if(remove_old_bucket) {
+      bucket_remove(db, idx, header, bucket, buckets_end, sz);
+    }
+    else {
+      //just set it as empty;
+      BUCKET_STORED_ROWNUM(bucket) = 0;
+    }
   }
-  memcpy(dst, bucket, sz);
-  if(remove_old_bucket) {
-    bucket_remove(bucket, buckets_end, sz);
-  }
-  else {
-    //just set it as empty;
-    BUCKET_STORED_ROWNUM(bucket) = 0;
+  if(transfer_from_old_bitlevel) {
+    for(uint_fast8_t i=0, max = header->bucket.count.sub_bitlevels; i<max; i++) {
+      if(header->bucket.bitlevel.sub[i].bits == old_hashbits) {
+        hashtable_bitlevel_subtract(header, i);
+        header->bucket.bitlevel.top.count++;
+        return 1;
+      }
+    }
+    assert(0);
   }
   return 1;
 }
@@ -638,8 +704,8 @@ static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucke
 static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   rydb_config_index_t       *cf = idx->config;
-  uint8_t                    size_bits = header->bucket.bitlevel.top.bits + 1;
-  uint64_t                   max_bucket = (1 << size_bits);
+  uint8_t                    current_hashbits = header->bucket.bitlevel.top.bits;
+  uint64_t                   max_bucket = (1 << (current_hashbits + 1));
   size_t                     bucket_sz = bucket_size(cf);
   size_t                     new_data_sz = max_bucket * bucket_sz;
   uint64_t                   prev_total_buckets = header->bucket.count.total;
@@ -659,12 +725,15 @@ static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
       if(bucket_is_empty(bucket)) {
         continue;
       }
-      if(!bucket_rehash(db, idx, bucket, 1)) {
+      DBG("rehash after grow()\n")
+      DBG_HASHTABLE(db, idx)
+      if(!bucket_rehash(db, idx, bucket, current_hashbits, 0, 1)) {
         return 0;
       }
+      //rydb_hashtable_print(db, idx);
     }
   }
-  else if(header->bucket.bitlevel.top.bits != 0) {
+  else if(current_hashbits != 0) {
     hashtable_bitlevel_push(header);
     header->bucket.bitlevel.top.count = 0;
   }
@@ -710,34 +779,40 @@ int rydb_index_hashtable_open(rydb_t *db,  rydb_index_t *idx) {
 
 //assumes val is at least as long as the indexed data
 int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb_row_t *row) {
-  //printf("find row with val \"%s\"\n", val);
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   rydb_config_index_t       *cf = idx->config;
   uint64_t                   hashvalue = hash_value(db, cf, val, 0);
   rydb_hashbucket_t         *bucket;
   rydb_hashbucket_t         *buckets_end = hashtable_bucket(idx, header->bucket.count.total);
-  //rydb_hashtable_print(db, idx);
+  
+  DBG("find row with val \"%s\"\n", val)
+  DBG_HASHTABLE(db, idx)
   
   const rydb_hashtable_bitlevel_count_t *bitlevel = NULL;
   int                        bitlevel_count = -1;
+  DBG("bitlevels: %i\n", (int)header->bucket.count.sub_bitlevels)
   while((bitlevel = hashtable_bitlevel_next(header, bitlevel)) != NULL) {
-    bitlevel_count ++;
-    for(bucket = hashtable_bucket(idx, btrim64(hashvalue, 64 - bitlevel->bits)); bucket < buckets_end && !bucket_is_empty(bucket); bucket = bucket_next(idx, bucket, 1)) {
-      //printf("hash: %"PRIu64", bits: %"PRIu8" trimmed: %"PRIu64" rownum: %"PRIu32"%s", hashvalue, bitlevel->bits, trimmed_hashvalue, rownum, rownum ? "" : "\n");
-      //printf("val: %s found: %s\n", val, &datarow->data[cf->start]);
+    DBG("bitlevel bits:%i, n: %i\n", (int)bitlevel->bits, (int)bitlevel->count)
+    bucket = hashtable_bucket(idx, btrim64(hashvalue, 64 - bitlevel->bits));
+    DBG("hash: %"PRIu64", bits: %"PRIu8" trimmed: %"PRIu64" rownum: %"PRIu32"%s", hashvalue, bitlevel->bits, btrim64(hashvalue, 64 - bitlevel->bits), BUCKET_STORED_ROWNUM(bucket), BUCKET_STORED_ROWNUM(bucket) ? "" : "\n")
+    for(/*void*/; bucket < buckets_end && !bucket_is_empty(bucket); bucket = bucket_next(idx, bucket, 1)) {
       if(bucket_compare(db, idx, bucket, hashvalue, val) == 0) {
         rydb_stored_row_t *datarow = rydb_rownum_to_row(db, BUCKET_STORED_ROWNUM(bucket));
+        DBG("val: %s found: %s\n", val, &datarow->data[cf->start])
         rydb_storedrow_to_row(db, datarow, row);
         if(bitlevel_count >= 0 && (cf->type_config.hashtable.rehash & RYDB_REHASH_INCREMENTAL_ON_READ)) {
           hashtable_reserve(header);
-          if(bucket_rehash(db, idx, bucket, 1)) {
-            hashtable_bitlevel_subtract(header, bitlevel_count);
-          }
+          DBG("let's rehash!\n")
+          DBG_HASHTABLE(db, idx)
+          bucket_rehash(db, idx, bucket, BUCKET_STORED_HASH_BITS(bucket), 1, 1);
+          DBG("after rehash\n")
+          DBG_HASHTABLE(db, idx)
           hashtable_release(header);
         }
         return 1;
       }
     }
+    bitlevel_count ++;
   }
   return 0;
 }
@@ -754,31 +829,32 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
   }
 
-  //printf("adding rownum %"PRIu32" bits: %"PRIu8 " hashvalue %"PRIu64" trimmed to %"PRIu64" str: \"%.*s\"\n", rydb_row_to_rownum(db, row), header->bucket.bitlevel.top.bits, hashvalue, btrim64(hashvalue, 64 - header->bucket.bitlevel.top.bits), cf->len, &row->data[cf->start]);
-  
-  rydb_hashbucket_t     *bucket = hashtable_bucket(idx, btrim64(hashvalue, 64 - header->bucket.bitlevel.top.bits));
+  DBG("adding rownum %"PRIu32" bits: %"PRIu8 " hashvalue %"PRIu64" trimmed to %"PRIu64" str: \"%.*s\"\n", rydb_row_to_rownum(db, row), header->bucket.bitlevel.top.bits, hashvalue, btrim64(hashvalue, 64 - header->bucket.bitlevel.top.bits), cf->len, &row->data[cf->start])
+  uint8_t current_bits = header->bucket.bitlevel.top.bits;
+  uint64_t top_level_hashvalue = btrim64(hashvalue, 64 - current_bits);
+  rydb_hashbucket_t     *bucket = hashtable_bucket(idx, top_level_hashvalue);
   rydb_hashbucket_t     *buckets_end = hashtable_bucket(idx, header->bucket.count.total);
   int                    buckets_skipped = 0;
   
   int try_to_rehash = (cf->type_config.hashtable.rehash & RYDB_REHASH_INCREMENTAL_ON_WRITE) && cf->type_config.hashtable.store_hash;
-  
   //open addressing, linear probing, no loopback to start
   while(bucket < buckets_end && !bucket_is_empty(bucket)) {
-    buckets_skipped++;
     if(try_to_rehash) {
-      uint64_t rehash_candidate_hashvalue = BUCKET_STORED_HASH(bucket);
-      uint64_t rehash_bucket_number = BUCKET_NUMBER(bucket, idx);
-      if(btrim64(rehash_candidate_hashvalue, 64 - header->bucket.bitlevel.top.bits) != rehash_bucket_number) {
+      uint8_t  rehash_candidate_bits = BUCKET_STORED_HASH_BITS(bucket);
+      uint64_t rehash_candidate_hashvalue = BUCKET_STORED_HASH58(bucket);
+      uint64_t old_bitlevel_hashvalue = btrim64(rehash_candidate_hashvalue, 64 - rehash_candidate_bits);
+      if(rehash_candidate_bits != current_bits
+        && old_bitlevel_hashvalue != btrim64(rehash_candidate_hashvalue, 64 - current_bits)) {
         //this bucket should be rehashed!
-        off_t rehash_bucket_bitlevel = bucket_bitlevel(header, rehash_candidate_hashvalue, rehash_bucket_number);
         hashtable_reserve(header);
-        if(!bucket_rehash(db, idx, bucket, 0)) {
+        DBG("rehash bucket on add_row\n")
+        DBG_HASHTABLE(db, idx)
+        if(!bucket_rehash(db, idx, bucket, rehash_candidate_bits, 1, 0)) {
           header = hashtable_header(idx); //just in case we got remapped
           hashtable_release(header);
         }
         else {
           header = hashtable_header(idx); //just in case we got remapped
-          hashtable_bitlevel_subtract(header, rehash_bucket_bitlevel);
           hashtable_release(header);
           if(bucket_is_empty(bucket)) {
             //make sure it didn't rehash to the same slot
@@ -788,6 +864,7 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
       }
     }
     bucket = bucket_next(idx, bucket, 1);
+    buckets_skipped++;
   }
   
   if(bucket >= buckets_end) {
@@ -801,19 +878,20 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
   }
   //rydb_hashtable_header_t hdr = *header;
-  //rydb_hashtable_print(db, idx);
+  if(!bucket_is_empty(bucket)) {
+    DBG_BUCKET("nonempty! ", idx, bucket)
+  }
   assert(bucket_is_empty(bucket));
   hashtable_reserve(header);
   if(bucket >= buckets_end) {
     header->bucket.count.total++; //record bucket overflow
   }
-  //printf("write bucket %p\n", (void *)bucket);
-  bucket_write(db, idx, bucket, hashvalue, row);
+  DBG("write bucket %p\n", (void *)bucket)
+  bucket_write(db, idx, bucket, hashvalue, current_bits, row);
   
   header->bucket.count.used++;
   header->bucket.bitlevel.top.count++;
   hashtable_release(header);
-  //rydb_hashtable_print(db, idx);
   return 1;
 }
 int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
@@ -839,8 +917,28 @@ int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_
   return 1;
 }
 
-void rydb_hashtable_print(rydb_t *db, rydb_index_t *idx) {
-  rydb_config_index_t             *cf = idx->config;
+void rydb_bucket_print(const rydb_index_t *idx, const rydb_hashbucket_t *bucket) {
+  rydb_config_index_t *cf = idx->config;
+  printf("  %p [%3"PRIu32"] ", (void *)bucket, (uint32_t )BUCKET_NUMBER(bucket, idx));
+  if(bucket_is_empty(bucket)) {
+    printf("<EMPTY> ");
+  }
+  else {
+    printf("<%5"PRIu32"> ", BUCKET_STORED_ROWNUM(bucket));
+  }
+  if(cf->type_config.hashtable.store_hash) {
+    uint8_t  bits = BUCKET_STORED_HASH_BITS(bucket);
+    uint64_t storedhash = BUCKET_STORED_HASH58(bucket);
+    uint64_t trimmed_storedhash = btrim64(storedhash, 64 - bits);
+    printf("%.2"PRIu8":%.18"PRIu64"[%.2"PRIu64"] ", bits, storedhash, trimmed_storedhash);
+  }
+  if(cf->type_config.hashtable.store_value) {
+    printf("\"%.*s\"", cf->len, BUCKET_STORED_VALUE(bucket, cf));
+  }
+  printf("\n");
+}
+
+void rydb_hashtable_print(const rydb_t *db, const rydb_index_t *idx) {
   rydb_hashtable_header_t         *header = hashtable_header(idx);
   char                             hexbuf[64];
   for (unsigned i = 0; i < sizeof(db->config.hash_key.value); i ++) {
@@ -874,21 +972,7 @@ void rydb_hashtable_print(rydb_t *db, rydb_index_t *idx) {
   rydb_hashbucket_t         *bucket = hashtable_bucket(idx, 0);
   rydb_hashbucket_t         *buckets_end = hashtable_bucket(idx, header->bucket.count.total);
   for(int i = 0; bucket < buckets_end; i++) {
-    printf("  %p [%3"PRIu32"] ", (void *)bucket, i);
-    if(bucket_is_empty(bucket)) {
-      printf("<EMPTY> ");
-    }
-    else {
-      printf("<%5"PRIu32"> ", BUCKET_STORED_ROWNUM(bucket));
-    }
-    if(cf->type_config.hashtable.store_hash) {
-      uint64_t storedhash = BUCKET_STORED_HASH(bucket);
-      printf("%.8"PRIu64" ", storedhash);
-    }
-    if(cf->type_config.hashtable.store_value) {
-      printf("\"%.*s\"", cf->len, BUCKET_STORED_VALUE(bucket, cf));
-    }
-    printf("\n");
+    rydb_bucket_print(idx, bucket);
     bucket = bucket_next(idx, bucket, 1);
   }
 }

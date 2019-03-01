@@ -37,18 +37,20 @@ typedef struct {
     }               count;
     struct {
       rydb_hashtable_bitlevel_count_t top; //top bitlevel count
-      rydb_hashtable_bitlevel_count_t sub[8*(sizeof(rydb_rownum_t)+1)];
+      rydb_hashtable_bitlevel_count_t sub[2*(sizeof(rydb_rownum_t)+1)];
     }              bitlevel;
   }               bucket;
 } rydb_hashtable_header_t;
 
 typedef char rydb_hashbucket_t;
-#define BUCKET_STORED_HASH(bucket) *(uint64_t *)&bucket[sizeof(rydb_rownum_t)]
+#define BUCKET_STORED_HASH_BITS(bucket) (uint8_t )(*(uint64_t *)&bucket[sizeof(rydb_rownum_t)] >> 58)
+#define BUCKET_STORED_HASH58(bucket) (*(uint64_t *)&bucket[sizeof(rydb_rownum_t)] & 0x03ffffffffffffff)
 #define BUCKET_STORED_ROWNUM(bucket) *(rydb_rownum_t *)bucket
 #define BUCKET_STORED_VALUE(bucket, cf) (char *)&bucket[sizeof(rydb_rownum_t) + (cf->type_config.hashtable.store_hash ? sizeof(uint64_t) : 0)]
 #define BUCKET_NUMBER(bucket, idx) ((bucket - hashtable_bucket(idx, 0)) / bucket_size(idx->config))
 
-void rydb_hashtable_print(rydb_t *db, rydb_index_t *idx);
+void rydb_hashtable_print(const rydb_t *db, const rydb_index_t *idx);
+void rydb_bucket_print(const rydb_index_t *idx, const rydb_hashbucket_t *bucket);
 
 #define RYDB_INDEX_HASHTABLE_START_OFFSET ry_align(sizeof(rydb_hashtable_header_t), 8)
 

@@ -95,11 +95,11 @@ typedef struct {
 } rydb_config_index_hashtable_t;
 
 #define RYDB_REHASH_DEFAULT                0x00
-#define RYDB_REHASH_MANUAL                (0<<1)
-#define RYDB_REHASH_ALL_AT_ONCE           (0<<2)
-#define RYDB_REHASH_INCREMENTAL_ON_READ   (0<<3)
-#define RYDB_REHASH_INCREMENTAL_ON_WRITE  (0<<4)
-#define RYDB_REHASH_INCREMENTAL_ADJACENT  (0<<5)
+#define RYDB_REHASH_MANUAL                (1<<1)
+#define RYDB_REHASH_ALL_AT_ONCE           (1<<2)
+#define RYDB_REHASH_INCREMENTAL_ON_READ   (1<<3)
+#define RYDB_REHASH_INCREMENTAL_ON_WRITE  (1<<4)
+#define RYDB_REHASH_INCREMENTAL_ADJACENT  (1<<5)
 #define RYDB_REHASH_INCREMENTAL           (RYDB_REHASH_INCREMENTAL_ON_READ | RYDB_REHASH_INCREMENTAL_ON_WRITE | RYDB_REHASH_INCREMENTAL_ADJACENT)
 
 typedef union {
