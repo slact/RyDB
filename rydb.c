@@ -563,19 +563,19 @@ int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
     }
     remapped = mmap(f->mmap.start, new_mmap_sz, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
     if(!remapped) {
-      printf("remap to old address failed...\n");
+      //printf("remap to old address failed...\n");
       //didn't work? try mmapping it anywhere
       remapped = mmap(NULL, new_mmap_sz, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
     }
 #endif
     if(!remapped) {
-      printf("failed to remap file %s\n", f->path);
+      //printf("failed to remap file %s\n", f->path);
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "failed to remap file %s", f->path);
       return 0;
     }
     ssize_t remap_offset = remapped - f->mmap.start;
     
-    printf("remapped file %s from %p-%p to %p-%p\n", f->path, (void *)f->mmap.start, (void *)&f->mmap.start[current_mmap_sz], (void *)remapped, (void *)&remapped[new_mmap_sz]);
+    //printf("remapped file %s from %p-%p to %p-%p\n", f->path, (void *)f->mmap.start, (void *)&f->mmap.start[current_mmap_sz], (void *)remapped, (void *)&remapped[new_mmap_sz]);
     f->mmap.end = &f->mmap.start[new_mmap_sz];
     if(remap_offset != 0) {
       f->mmap.start += remap_offset;
