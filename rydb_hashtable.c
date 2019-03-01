@@ -391,7 +391,7 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
         flagfail = "ALL_AT_ONCE and INCREMENTAL";
       }
     }
-    else if((rehash * RYDB_REHASH_INCREMENTAL) && !advanced_config->store_hash) {
+    else if((rehash & RYDB_REHASH_INCREMENTAL) && !advanced_config->store_hash) {
       rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Rehash flag INCREMENTAL requires store_hash to be on for hashtable \"%s\"", cf->name);
       return 0;
     }
@@ -806,7 +806,7 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb
   DBG_HASHTABLE(db, idx)
   
   const               rydb_hashtable_bitlevel_count_t *bitlevel = NULL;
-  uint_fast8_t        bitlevel_count = -1;
+  int_fast8_t         bitlevel_count = -1;
   const uint_fast8_t  store_hash = cf->type_config.hashtable.store_hash;
   const uint_fast8_t  store_value = cf->type_config.hashtable.store_hash;
   const off_t         data_start = cf->start;
