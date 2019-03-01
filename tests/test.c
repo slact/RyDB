@@ -1355,8 +1355,8 @@ describe(hashtable) {
   static struct {const char *n; int h;} hashfunction[] = {
     {"SipHash", RYDB_HASH_SIPHASH}, {"CRC32", RYDB_HASH_CRC32}, {"nohash", RYDB_HASH_NOHASH}
   };
-  
-  for(int t=0; t<3; t++) {
+  static int t;
+  for(t=0; t<3; t++) {
     sprintf(testname, "finding rows in %s hashtable", hashfunction[t].n);
     test(testname) {
       rydb_config_index_hashtable_t cf = {
