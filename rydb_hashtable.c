@@ -686,11 +686,13 @@ static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucke
     dst = bucket_next(idx, dst, 1);
   }
   if(dst >= buckets_end) {
+    off_t bucket_offset = bucket - idx->index.data.start;
     if(!rydb_file_ensure_writable_address(db, &idx->index, dst, sz)) {
       return 0;
     }
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
     header->bucket.count.total++; //record bucket overflow
+    bucket = &idx->index.data.start[bucket_offset]; //the bucket, too;
   }
   DBG_BUCKET("dst bucket            ", idx, dst);
   
