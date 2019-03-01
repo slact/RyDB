@@ -534,6 +534,8 @@ static inline size_t bucket_size(const rydb_config_index_t *cf) {
     case RYDB_SEPARATE_CHAINING:
       return sizeof(rydb_rownum_t) *3;
   }
+  //we shouldn't even get here
+  return 0;
 }
 
 static inline uint64_t bucket_stored_hash58(const rydb_hashbucket_t *bucket) {
@@ -791,6 +793,8 @@ int rydb_index_hashtable_open(rydb_t *db,  rydb_index_t *idx) {
     //do nothing
       return 1;
   }
+  //we shouldn't be here
+  return 0;
 }
 
 
