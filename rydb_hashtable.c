@@ -270,14 +270,14 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
     "    store_hash: %"SCNu16"\n"
     "    collision_resolution: %"SCNu16"\n"
     "    rehash_flags: %"SCNu8"\n"
-    "    load_factor_max: %f\n";
+    "    load_factor_max: %lf\n";
 
   char      hash_func_buf[33];
   uint16_t  store_value;
   uint16_t  store_hash;
   uint16_t  collision_resolution;
   uint8_t   rehash_flags;
-  float     load_factor_max;
+  double    load_factor_max;
 
   rydb_config_index_hashtable_t hashtable_config;
   
