@@ -687,7 +687,7 @@ static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucke
   }
   if(dst >= buckets_end) {
     off_t bucket_offset = bucket - idx->index.data.start;
-    if(!rydb_file_ensure_writable_address(db, &idx->index, dst, sz)) {
+    if(!rydb_file_ensure_size(db, &idx->index, dst - idx->index.file.start + sz)) {
       return 0;
     }
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
@@ -893,7 +893,7 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
     // we do this so that growing the hashtable is an in-place operation.
     // if the hashtable looped back to the beginning, the looped-back run from the last bucket would
     // need to be moved.
-    if(!rydb_file_ensure_writable_address(db, &idx->index, bucket, bucket_size(cf))) {
+    if(!rydb_file_ensure_size(db, &idx->index, bucket - idx->index.file.start + bucket_size(cf))) {
       return 0;
     }
     header = hashtable_header(idx); //file might have gotten remapped, get the header again

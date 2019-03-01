@@ -545,59 +545,64 @@ static int rydb_unlock(rydb_t *db, uint8_t lockflags) {
   return 1;
 }
 
-int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz) {
-  return rydb_file_ensure_writable_address(db, f, f->file.start, desired_min_sz);
-}
-int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, size_t sz) {
-  char *end = (char *)addr + sz;
-  if(end > f->mmap.end) {
-    size_t current_sz = f->mmap.end - f->mmap.start;
+int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
+  size_t current_mmap_sz = f->mmap.end - f->mmap.start;;
+  
+  if(min_sz > current_mmap_sz) {
+    size_t new_mmap_sz = current_mmap_sz;
+    while(new_mmap_sz < min_sz) new_mmap_sz *= 2;
     char *remapped;
     //TODO: thoroughly understand if msync() needs to be called here. Probably not.
 #if HAVE_MREMAP
-    remapped = mremap(f->mmap.start, current_sz, current_sz * 2, MREMAP_MAYMOVE);
+    remapped = mremap(f->mmap.start, current_mmap_sz, new_mmap_sz, MREMAP_MAYMOVE);
 #else
-    //msync(f->mmap.start, current_sz, MS_ASYNC);
-    if(munmap(f->mmap.start, current_sz) != 0) {
+    //msync(f->mmap.start, current_mmap_sz, MS_ASYNC);
+    if(munmap(f->mmap.start, current_mmap_sz) != 0) {
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "failed to munmap file %s", f->path);
       return 0;
     }
-    remapped = mmap(f->mmap.start, current_sz * 2, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
+    remapped = mmap(f->mmap.start, new_mmap_sz, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
     if(!remapped) {
+      printf("remap to old address failed...\n");
       //didn't work? try mmapping it anywhere
-      remapped = mmap(NULL, current_sz * 2, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
+      remapped = mmap(NULL, new_mmap_sz, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
     }
 #endif
     if(!remapped) {
-      //printf("failed to remap file %s\n", f->path);
+      printf("failed to remap file %s\n", f->path);
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "failed to remap file %s", f->path);
       return 0;
     }
-    //printf("remapped file %s from %p-%p to %p-%p\n", f->path, (void *)f->mmap.start, (void *)&f->mmap.start[current_sz], (void *)remapped, (void *)&remapped[current_sz * 2]);
-    char *prevstart = f->mmap.start;
-    if(prevstart != remapped) {
-      addr = &remapped[(char *)addr - f->mmap.start];
-      end = (char *)addr + sz;
-      f->mmap.start = remapped;
-      f->mmap.end = &remapped[current_sz * 2];
-      f->file.start = &remapped[f->file.start - prevstart];
-      f->file.end = &remapped[f->file.end - prevstart];
-      f->data.start = &remapped[f->data.start - prevstart];
-      f->data.end = &remapped[f->data.end - prevstart];
-    }
+    ssize_t remap_offset = remapped - f->mmap.start;
     
+    printf("remapped file %s from %p-%p to %p-%p\n", f->path, (void *)f->mmap.start, (void *)&f->mmap.start[current_mmap_sz], (void *)remapped, (void *)&remapped[new_mmap_sz]);
+    f->mmap.end = &f->mmap.start[new_mmap_sz];
+    if(remap_offset != 0) {
+      f->mmap.start += remap_offset;
+      f->mmap.end   += remap_offset;
+      f->file.start += remap_offset;
+      f->file.end   += remap_offset;
+      f->data.start += remap_offset;
+      f->data.end   += remap_offset;
+    }
   }
-  if(end > f->file.end) {
-    if(ftruncate(f->fd, (size_t )((char *)end - (char *)f->file.start)) == -1) {
-      rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to grow file to size %zu", (size_t )((char *)end - (char *)f->file.end));
+  
+  size_t file_sz = f->file.end - f->file.start;
+  if(min_sz > file_sz) {
+    ssize_t file_sz_diff = min_sz - file_sz;
+    if(ftruncate(f->fd, min_sz) == -1) {
+      rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to grow file to size %zu", min_sz);
       return 0;
     }
-    f->file.end = end;
-    f->data.end = end;
+    if(f->file.end == f->data.end) {
+      f->data.end += file_sz_diff;
+    }
+    f->file.end += file_sz_diff;
   }
   
   return 1;
 }
+
 int rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz) {
   size_t current_sz = f->file.end - f->file.start;
   if(current_sz > desired_sz && ftruncate(f->fd, desired_sz) == -1) {
@@ -1288,7 +1293,7 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   if(!rydb_file_open(db, "data", &db->data)) {
     return rydb_open_abort(db);
   }
-  if(!rydb_file_ensure_writable_address(db, &db->data, db->data.file.start, RYDB_DATA_START_OFFSET)) {
+  if(!rydb_file_ensure_size(db, &db->data, RYDB_DATA_START_OFFSET)) {
     return rydb_open_abort(db);
   }
   db->data.data.start = &db->data.file.start[RYDB_DATA_START_OFFSET];

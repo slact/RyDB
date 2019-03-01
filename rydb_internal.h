@@ -52,7 +52,8 @@ int rydb_file_close_index(rydb_t *db, rydb_index_t *idx);
 int rydb_file_close_data(rydb_t *db, rydb_index_t *idx);
 
 int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz);
-int rydb_file_ensure_writable_address(rydb_t *db, rydb_file_t *f, void *addr, size_t sz);
+int rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz);
+
 void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
 
 int rydb_ensure_open(rydb_t *db);
