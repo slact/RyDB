@@ -564,7 +564,7 @@ static inline rydb_hashbucket_t *hashtable_bucket(const rydb_index_t *idx, off_t
 
 //give me a non-empty bucket, and I will return unto you its hash
 static uint64_t bucket_hash(const rydb_t *db, const rydb_index_t *idx, const rydb_hashbucket_t *bucket) {
-  assert(*(rydb_rownum_t *)bucket); //bucket rownum really shouldn't be zero at this point
+  assert(!bucket_is_empty(bucket)); //bucket rownum really shouldn't be zero at this point
   rydb_config_index_t       *cf = idx->config;
   if(cf->type_config.hashtable.store_hash) {
     return bucket_stored_hash58(bucket);
@@ -816,7 +816,7 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb
     DBG("bitlevel bits:%i, n: %i\n", (int)bitlevel->bits, (int)bitlevel->count)
     bucket = hashtable_bucket(idx, btrim64(hashvalue, 64 - bitlevel->bits));
     DBG("hash: %"PRIu64", bits: %"PRIu8" trimmed: %"PRIu64" rownum: %"PRIu32"%s", hashvalue, bitlevel->bits, btrim64(hashvalue, 64 - bitlevel->bits), BUCKET_STORED_ROWNUM(bucket), BUCKET_STORED_ROWNUM(bucket) ? "" : "\n")
-    for(/*void*/; bucket < buckets_end && !bucket_is_empty(bucket); bucket = bucket_next(idx, bucket, 1)) {
+    while(bucket < buckets_end && !bucket_is_empty(bucket)) {
       if(bucket_compare(db, idx, bucket, hashvalue, val) == 0) {
         rydb_stored_row_t *datarow = rydb_rownum_to_row(db, BUCKET_STORED_ROWNUM(bucket));
         DBG("val: %s found: %s\n", val, &datarow->data[cf->start])
@@ -832,7 +832,9 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb
         }
         return 1;
       }
+      bucket = bucket_next(idx, bucket, 1);
     }
+    
     bitlevel_count ++;
   }
   return 0;
