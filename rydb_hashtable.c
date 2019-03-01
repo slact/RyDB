@@ -562,6 +562,10 @@ static inline rydb_hashbucket_t *hashtable_bucket(const rydb_index_t *idx, off_t
   return (rydb_hashbucket_t *)&idx->index.data.start[bucket_size(idx->config) * bucketnum];
 }
 
+static inline int bucket_is_empty(const rydb_hashbucket_t *bucket) {
+  return BUCKET_STORED_ROWNUM(bucket) == 0;
+}
+
 //give me a non-empty bucket, and I will return unto you its hash
 static uint64_t bucket_hash(const rydb_t *db, const rydb_index_t *idx, const rydb_hashbucket_t *bucket) {
   assert(!bucket_is_empty(bucket)); //bucket rownum really shouldn't be zero at this point
@@ -601,11 +605,6 @@ static inline int bucket_compare(const rydb_t *db, const rydb_index_t *idx, cons
     return -1;
   }
   return memcmp(bucket_data(db, idx, bucket), val, cf->len);
-}
-
-
-static inline int bucket_is_empty(const rydb_hashbucket_t *bucket) {
-  return BUCKET_STORED_ROWNUM(bucket) == 0;
 }
 
 static inline rydb_hashbucket_t *bucket_next(const rydb_index_t *idx, const rydb_hashbucket_t *bucket, off_t diff) {
