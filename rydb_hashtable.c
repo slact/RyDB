@@ -537,6 +537,27 @@ static inline size_t bucket_size(rydb_config_index_t *cf) {
   }
 }
 
+static inline uint64_t bucket_stored_hash58(const rydb_hashbucket_t *bucket) {
+  uint64_t hash;
+  //hash is not aligned correctly, so memcpy() it to a safe place first
+  memcpy(&hash, &bucket[sizeof(rydb_rownum_t)], sizeof(hash));
+  return hash & 0x03ffffffffffffff;
+}
+
+static inline uint64_t bucket_stored_hash58_and_bits(const rydb_hashbucket_t *bucket, uint_fast8_t *bits) {
+  uint64_t hash;
+  //hash is not aligned correctly, so memcpy() it to a safe place first
+  memcpy(&hash, &bucket[sizeof(rydb_rownum_t)], sizeof(hash));
+  *bits = hash >> 58;
+  return hash & 0x03ffffffffffffff;
+}
+static inline uint_fast8_t bucket_stored_hash_bits(const rydb_hashbucket_t *bucket) {
+  uint64_t hash;
+  //hash is not aligned correctly, so memcpy() it to a safe place first
+  memcpy(&hash, &bucket[sizeof(rydb_rownum_t)], sizeof(hash));
+  return hash >> 58;
+}
+
 static inline rydb_hashbucket_t *hashtable_bucket(const rydb_index_t *idx, off_t bucketnum) {
   return (rydb_hashbucket_t *)&idx->index.data.start[bucket_size(idx->config) * bucketnum];
 }
@@ -546,7 +567,7 @@ static uint64_t bucket_hash(const rydb_t *db, const rydb_index_t *idx, const ryd
   assert(*(rydb_rownum_t *)bucket); //bucket rownum really shouldn't be zero at this point
   rydb_config_index_t       *cf = idx->config;
   if(cf->type_config.hashtable.store_hash) {
-    return BUCKET_STORED_HASH58(bucket);
+    return bucket_stored_hash58(bucket);
   }
   if(cf->type_config.hashtable.store_value) {
     return hash_value(db, cf, (char *)&bucket[sizeof(rydb_rownum_t)], 0);
@@ -576,7 +597,7 @@ static inline const char *bucket_data(const rydb_t *db, const rydb_index_t *idx,
 
 static inline int bucket_compare(const rydb_t *db, const rydb_index_t *idx, const rydb_hashbucket_t *bucket, uint64_t hashvalue, const char*val) {
   rydb_config_index_t       *cf = idx->config;
-  if(cf->type_config.hashtable.store_hash && BUCKET_STORED_HASH58(bucket) != hashvalue) {
+  if(cf->type_config.hashtable.store_hash && bucket_stored_hash58(bucket) != hashvalue) {
     return -1;
   }
   return memcmp(bucket_data(db, idx, bucket), val, cf->len);
@@ -592,11 +613,9 @@ static inline rydb_hashbucket_t *bucket_next(const rydb_index_t *idx, const rydb
 }
 
 static inline void bucket_set_hash_bits(rydb_hashbucket_t *bucket, uint_fast8_t bits) {
-  assert(BUCKET_STORED_HASH_BITS(bucket));
-  uint64_t bits_n_hash = BUCKET_STORED_HASH58(bucket);
+  uint64_t bits_n_hash = bucket_stored_hash58(bucket);
   bits_n_hash |= (uint64_t )bits << 58;
-  *(uint64_t *)&bucket[sizeof(rydb_rownum_t)] = bits_n_hash;
-  assert(BUCKET_STORED_HASH_BITS(bucket));
+  memcpy(&bucket[sizeof(rydb_rownum_t)], &bits_n_hash, sizeof(bits_n_hash));
 }
 
 static inline void bucket_write(const rydb_t *db, const rydb_index_t *idx, rydb_hashbucket_t *bucket, uint64_t hashvalue, uint_fast8_t bitlevel, const rydb_stored_row_t *row) {
@@ -607,8 +626,8 @@ static inline void bucket_write(const rydb_t *db, const rydb_index_t *idx, rydb_
     assert(bitlevel < 64);
     uint64_t stored_bitlevel_and_hash = btrim64(hashvalue, 6);
     stored_bitlevel_and_hash |= (uint64_t )bitlevel << 58;
-    *(uint64_t *)&bucket[sizeof(rydb_rownum_t)] = stored_bitlevel_and_hash;
-    assert(BUCKET_STORED_HASH_BITS(bucket));
+    //hash is not aligned, so memcpy() it for safety
+    memcpy(&bucket[sizeof(rydb_rownum_t)], &stored_bitlevel_and_hash, sizeof(stored_bitlevel_and_hash));
   }
   if(cf->type_config.hashtable.store_value) {
     DBG("WRITE VALUE %.*s\n", cf->len, &row->data[cf->start])
@@ -624,7 +643,7 @@ static inline void bucket_remove(const rydb_t *db, const rydb_index_t *idx, rydb
   for(bucket += bucket_sz; bucket < buckets_end && !bucket_is_empty(bucket); bucket += bucket_sz) {
     uint64_t hash = bucket_hash(db, idx, bucket);
     if(have_stored_hash) {
-      hashbits = BUCKET_STORED_HASH_BITS(bucket);
+      hashbits = bucket_stored_hash_bits(bucket);
     }
     if(btrim64(hash, 64 - hashbits) <= emptybucketnum) {
       //this bucket is not part of the overflow run
@@ -804,7 +823,7 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb
           hashtable_reserve(header);
           DBG("let's rehash!\n")
           DBG_HASHTABLE(db, idx)
-          bucket_rehash(db, idx, bucket, BUCKET_STORED_HASH_BITS(bucket), 1, 1);
+          bucket_rehash(db, idx, bucket, bucket_stored_hash_bits(bucket), 1, 1);
           DBG("after rehash\n")
           DBG_HASHTABLE(db, idx)
           hashtable_release(header);
@@ -840,8 +859,8 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
   //open addressing, linear probing, no loopback to start
   while(bucket < buckets_end && !bucket_is_empty(bucket)) {
     if(try_to_rehash) {
-      uint8_t  rehash_candidate_bits = BUCKET_STORED_HASH_BITS(bucket);
-      uint64_t rehash_candidate_hashvalue = BUCKET_STORED_HASH58(bucket);
+      uint_fast8_t  rehash_candidate_bits;
+      uint64_t rehash_candidate_hashvalue = bucket_stored_hash58_and_bits(bucket, &rehash_candidate_bits);
       uint64_t old_bitlevel_hashvalue = btrim64(rehash_candidate_hashvalue, 64 - rehash_candidate_bits);
       if(rehash_candidate_bits != current_bits
         && old_bitlevel_hashvalue != btrim64(rehash_candidate_hashvalue, 64 - current_bits)) {
@@ -927,8 +946,8 @@ void rydb_bucket_print(const rydb_index_t *idx, const rydb_hashbucket_t *bucket)
     printf("<%5"PRIu32"> ", BUCKET_STORED_ROWNUM(bucket));
   }
   if(cf->type_config.hashtable.store_hash) {
-    uint8_t  bits = BUCKET_STORED_HASH_BITS(bucket);
-    uint64_t storedhash = BUCKET_STORED_HASH58(bucket);
+    uint_fast8_t bits;
+    uint64_t storedhash = bucket_stored_hash58_and_bits(bucket, &bits);
     uint64_t trimmed_storedhash = btrim64(storedhash, 64 - bits);
     printf("%.2"PRIu8":%.18"PRIu64"[%.2"PRIu64"] ", bits, storedhash, trimmed_storedhash);
   }

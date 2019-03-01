@@ -43,8 +43,6 @@ typedef struct {
 } rydb_hashtable_header_t;
 
 typedef char rydb_hashbucket_t;
-#define BUCKET_STORED_HASH_BITS(bucket) (uint8_t )(*(uint64_t *)&bucket[sizeof(rydb_rownum_t)] >> 58)
-#define BUCKET_STORED_HASH58(bucket) (*(uint64_t *)&bucket[sizeof(rydb_rownum_t)] & 0x03ffffffffffffff)
 #define BUCKET_STORED_ROWNUM(bucket) *(rydb_rownum_t *)bucket
 #define BUCKET_STORED_VALUE(bucket, cf) (char *)&bucket[sizeof(rydb_rownum_t) + (cf->type_config.hashtable.store_hash ? sizeof(uint64_t) : 0)]
 #define BUCKET_NUMBER(bucket, idx) ((bucket - hashtable_bucket(idx, 0)) / bucket_size(idx->config))
