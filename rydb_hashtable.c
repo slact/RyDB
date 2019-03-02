@@ -459,13 +459,13 @@ static uint64_t hash_value(const rydb_t *db, const rydb_config_index_t *idx, con
   if(trim < 6) trim = 6; //produce a 58-bit hash at most
   switch(idx->type_config.hashtable.hash_function) {
     case RYDB_HASH_CRC32:
-      h = btrim64(crc32((uint8_t *)&data[idx->start], idx->len), trim);
+      h = btrim64(crc32((const uint8_t *)data, idx->len), trim);
       break;
     case RYDB_HASH_NOHASH:
-      h = nohash(&data[idx->start], idx->len, trim);
+      h = nohash(data, idx->len, trim);
       break;
     case RYDB_HASH_SIPHASH:
-      h = btrim64(siphash((uint8_t *)&data[idx->start], idx->len, db->config.hash_key.value), trim);
+      h = btrim64(siphash((const uint8_t *)data, idx->len, db->config.hash_key.value), trim);
       break;
     default:
     case RYDB_HASH_INVALID:
@@ -849,7 +849,7 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb
 int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   const rydb_config_index_t *cf = idx->config;
-  const uint64_t             hashvalue = hash_value(db, cf, row->data, 0);
+  const uint64_t             hashvalue = hash_value(db, cf, &row->data[cf->start], 0);
   //rydb_hashtable_print(db, idx);
   if(header->bucket.count.used+1 > header->bucket.count.load_factor_max) {
     if(!hashtable_grow(db, idx)) {
