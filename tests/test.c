@@ -215,6 +215,10 @@ describe(config) {
       cf.rehash = RYDB_REHASH_INCREMENTAL_ON_WRITE | RYDB_REHASH_MANUAL;
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Ii]nvalid rehash flags");
       
+      cf.rehash = RYDB_REHASH_INCREMENTAL;
+      cf.store_hash = 0;
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Rr]equires store_hash");
+      
     }
     it("fails if index name is weird") {
       char bigname[RYDB_NAME_MAX_LEN+10];
