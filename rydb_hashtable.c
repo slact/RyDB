@@ -836,7 +836,7 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *val
   DBG_HASHTABLE(db, idx)
   
   int_fast8_t               bitlevel_count;
-  const rydb_hashbucket_t  *bucket;
+  rydb_hashbucket_t        *bucket;
   rydb_rownum_t             rownum;
   rydb_stored_row_t        *datarow;
   if((bucket = hashtable_find_bucket(db, idx, val, &bitlevel_count)) == NULL) {
