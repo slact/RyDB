@@ -17,7 +17,7 @@ int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_r
 int rydb_index_hashtable_update_add_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end);
 int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end);
 
-int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, char *val, rydb_row_t *row);
+int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *val, rydb_row_t *row);
 
 typedef struct {
   rydb_rownum_t count;

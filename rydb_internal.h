@@ -66,7 +66,7 @@ int rydb_transaction_finish_or_continue(rydb_t *db, int finish);
 int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started);
 int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run);
 
-int rydb_storedrow_to_row(const rydb_t *db, rydb_stored_row_t *datarow, rydb_row_t *row);
+int rydb_storedrow_to_row(const rydb_t *db, const rydb_stored_row_t *datarow, rydb_row_t *row);
 rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum);
 rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row);
 uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row);

@@ -552,10 +552,10 @@ int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
     size_t new_mmap_sz = current_mmap_sz;
     while(new_mmap_sz < min_sz) new_mmap_sz *= 2;
     char *remapped;
-    //TODO: thoroughly understand if msync() needs to be called here. Probably not.
 #if HAVE_MREMAP
     remapped = mremap(f->mmap.start, current_mmap_sz, new_mmap_sz, MREMAP_MAYMOVE);
 #else
+    //TODO: thoroughly understand if msync() needs to be called here. Probably not.
     //msync(f->mmap.start, current_mmap_sz, MS_ASYNC);
     if(munmap(f->mmap.start, current_mmap_sz) != 0) {
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "failed to munmap file %s", f->path);
@@ -1796,7 +1796,7 @@ int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, char *data, uint16_t start
 }
 */
 
-int rydb_storedrow_to_row(const rydb_t *db, rydb_stored_row_t *datarow, rydb_row_t *row) {
+int rydb_storedrow_to_row(const rydb_t *db, const rydb_stored_row_t *datarow, rydb_row_t *row) {
   row->num = rydb_row_to_rownum(db, datarow);
   row->type = datarow->type;
   row->data = datarow->data;
