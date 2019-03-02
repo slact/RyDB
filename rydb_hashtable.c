@@ -315,8 +315,8 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
   }
   return 1;
 }
-static char *hashfunction_to_str(rydb_config_index_type_t *cf) {
-  switch(cf->hashtable.hash_function) {
+char *rydb_hashfunction_to_str(rydb_hash_function_t hashfn) {
+  switch(hashfn) {
     case RYDB_HASH_CRC32:
       return "CRC32";
     case RYDB_HASH_NOHASH:
@@ -349,7 +349,7 @@ int rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
     "    rehash_flags: %"PRIu8"\n"
     "    load_factor_max: %.4f\n";
   int rc;
-  rc = fprintf(fp, fmt, hashfunction_to_str(&idx_cf->type_config), (uint16_t )idx_cf->type_config.hashtable.store_value, (uint16_t )idx_cf->type_config.hashtable.store_hash, (uint16_t )idx_cf->type_config.hashtable.collision_resolution,  (uint8_t )idx_cf->type_config.hashtable.rehash, idx_cf->type_config.hashtable.load_factor_max);
+  rc = fprintf(fp, fmt, rydb_hashfunction_to_str(idx_cf->type_config.hashtable.hash_function), (uint16_t )idx_cf->type_config.hashtable.store_value, (uint16_t )idx_cf->type_config.hashtable.store_hash, (uint16_t )idx_cf->type_config.hashtable.collision_resolution,  (uint8_t )idx_cf->type_config.hashtable.rehash, idx_cf->type_config.hashtable.load_factor_max);
   if(rc <= 0) {
     rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "failed writing hashtable \"%s\" config ", idx_cf->name);
     return 0;
@@ -636,11 +636,15 @@ static inline void bucket_write(const rydb_t *db, const rydb_index_t *idx, rydb_
     memcpy(BUCKET_STORED_VALUE(bucket, cf), &row->data[cf->start], cf->len);
   }
 }
-static inline void bucket_remove(const rydb_t *db, const rydb_index_t *idx, const rydb_hashtable_header_t *header, rydb_hashbucket_t *bucket, const rydb_hashbucket_t *buckets_end, size_t bucket_sz) {
-  uint_fast8_t               hashbits = header->bucket.bitlevel.top.bits;
-  uint64_t                   emptybucketnum = BUCKET_NUMBER(bucket, idx);
-  rydb_hashbucket_t         *emptybucket = bucket;
-  uint_fast8_t               have_stored_hash = idx->config->type_config.hashtable.store_hash;
+static inline void bucket_remove(const rydb_t *db, const rydb_index_t *idx, rydb_hashtable_header_t *header, rydb_hashbucket_t *bucket, const rydb_hashbucket_t *buckets_end, size_t bucket_sz, uint_fast8_t subtract_from_totals) {
+  uint_fast8_t         hashbits = header->bucket.bitlevel.top.bits;
+  uint_fast8_t         removed_bucket_hashbits;
+  uint64_t             emptybucketnum = BUCKET_NUMBER(bucket, idx);
+  rydb_hashbucket_t   *emptybucket = bucket;
+  uint_fast8_t         have_stored_hash = idx->config->type_config.hashtable.store_hash;
+  if(subtract_from_totals && have_stored_hash) {
+    removed_bucket_hashbits = bucket_stored_hash_bits(bucket);
+  }
   DBG_BUCKET("remove bucket  ", idx, bucket)
   for(bucket += bucket_sz; bucket < buckets_end && !bucket_is_empty(bucket); bucket += bucket_sz) {
     uint64_t hash = bucket_hash(db, idx, bucket);
@@ -665,6 +669,20 @@ static inline void bucket_remove(const rydb_t *db, const rydb_index_t *idx, cons
 #else
   memset(emptybucket, '\00', sizeof(rydb_rownum_t));
 #endif
+  if(subtract_from_totals) {
+    header->bucket.count.used--;
+    if(!have_stored_hash || removed_bucket_hashbits == header->bucket.bitlevel.top.bits) {
+      header->bucket.bitlevel.top.count--;
+    }
+    else {
+      for(uint_fast8_t i=0, max = header->bucket.count.sub_bitlevels; i<max; i++) {
+        if(header->bucket.bitlevel.sub[i].bits == removed_bucket_hashbits) {
+          hashtable_bitlevel_subtract(header, i);
+          return;
+        }
+      }
+    }
+  }
 }
 
 static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucket,  uint_fast8_t old_hashbits, uint_fast8_t transfer_from_old_bitlevel, uint_fast8_t remove_old_bucket) {
@@ -703,7 +721,7 @@ static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucke
     memcpy(dst, bucket, sz);
     bucket_set_hash_bits(dst, new_hashbits);
     if(remove_old_bucket) {
-      bucket_remove(db, idx, header, bucket, buckets_end, sz);
+      bucket_remove(db, idx, header, bucket, buckets_end, sz, 0);
     }
     else {
       //just set it as empty;
@@ -809,7 +827,7 @@ static rydb_hashbucket_t *hashtable_find_bucket(const rydb_t *db, const rydb_ind
   const rydb_hashbucket_t   *buckets_end = hashtable_bucket(idx, header->bucket.count.total);
   const size_t               bucket_sz = bucket_size(cf);
   const uint_fast8_t         store_hash = cf->type_config.hashtable.store_hash;
-  const uint_fast8_t         store_value = cf->type_config.hashtable.store_hash;
+  const uint_fast8_t         store_value = cf->type_config.hashtable.store_value;
   const off_t                data_start = cf->start;
   const off_t                data_len = cf->len;
   int_fast8_t                bitlevel_count = -1;
@@ -944,8 +962,11 @@ int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_
 }
 
 int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
+  DBG("remove row\n")
+  DBG_HASHTABLE(db, idx)
   rydb_hashbucket_t        *bucket = hashtable_find_bucket(db, idx, &row->data[idx->config->start], NULL);
   if(!bucket) {
+    DBG("bucket ain't here\n")
     return 0;
   }
   rydb_hashtable_header_t   *header = hashtable_header(idx);
@@ -953,7 +974,7 @@ int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_r
   const size_t               bucket_sz = bucket_size(idx->config);
   
   hashtable_reserve(header);
-  bucket_remove(db, idx, header, bucket, buckets_end, bucket_sz);
+  bucket_remove(db, idx, header, bucket, buckets_end, bucket_sz, 1);
   hashtable_release(header);
   return 1;
 }

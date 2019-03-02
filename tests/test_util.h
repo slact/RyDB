@@ -2,6 +2,7 @@
 #define __TEST_UTIL_H
 
 #include "rydb_internal.h"
+#include "rydb_hashtable.h"
 #include "snow.h"
 #include <signal.h>
 #include <regex.h>
@@ -52,6 +53,8 @@ struct cmd_rownum_out_of_range_check_s {
   int        n_check;
 };
 void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_check_s *check, int nrows);
+
+void hashtable_header_count_check(const rydb_t *db, const rydb_index_t *idx, size_t count);
 
 
 #define assert_ptr_aligned(ptr, alignment) \

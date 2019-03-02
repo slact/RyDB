@@ -212,6 +212,17 @@ void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_ch
   }
 }
 
+void hashtable_header_count_check(const rydb_t *db, const rydb_index_t *idx, size_t count) {
+  (void )(db);
+  rydb_hashtable_header_t *header = (void *)idx->index.file.start;
+  asserteq(header->bucket.count.used, count);
+  size_t levels_total = header->bucket.bitlevel.top.count;
+  for(int i = 0; i<header->bucket.count.sub_bitlevels; i++) {
+    levels_total += header->bucket.bitlevel.sub[i].count;
+  }
+  asserteq(levels_total, count);
+}
+
 
 const uint8_t vectors_siphash_2_4_64[64][8] = {
   {0x31, 0x0e, 0x0e, 0xdd, 0x47, 0xdb, 0x6f, 0x72,}, {0xfd, 0x67, 0xdc, 0x93, 0xc5, 0x39, 0xf8, 0x74,},

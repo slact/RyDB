@@ -74,24 +74,26 @@ typedef enum {
   RYDB_INDEX_BTREE = 2
 } rydb_index_type_t;
 
+typedef enum {
+  RYDB_HASH_INVALID =   0,
+  RYDB_HASH_CRC32 =     1,
+  RYDB_HASH_NOHASH =    2, //treat the value as if it's already a good hash
+  RYDB_HASH_SIPHASH =   3
+} rydb_hash_function_t;
+
 typedef struct {
-  enum {
-    RYDB_HASH_INVALID =   0,
-    RYDB_HASH_CRC32 =     1,
-    RYDB_HASH_NOHASH =    2, //treat the value as if it's already a good hash
-    RYDB_HASH_SIPHASH =   3
-  }            hash_function;
-  uint8_t    rehash;
-  float      load_factor_max;
+  rydb_hash_function_t hash_function;
+  uint8_t              rehash;
+  float                load_factor_max;
   //storing the value in the hashtable prevents extra datafile reads at the cost of possibly much larger hashtable entries
-  unsigned     store_value: 1;
-  unsigned     store_hash:  1; //storing the hash adds 8 bytes per bucket entry
+  unsigned             store_value: 1;
+  unsigned             store_hash:  1; //storing the hash adds 8 bytes per bucket entry
   
   //direct mapping uses closed-address linear probing, ideal for a 1-to-1 unique primary index. <2 reads avg.
   enum {
     RYDB_OPEN_ADDRESSING = 0,
     RYDB_SEPARATE_CHAINING = 1
-  }            collision_resolution;
+  }                    collision_resolution;
 } rydb_config_index_hashtable_t;
 
 #define RYDB_REHASH_DEFAULT                0x00

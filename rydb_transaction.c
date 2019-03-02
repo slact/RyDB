@@ -71,7 +71,7 @@ static inline int rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
   if(!rydb_cmd_rangecheck(db, "SET", cmd, dst)) {
     return(0);
   }
-  if(cmd != dst || dst->type != RYDB_ROW_EMPTY) {
+  if(cmd != dst && dst->type == RYDB_ROW_DATA) {
     rydb_indices_remove_row(db, dst);
   }
   
