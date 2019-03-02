@@ -222,7 +222,15 @@ void hashtable_header_count_check(const rydb_t *db, const rydb_index_t *idx, siz
   }
   asserteq(levels_total, count);
 }
-
+char *argv_extract2(int *argc, char **argv, off_t i) {
+  char *ret = argv[i+1];
+  for(off_t n=i; n<*argc-2; n++) {
+    //printf("argv[%i] \"%s\" argv[%i] \"%s\"\n", i, argv[i], i+2, argv[i+2]);
+    argv[n]=argv[n+2];
+  }
+  *argc-=2;
+  return ret;
+}
 
 const uint8_t vectors_siphash_2_4_64[64][8] = {
   {0x31, 0x0e, 0x0e, 0xdd, 0x47, 0xdb, 0x6f, 0x72,}, {0xfd, 0x67, 0xdc, 0x93, 0xc5, 0x39, 0xf8, 0x74,},

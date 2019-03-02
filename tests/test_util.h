@@ -57,6 +57,8 @@ void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_ch
 void hashtable_header_count_check(const rydb_t *db, const rydb_index_t *idx, size_t count);
 
 
+char *argv_extract2(int *argc, char **argv, off_t i);
+
 #define assert_ptr_aligned(ptr, alignment) \
 do { \
   if((uintptr_t )ptr % alignment != 0) { \

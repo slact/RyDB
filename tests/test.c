@@ -3,6 +3,8 @@
 #include <math.h>
 #include "test_util.h"
 
+double repeat_multiplier = 1.0;
+
 void test_errhandler(rydb_t *db, rydb_error_t *err, void *privdata) {
   asserteq(db, privdata);
   asserteq(err->code, RYDB_ERROR_BAD_CONFIG);
@@ -1375,7 +1377,7 @@ describe(hashtable) {
           assert_db_ok(db, rydb_open(db, path, "test"));
           char str[128], searchstr[128];
           const char *fmt = "%i,%i!%i|%i&%i*%i~%i@%i$%i*%i!";
-          int maxrows = 1000;
+          int maxrows = 1000 * repeat_multiplier;
           for(int i=0; i<maxrows; i++) {
             //printf("i: %i\n", i);
             sprintf(str, fmt, i, i, i, i, i, i, i, i, i, i);
@@ -1417,7 +1419,7 @@ describe(hashtable) {
         assert_db_ok(db, rydb_open(db, path, "test"));
         char str[128];
         char *fmt = "%izzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
-        int numrows = 1000;
+        int numrows = 1000 * repeat_multiplier;
         for(int i=1; i<=numrows; i++) {
           sprintf(str, fmt, i);
           assert_db_ok(db, rydb_row_insert_str(db, str));
@@ -1450,4 +1452,30 @@ describe(hashtable) {
   }
 }
 
-snow_main();
+
+int set_test_options(int *argc, char **argv) {
+  int i = 1;
+  while(i < *argc) {
+    char *arg = argv[i];
+    if(strcmp(arg, "--multiplier") == 0 && *argc >= i+1) {
+      char *val = argv_extract2(argc, argv, i);
+      if((repeat_multiplier = atof(val)) == 0.0) {
+        printf("invalid --multiplier value %s\n", val);
+        return 0;
+      }
+    }
+    else {
+      i++;
+    }
+  }
+  return 1;
+}
+
+snow_main_decls;
+int main(int argc, char **argv) {
+  if(!set_test_options(&argc, argv)) {
+    return 1;
+  }
+  printf("okay...\n");
+  return snow_main_function(argc, argv);
+}

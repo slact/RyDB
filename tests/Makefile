@@ -20,6 +20,7 @@ CALLGRIND_FLAGS = --tool=callgrind --dump-instr=yes --collect-jumps=yes  --colle
 
 TEST = *
 TIMER = 
+MULTIPLIER = 0.1
 
 .PHONY: default all clean force run coverage coverage-gcc
 
@@ -63,10 +64,10 @@ debug: default
 	kdbg ./$(TARGET) -a '--rerun-failed $(TIMER) "$(TEST)"'
 
 valgrind:default
-	valgrind $(VALGRIND_FLAGS) ./$(TARGET) $(TIMER) "$(TEST)"
+	valgrind $(VALGRIND_FLAGS) ./$(TARGET) --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
 
 callgrind: default
-	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) $(TIMER) "$(TEST)"
+	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
 
 coverage-gcc: O = 0
 coverage-gcc: CC = gcc
