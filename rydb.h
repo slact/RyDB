@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
+#include "rbtree.h"
 
 #define RYDB_FORMAT_VERSION 1
 
@@ -234,6 +235,12 @@ struct rydb_s {
   uint8_t             lock_state;
   struct {
     rydb_rownum_t       future_data_rownum;
+    struct {
+      RBTree              *added;
+      RBTree              *removed;
+    }                   unique_index_constraints;
+    uint16_t            command_count;
+    unsigned            oneshot:1;
     unsigned            active:1;
   }                   transaction;
   struct {

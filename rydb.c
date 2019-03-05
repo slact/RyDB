@@ -492,6 +492,8 @@ if(*pptr) do { \
 } while(0)
 
 static void rydb_free(rydb_t *db) {
+  db->transaction.oneshot = 0;
+  rydb_transaction_data_reset(db);
   rydb_subfree(&db->path);
   rydb_subfree(&db->name);
   for(int i = 0; i < db->config.index_count; i++) {
@@ -1355,6 +1357,8 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
     
   }
   
+  db->unique_index_count = 0;
+  
   //create index file array
   if(db->config.index_count > 0) {
     sz = sizeof(*db->index) * db->config.index_count;
@@ -1422,9 +1426,15 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   }
   db->config.hash_key.permanent = 1;
   
+  if(!rydb_transaction_data_init(db)) {
+    rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for transaction data");
+    return rydb_open_abort(db);
+  }
+  
   if(!rydb_data_scan_tail(db)) {
     return rydb_open_abort(db);
   }
+  
   db->state = RYDB_STATE_OPEN;
   return 1;
 }
@@ -1550,14 +1560,14 @@ int rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
   }
   
   int txstarted;
-  rydb_transaction_start_or_continue(db, &txstarted);
+  rydb_transaction_start_oneshot_or_continue(db, &txstarted);
   
   rydb_row_t rows[2] = {
     {.type = RYDB_ROW_CMD_SET, .data=data, .len = len, .num = db->transaction.future_data_rownum++},
     {.type = RYDB_ROW_CMD_COMMIT, .num = 0}
   };
   if(!rydb_data_append_cmd_rows(db, rows, 1 + txstarted)) {
-    if(txstarted) db->transaction.active = 0;
+    if(txstarted) rydb_transaction_data_reset(db);
     return 0;
   }
   return rydb_transaction_finish_or_continue(db, txstarted);
@@ -1597,7 +1607,7 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
   
   int rc = 0;
   int txstarted;
-  rydb_transaction_start_or_continue(db, &txstarted);
+  rydb_transaction_start_oneshot_or_continue(db, &txstarted);
   
   uint16_t max_sz_for_1cmd_update = db->config.row_len - sizeof(rydb_row_cmd_header_t);
   rydb_row_t rows[3];
@@ -1614,7 +1624,7 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
     rc = rydb_data_append_cmd_rows(db, rows, 2 + txstarted);
   }
   if(!rc) {
-    if(txstarted) db->transaction.active = 0;
+    if(txstarted) rydb_transaction_data_reset(db);
     return 0;
   }
   return rydb_transaction_finish_or_continue(db, txstarted);
@@ -1631,14 +1641,14 @@ int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum) {
   //deletes are always ok, no need to check unique indices
   
   int txstarted;
-  rydb_transaction_start_or_continue(db, &txstarted);
+  rydb_transaction_start_oneshot_or_continue(db, &txstarted);
   
   rydb_row_t rows[]={
     {.type = RYDB_ROW_CMD_DELETE, .num = rownum, .data=NULL},
     {.type = RYDB_ROW_CMD_COMMIT, .num = 0}
   };
   if(!rydb_data_append_cmd_rows(db, rows, 1 + txstarted)) {
-    if(txstarted) db->transaction.active = 0;
+    if(txstarted) rydb_transaction_data_reset(db);
     return 0;
   }
   return rydb_transaction_finish_or_continue(db, txstarted);
@@ -1659,14 +1669,14 @@ int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
   //swaps are always ok, no need to check unique indices
   
   int txstarted;
-  rydb_transaction_start_or_continue(db, &txstarted);
+  rydb_transaction_start_oneshot_or_continue(db, &txstarted);
   rydb_row_t rows[]={
     {.type = RYDB_ROW_CMD_SWAP1, .num = rownum1, .data = NULL},
     {.type = RYDB_ROW_CMD_SWAP2, .num = rownum2, .data = NULL},
     {.type = RYDB_ROW_CMD_COMMIT}
   };
   if(!rydb_data_append_cmd_rows(db, rows, 2 + txstarted)) {
-    if(txstarted) db->transaction.active = 0;
+    if(txstarted) rydb_transaction_data_reset(db);
     return 0;
   }
   return rydb_transaction_finish_or_continue(db, txstarted);

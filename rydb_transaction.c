@@ -2,6 +2,12 @@
 #include <string.h>
 #include <assert.h>
 
+#ifdef __GNUC__
+#  define UNUSED(x) x __attribute__((__unused__))
+#else
+#  define UNUSED(x) x
+#endif
+
 static int rydb_cmd_rangecheck(rydb_t *db, const char *cmdname, rydb_stored_row_t *cmd, rydb_stored_row_t *dst) {
   if(!dst) {
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command %s [%i] failed: rownum out of range", cmdname, cmd->target_rownum);
@@ -337,11 +343,76 @@ int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run) {
   return rc;
 }
 
+static int uniqueness_check_comparator(const RBNode *a, const RBNode *b, void *arg) {
+  return memcmp((const char *)(&a[1]), (const char *)(&b[1]), (size_t )(uintptr_t )arg);
+}
+static void uniqueness_check_combiner(UNUSED(RBNode *existing), UNUSED(const RBNode *newdata), UNUSED(void *arg)) { }
+static RBNode *uniqueness_check_allocfunc(void *arg) {
+  return rydb_mem.malloc(sizeof(RBNode) + (uintptr_t )arg);
+}
+void uniqueness_check_freefunc(RBNode *x, UNUSED(void *arg)) {
+  free(x);
+}
+
+int rydb_transaction_data_init(rydb_t *db) {
+  db->transaction.active = 0;
+  db->transaction.command_count = 0;
+  
+  if(db->unique_index_count > 0) {
+    if((db->transaction.unique_index_constraints.added = rydb_mem.malloc(sizeof(RBTree) * db->unique_index_count)) == NULL) {
+      return 0;
+    }
+    if((db->transaction.unique_index_constraints.removed = rydb_mem.malloc(sizeof(RBTree) * db->unique_index_count)) == NULL) {
+      free(db->transaction.unique_index_constraints.added);
+      return 0;
+    }
+    
+    for(int i=0; i<db->unique_index_count; i++) {
+      rydb_index_t *idx = db->unique_index[i];
+      rb_create(&db->transaction.unique_index_constraints.added[i], sizeof(RBNode) + idx->config->len,
+                uniqueness_check_comparator,
+                uniqueness_check_combiner,
+                uniqueness_check_allocfunc,
+                uniqueness_check_freefunc,
+                (void *)(uintptr_t)idx->config->len
+              );
+      rb_create(&db->transaction.unique_index_constraints.removed[i], sizeof(RBNode) + idx->config->len,
+                uniqueness_check_comparator,
+                uniqueness_check_combiner,
+                uniqueness_check_allocfunc,
+                uniqueness_check_freefunc,
+                (void *)(uintptr_t )idx->config->len
+              );
+    }
+  }
+  return 1;
+}
+
+void rydb_transaction_data_reset(rydb_t *db) {
+  db->transaction.active = 0;
+  db->transaction.command_count = 0;
+  if(!db->transaction.oneshot) {
+    for(int i=0; i<db->unique_index_count; i++) {
+      RBTreeInvertedWalk iw;
+      RBNode *node;
+      RBTree *trees[] = {&db->transaction.unique_index_constraints.added[i], &db->transaction.unique_index_constraints.removed[i]};
+      for(int j = 0; j < 2; j++) {
+        RBTree *tree = trees[j];
+        rb_begin_inverted_walk(tree, &iw);
+        while((node = rb_inverted_walk(&iw)) != NULL) {
+          rb_delete(tree, node);
+        }
+      }
+    }
+  }
+  db->transaction.oneshot = 0;
+}
+
 int rydb_transaction_finish_or_continue(rydb_t *db, int finish) {
   if(finish && db->transaction.active) {
     int rc = rydb_transaction_run(db, NULL);
     //succeed or fail -- the transaction should be cleared
-    db->transaction.active = 0;
+    rydb_transaction_data_reset(db);
     db->cmd_next_rownum = db->data_next_rownum;
     return rc;
   }
@@ -360,15 +431,24 @@ int rydb_transaction_finish(rydb_t *db) {
   return rydb_transaction_finish_or_continue(db, 1);
 }
 
-int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started) {
+static int rydb_transaction_start_or_continue_generic(rydb_t *db, int *transaction_started, uint_fast8_t oneshot) {
   if(db->transaction.active) {
     if(transaction_started) *transaction_started = 0;
     return 1;
   };
   db->transaction.active = 1;
+  if(oneshot) {
+    db->transaction.oneshot = 1;
+  }
   db->transaction.future_data_rownum = db->data_next_rownum;
   if(transaction_started) *transaction_started = 1;
   return 1;
+}
+int rydb_transaction_start_oneshot_or_continue(rydb_t *db, int *transaction_started) {
+  return rydb_transaction_start_or_continue_generic(db, transaction_started, 1);
+}
+int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started) {
+  return rydb_transaction_start_or_continue_generic(db, transaction_started, 0);
 }
 
 int rydb_transaction_start(rydb_t *db) {
@@ -388,7 +468,7 @@ int rydb_transaction_cancel(rydb_t *db) {
   RYDB_REVERSE_EACH_CMD_ROW(db, cur) {
     cur->type = RYDB_ROW_EMPTY;
   }
+  rydb_transaction_data_reset(db);
   db->cmd_next_rownum = db->data_next_rownum;
-  db->transaction.active = 0;
   return 1;
 }

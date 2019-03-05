@@ -63,6 +63,7 @@ int rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum); //save an error
 
 //these always succeed
 int rydb_transaction_finish_or_continue(rydb_t *db, int finish);
+int rydb_transaction_start_oneshot_or_continue(rydb_t *db, int *transaction_started);
 int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started);
 int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run);
 
@@ -95,6 +96,9 @@ int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data
   for(rydb_index_t *idx = NULL, **_idx_cur = db->unique_index, **_idx_max = &db->unique_index[db->unique_index_count]; _idx_cur < _idx_max; _idx_cur++) \
     if((idx = *_idx_cur) != NULL)
 
+//transaction data stuff
+int rydb_transaction_data_init(rydb_t *db);
+void rydb_transaction_data_reset(rydb_t *db);
 
 
 //NOTE: this only works correctly if the struct is made without padding
