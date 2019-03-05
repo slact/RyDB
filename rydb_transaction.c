@@ -100,9 +100,9 @@ static inline int rydb_cmd_update(rydb_t *db, rydb_stored_row_t *cmd) {
     return(0);
   }
   char *update_data = (char *)&header[1];
-  rydb_indices_update_remove_row(db, dst, header->start, header->len);
+  rydb_indices_update_row(db, dst, 0, header->start, header->len);
   memcpy(&dst->data[header->start], update_data, header->len);
-  rydb_indices_update_add_row(db, dst, header->start, header->len);
+  rydb_indices_update_row(db, dst, 1, header->start, header->len);
   cmd->type = RYDB_ROW_EMPTY;
   return 1;
 }
@@ -136,11 +136,11 @@ static inline int rydb_cmd_update2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_sto
   if(!rydb_cmd_rangecheck(db, "UPDATE2", cmd1, dst)) {
     return 0;
   }
-  rydb_indices_update_remove_row(db, dst, header->start, header->len);
+  rydb_indices_update_row(db, dst, 0, header->start, header->len);
   memcpy(&dst->data[header->start], cmd2->data, header->len);
   cmd2->type = RYDB_ROW_EMPTY;
   cmd1->type = RYDB_ROW_EMPTY;
-  rydb_indices_update_add_row(db, dst, header->start, header->len);
+  rydb_indices_update_row(db, dst, 1, header->start, header->len);
   return 1;
 }
 static inline int rydb_cmd_delete(rydb_t *db, rydb_stored_row_t *cmd) {

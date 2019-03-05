@@ -178,6 +178,7 @@ typedef enum {
   RYDB_ERROR_ROWNUM_OUT_OF_RANGE  = 19,
   RYDB_ERROR_DATABASE_CLOSED      = 20,
   RYDB_ERROR_DATABASE_OPEN        = 21,
+  RYDB_ERROR_NOT_UNIQUE           = 22
 } rydb_error_code_t;
 const char *rydb_error_code_str(rydb_error_code_t code);
 
@@ -227,8 +228,9 @@ struct rydb_s {
   rydb_file_t         lock;
   rydb_config_t       config;
   rydb_index_t       *index;
+  char               *index_scratch;
   uint8_t             unique_index_count;
-  uint8_t            *unique_index;
+  rydb_index_t      **unique_index;
   uint8_t             lock_state;
   struct {
     rydb_rownum_t       future_data_rownum;

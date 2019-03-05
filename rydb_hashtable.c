@@ -492,6 +492,16 @@ static inline void hashtable_release(rydb_hashtable_header_t *header) {
   assert(header->reserved >= 0);
 }
 
+int rydb_hashtable_reserve(const rydb_index_t *idx) {
+  hashtable_reserve(hashtable_header(idx));
+  return 1;
+}
+int rydb_hashtable_release(const rydb_index_t *idx) {
+  hashtable_release(hashtable_header(idx));
+  return 1;
+}
+
+
 static void hashtable_bitlevel_subtract(rydb_hashtable_header_t *header, int level) {
   assert(level >= 0);
   assert(header->bucket.bitlevel.sub[level].count > 0);
@@ -848,6 +858,11 @@ static rydb_hashbucket_t *hashtable_find_bucket(const rydb_t *db, const rydb_ind
   return NULL;
 }
 
+//assumes value length >= indexed value length
+int rydb_index_hashtable_contains(const rydb_t *db, const rydb_index_t *idx, const char *val) {
+  return hashtable_find_bucket(db, idx, val, NULL) != NULL;
+}
+
 //assumes val is at least as long as the indexed data
 int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *val, rydb_row_t *row) {
   DBG("find row with val \"%s\"\n", val)
@@ -979,6 +994,7 @@ int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_r
   return 1;
 }
 int rydb_index_hashtable_update_add_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end) {
+  
   (void)(db);
   (void)(idx);
   (void)(row);

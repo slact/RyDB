@@ -123,6 +123,8 @@ const char *rydb_error_code_str(rydb_error_code_t code) {
     return "RYDB_ERROR_DATABASE_CLOSED";
   case RYDB_ERROR_DATABASE_OPEN:
     return "RYDB_ERROR_DATABASE_OPEN";
+  case RYDB_ERROR_NOT_UNIQUE:
+    return "RYDB_ERROR_NOT_UNIQUE";
   }
   return "???";
 }
@@ -500,7 +502,7 @@ static void rydb_free(rydb_t *db) {
   rydb_subfree(&db->config.index);
   rydb_subfree(&db->index);
   rydb_subfree(&db->unique_index);
-  
+  rydb_subfree(&db->index_scratch);
   if(db->config.link) {
     for(int i = 0; i < db->config.link_pair_count * 2; i++) {
       rydb_subfree(&db->config.link[i].next);
@@ -1249,6 +1251,8 @@ static int rydb_open_abort(rydb_t *db) {
   rydb_subfree(&db->name);
   rydb_close_nofree(db);
   rydb_subfree(&db->index);
+  rydb_subfree(&db->unique_index);
+  rydb_subfree(&db->index_scratch);
   db->state = RYDB_STATE_CLOSED;
   return 0;
 }
@@ -1360,9 +1364,13 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
     }
     memset(db->index, '\00', sz);
     
+    size_t largest_index_len = 0;
     for(int i = 0; i < db->config.index_count; i++) {
       if(db->config.index[i].flags & RYDB_INDEX_UNIQUE) {
         db->unique_index_count++;
+      }
+      if(largest_index_len < db->config.index[i].len) {
+        largest_index_len = db->config.index[i].len;
       }
       db->index[i].config = &db->config.index[i];
       db->index[i].index.fd = -1;
@@ -1379,7 +1387,6 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
           break;
       }
     }
-    
     //we'll be wanting to check all unique indices during row changes, so they should be made easy to locate
     if(db->unique_index_count > 0) {
       uint8_t n = 0;
@@ -1390,10 +1397,16 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
       }
       for(int i = 0; i < db->config.index_count; i++) {
         if(db->config.index[i].flags & RYDB_INDEX_UNIQUE) {
-          db->unique_index[n++]=i;
+          db->unique_index[n++]=&db->index[i];
         }
       }
     }
+    //allocate some index string buffer space
+    if((db->index_scratch = rydb_mem.malloc(largest_index_len)) == NULL) {
+      rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index scratchspace");
+      return rydb_open_abort(db);
+    }
+    
   }
   
   db->stored_row_size = ry_align(db->config.row_len + db->config.link_pair_count * sizeof(rydb_rownum_t), 8); //let's make sure the data 
@@ -1532,7 +1545,7 @@ int rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
     len = db->config.row_len;
   }
   
-  if(!rydb_indices_check_unique(db, 0, data, 0, len)) {
+  if(!rydb_indices_check_unique(db, 0, data, 0, len, 1)) {
     return 0;
   }
   
@@ -1578,7 +1591,7 @@ int rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, co
     return 0;
   }
   
-  if(!rydb_indices_check_unique(db, rownum, data, start, len)) {
+  if(!rydb_indices_check_unique(db, rownum, data, start, len, 1)) {
     return 0;
   }
   
@@ -1698,51 +1711,118 @@ int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row) {
   return rc;
 }
 
-int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *row, off_t start, off_t end) {
-  int rc = 1;
-  RYDB_EACH_INDEX(db, idx) {
-    switch(idx->config->type) {
-      case RYDB_INDEX_HASHTABLE:
-        rc = rydb_index_hashtable_update_remove_row(db, idx, row, start, end);
-        break;
-      case RYDB_INDEX_BTREE:
-        assert(0); //not implemented
-        break;
-      case RYDB_INDEX_INVALID:
-        assert(0); //not supported
-        break;
-    }
-    if(rc == 0) break;
+static inline int index_data_in_range(off_t start, off_t end, off_t idx_start, off_t idx_end) {
+  if(start == end || start > idx_end || end < idx_start) {
+    //index string range is outside the data range
+    return 0;
   }
-  return rc;
-}
-
-int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *row, off_t start, off_t end) {
-  int rc = 1;
-  RYDB_EACH_INDEX(db, idx) {
-    switch(idx->config->type) {
-      case RYDB_INDEX_HASHTABLE:
-        rc = rydb_index_hashtable_update_add_row(db, idx, row, start, end);
-        break;
-      case RYDB_INDEX_BTREE:
-        assert(0); //not implemented
-        break;
-      case RYDB_INDEX_INVALID:
-        assert(0); //not supported
-        break;
-    }
-    if(rc == 0) break;
-  }
-  return rc;
-}
-
-int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end) {
-  (void)(db);
-  (void)(rownum);
-  (void)(data);
-  (void)(start);
-  (void)(end);
   return 1;
+}
+
+static const char *rydb_overlay_data_on_row_for_index(const rydb_t *db, rydb_rownum_t rownum, const rydb_stored_row_t **cached_row, const char *overlay, off_t ostart, off_t oend, off_t istart, off_t iend) {
+  off_t ilen = iend - istart, olen = oend - ostart;
+  
+  if(ostart <= istart && olen >= ilen) {
+    return &overlay[istart - ostart];
+  }
+  char *dst = db->index_scratch;
+  const rydb_stored_row_t *row;
+  if((row = *cached_row) == NULL) {
+    row = rydb_rownum_to_row(db, rownum);
+    *cached_row = row;
+  }
+  
+  if(olen == 0 || ostart + olen < istart || ostart > istart + ilen) {
+    return &row->data[istart];
+  }
+  
+  if(ostart <= istart) {
+    off_t len = olen - (istart - ostart);
+    memcpy(dst, &overlay[istart - ostart], len);
+    memcpy(&dst[len] , &row->data[istart + len], ilen - len);
+  }
+  else {
+    off_t len = ostart - istart;
+    memcpy(dst, &row->data[istart], len);
+    if(ostart + olen > istart + ilen) {
+      memcpy(&dst[len], overlay, ilen - len);
+    }
+    else {
+      memcpy(&dst[len], overlay, olen);
+      len += olen;
+      memcpy(&dst[len], &row->data[len], ilen - len);
+    }
+  }
+  return dst;
+}
+
+int rydb_indices_update_row(rydb_t *db, rydb_stored_row_t *row, uint8_t step, off_t start, off_t end) {
+  int rc = 1;
+  RYDB_EACH_INDEX(db, idx) {
+    rydb_config_index_t *cf = idx->config;
+    off_t idx_start = cf->start;
+    off_t idx_end = idx_start + cf->len;
+    if(index_data_in_range(start, end, idx_start, idx_end)) {
+      switch(idx->config->type) {
+        case RYDB_INDEX_HASHTABLE:
+          if(step == 0) { //remove old row
+            rydb_hashtable_reserve(idx);
+            rc = rydb_index_hashtable_remove_row(db, idx, row);
+          }
+          else { //remove
+            rc = rydb_index_hashtable_add_row(db, idx, row);
+            rydb_hashtable_release(idx);
+          }
+          break;
+        case RYDB_INDEX_BTREE:
+          assert(0); //not implemented
+          break;
+        case RYDB_INDEX_INVALID:
+          assert(0); //not supported
+          break;
+      }
+    }
+    if(rc == 0) break;
+  }
+  return rc;
+}
+
+int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end, uint_fast8_t set_error) {
+  int rc = 1;
+  
+  const rydb_stored_row_t *row;
+  
+  RYDB_EACH_UNIQUE_INDEX(db, idx) {
+    rydb_config_index_t *cf = idx->config;
+    off_t idx_start = cf->start;
+    off_t idx_end = idx_start + cf->len;
+    if(start == end || start > idx_end || end < idx_start) {
+      //index string range is outside the data range
+      continue;
+    }
+    const char *val = rydb_overlay_data_on_row_for_index(db, rownum, &row, data, start, end, idx_start, idx_end);
+    if(db->transaction.active) {
+      //TODO: transaction checks
+    }
+    switch(cf->type) {
+      case RYDB_INDEX_HASHTABLE:
+        if(rydb_index_hashtable_contains(db, idx, val)) {
+          if(set_error) {
+            rydb_set_error(db, RYDB_ERROR_NOT_UNIQUE, "Data for index %s must be unique", cf->name);
+          }
+          return 0;
+        }
+        break;
+      case RYDB_INDEX_BTREE:
+        assert(0); //not implemented
+        break;
+      case RYDB_INDEX_INVALID:
+        assert(0); //not supported
+        break;
+    }
+    if(rc == 0) break;
+  }
+  return rc;
 }
 
 int rydb_find_row_str(rydb_t *db, char *val, rydb_row_t *row) {

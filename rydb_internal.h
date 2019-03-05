@@ -87,11 +87,13 @@ const char *rydb_rowtype_str(rydb_row_type_t type);
 //indexing stuff
 int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row);
 int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row);
-int rydb_indices_update_remove_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end);
-int rydb_indices_update_add_row(rydb_t *db, rydb_stored_row_t *dst, off_t start, off_t end);
-int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end);
+int rydb_indices_update_row(rydb_t *db, rydb_stored_row_t *row, uint8_t step, off_t start, off_t end);
+int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end, uint_fast8_t set_error);
 #define RYDB_EACH_INDEX(db, idx) \
-  for(rydb_index_t *idx=&db->index[0], *idx_max = &db->index[db->config.index_count]; idx < idx_max; idx++) 
+  for(rydb_index_t *idx=&db->index[0], *idx_max = &db->index[db->config.index_count]; idx < idx_max; idx++)
+#define RYDB_EACH_UNIQUE_INDEX(db, idx) \
+  for(rydb_index_t *idx = NULL, **_idx_cur = db->unique_index, **_idx_max = &db->unique_index[db->unique_index_count]; _idx_cur < _idx_max; _idx_cur++) \
+    if((idx = *_idx_cur) != NULL)
 
 
 

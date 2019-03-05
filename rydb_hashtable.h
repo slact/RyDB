@@ -17,6 +17,11 @@ int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_r
 int rydb_index_hashtable_update_add_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end);
 int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end);
 
+int rydb_hashtable_reserve(const rydb_index_t *idx);
+int rydb_hashtable_release(const rydb_index_t *idx);
+
+int rydb_index_hashtable_contains(const rydb_t *db, const rydb_index_t *idx, const char *val);
+
 int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *val, rydb_row_t *row);
 char *rydb_hashfunction_to_str(rydb_hash_function_t hashfn);
 typedef struct {

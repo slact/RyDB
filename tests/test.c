@@ -508,6 +508,7 @@ describe(rydb_open) {
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
+    assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_ok(db, rydb_open(db, path, "open_test"));
     reset_malloc();
     
@@ -1449,6 +1450,15 @@ describe(hashtable) {
         }
       }
     }
+  }
+  
+  it("obeys uniqueness criteria") {
+    //char str[128];
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    assert_db_ok(db, rydb_row_insert_str(db, "hello this is a string"));
+    assert_db_ok(db, rydb_row_insert_str(db, "oh this is a different string"));
+    assert_db_ok(db, rydb_row_insert_str(db, "samestring"));
+    assert_db_fail(db, rydb_row_insert_str(db, "samestring"), RYDB_ERROR_NOT_UNIQUE, "primary must be unique");
   }
 }
 
