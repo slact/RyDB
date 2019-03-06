@@ -623,7 +623,7 @@ static inline int bucket_compare(const rydb_t *db, const rydb_hashbucket_t *buck
 }
 
 static inline rydb_hashbucket_t *bucket_next(const rydb_index_t *idx, const rydb_hashbucket_t *bucket, off_t diff) {
-  return (rydb_hashbucket_t *)((const char *)bucket + (bucket_size(idx->config) * diff));
+  return (rydb_hashbucket_t *)((const char *)bucket + ((off_t )bucket_size(idx->config) * diff));
 }
 
 static inline void bucket_set_hash_bits(rydb_hashbucket_t *bucket, uint_fast8_t bits) {
