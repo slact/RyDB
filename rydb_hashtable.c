@@ -648,7 +648,7 @@ static inline void bucket_write(const rydb_t *db, const rydb_index_t *idx, rydb_
 }
 static inline void bucket_remove(const rydb_t *db, const rydb_index_t *idx, rydb_hashtable_header_t *header, rydb_hashbucket_t *bucket, const rydb_hashbucket_t *buckets_end, size_t bucket_sz, uint_fast8_t subtract_from_totals) {
   uint_fast8_t         hashbits = header->bucket.bitlevel.top.bits;
-  uint_fast8_t         removed_bucket_hashbits;
+  uint_fast8_t         removed_bucket_hashbits = 0;
   uint64_t             emptybucketnum = BUCKET_NUMBER(bucket, idx);
   rydb_hashbucket_t   *emptybucket = bucket;
   uint_fast8_t         have_stored_hash = idx->config->type_config.hashtable.store_hash;

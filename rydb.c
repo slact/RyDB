@@ -1765,7 +1765,7 @@ static const char *rydb_overlay_data_on_row_for_index(const rydb_t *db, char *ds
     return &overlay[istart - ostart];
   }
   
-  const rydb_stored_row_t *row;
+  const rydb_stored_row_t *row = NULL;
   if(rownum != 0 && (row = *cached_row) == NULL) {
     row = rydb_rownum_to_row(db, rownum);
     *cached_row = row;
