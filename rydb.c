@@ -517,37 +517,62 @@ static void rydb_free(rydb_t *db) {
 }
 
 static int rydb_lock(rydb_t *db, uint8_t lockflags) {
-  /*lockfile layout, in bytes
-   [0]: global write lock
-   [1]: global read lock
-   [2]: global client lock
-   ...
-  */
-  volatile int8_t *writelock = (int8_t *)&db->lock.file.start[0];
-  //volatile int8_t *readlock = &db->lock.file.start[1];
-  //volatile int8_t *clientlock = &db->lock.file.start[2];
+  rydb_lockdata_t *lock;
+  if (!rydb_file_ensure_size(db, &db->lock, sizeof(*lock))) {
+    rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Failed to grow lockfile");
+    return 0;
+  }
+  lock = (void *)db->lock.file.start;
   // we only support single-user mode for now
   if(lockflags & RYDB_LOCK_WRITE) {
-    if(++(*writelock) > 1) {
-      (*writelock)--;
+    if(++lock->write > 1) {
+      lock->write--;
       rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Failed to acquire write-lock");
       return 0;
     }
+    db->lock_state |= RYDB_LOCK_WRITE;
+  }
+  if(lockflags & RYDB_LOCK_READ) {
+    lock->read++;
+    db->lock_state |= RYDB_LOCK_READ;
+  }
+  if(lockflags & RYDB_LOCK_CLIENT) {
+    lock->client++;
+    db->lock_state |= RYDB_LOCK_CLIENT;
   }
   //don't care about the rest for now
   return 1;
 }
 
 static int rydb_unlock(rydb_t *db, uint8_t lockflags) {
-  volatile int8_t *writelock = (int8_t *)&db->lock.file.start[0];
-  //volatile int8_t *readlock = &db->lock.file.start[1];
-  //volatile uint8_t *clientlock = &db->lock.file.start[2];
+  rydb_lockdata_t *lock = (void *)db->lock.file.start;
   // we only support single-user mode for now
   if(db->lock_state & lockflags & RYDB_LOCK_WRITE) {
-    *writelock--;
+    lock->write--;
+    db->lock_state &= ~RYDB_LOCK_WRITE;
   }
-  //don't care about the rest for now
+  if(db->lock_state & lockflags & RYDB_LOCK_READ) {
+    lock->read--;
+    db->lock_state &= ~RYDB_LOCK_READ;
+  }
+  if(db->lock_state & lockflags & RYDB_LOCK_CLIENT) {
+    lock->client--;
+    db->lock_state &= ~RYDB_LOCK_CLIENT;
+  }
   return 1;
+}
+
+int rydb_force_unlock(rydb_t *db) {
+  rydb_lockdata_t *lock;
+  if (!rydb_file_ensure_size(db, &db->lock, sizeof(*lock))) {
+    //file's too small to have been a valid lockfile.... probably?....
+    //TODO: this is a copout. flesh out the possibility of a corrupt/partial lockfile
+    return 1;
+  }
+  lock = (void *)db->lock.file.start;
+  lock->write = 0;
+  lock->read = 0;
+  lock->client = 0;
 }
 
 int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
@@ -1250,6 +1275,7 @@ static void rydb_close_nofree(rydb_t *db) {
 }
 
 static int rydb_open_abort(rydb_t *db) {
+  rydb_unlock(db, RYDB_LOCK_CLIENT | RYDB_LOCK_READ | RYDB_LOCK_WRITE);
   rydb_subfree(&db->path);
   rydb_subfree(&db->name);
   rydb_close_nofree(db);
@@ -1283,9 +1309,6 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
   }
   
   if(!rydb_file_open(db, "lock", &db->lock)) {
-    return rydb_open_abort(db);
-  }
-  if(!rydb_lock(db, RYDB_LOCK_CLIENT)) {
     return rydb_open_abort(db);
   }
   
@@ -1435,6 +1458,10 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
     return rydb_open_abort(db);
   }
   
+  if(!rydb_lock(db, RYDB_LOCK_CLIENT | RYDB_LOCK_READ | RYDB_LOCK_WRITE)) {
+    return rydb_open_abort(db);
+  }
+  
   if(!rydb_data_scan_tail(db)) {
     return rydb_open_abort(db);
   }
@@ -1465,12 +1492,12 @@ int rydb_delete(rydb_t *db) {
 }
 
 int rydb_close(rydb_t *db) {
-  rydb_close_nofree(db);
   if(db->name && db->path) {
     if(!rydb_unlock(db, RYDB_LOCK_READ | RYDB_LOCK_WRITE | RYDB_LOCK_CLIENT)) {
       return 0;
     }
   }
+  rydb_close_nofree(db);
   rydb_free(db);
   return 1;
 }

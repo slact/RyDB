@@ -692,6 +692,39 @@ describe(files) {
   }
 }
 
+describe(concurrency) {
+  static rydb_t *db;
+  static char path[64];
+  before_each() {
+    db = rydb_new();
+    strcpy(path, "test.db.XXXXXX");
+    mkdtemp(path);
+    config_testdb(db);
+  }
+  after_each() {
+    rmdir_recursive(path);
+  }
+  it("clears locks when database is closed") {
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    rydb_close(db);
+    db = rydb_new();
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    rydb_close(db);
+  }
+  it("allows only one writer") {
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    rydb_t *db2 = rydb_new();
+    config_testdb(db2);
+    assert_db_fail(db2, rydb_open(db2, path, "test"), RYDB_ERROR_LOCK_FAILED);
+  }
+  it("can be forced unlocked") {
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    rydb_t *db2 = rydb_new();
+    rydb_force_unlock(db);
+    assert_db_ok(db2, rydb_open(db2, path, "test"));
+  }
+}
+
 describe(row_operations) {
   static rydb_t *db = NULL;
   static char path[64];
