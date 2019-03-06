@@ -1218,7 +1218,7 @@ static int rydb_config_match(rydb_t *db, const rydb_t *db2, const char *db_lbl, 
       return 0;
     }
     if(link1->inverse != link2->inverse) {
-      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Mismatching row-link pair %i: %s [%s, %s], %s [%s, %s]", i,
+      rydb_set_error(db, RYDB_ERROR_CONFIG_MISMATCH, "Inverted row-link pair %i: %s [%s, %s], %s [%s, %s]", i,
                      db_lbl, link1->inverse ? link1->prev : link1->next, link1->inverse ? link1->next : link1->prev,
                      db2_lbl, link2->inverse ? link2->prev : link2->next, link2->inverse ? link2->next : link2->prev
       );
