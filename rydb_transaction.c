@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 static int rydb_cmd_rangecheck(rydb_t *db, const char *cmdname, rydb_stored_row_t *cmd, rydb_stored_row_t *dst) {
-  if(!dst) {
+  if(!dst || !rydb_stored_row_in_range(db, dst)) {
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command %s [%i] failed: rownum out of range", cmdname, cmd->target_rownum);
     cmd->type = RYDB_ROW_EMPTY;
     return 0;

@@ -1563,9 +1563,6 @@ int getrandombytes(unsigned char *p, size_t len) {
 rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum) {
   char *start = db->data.data.start;
   rydb_stored_row_t *row = rydb_row_next(start, db->stored_row_size, rownum - 1);
-  if((char *)row < start || (char *)row > db->data.data.end) {
-    return NULL;
-  }
   return row;
 }
 
@@ -2012,6 +2009,13 @@ int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, char *data, uint16_t start
   }
 }
 */
+
+int rydb_stored_row_in_range(rydb_t *db, rydb_stored_row_t *storedrow) {
+  if((char *)storedrow < db->data.data.start || &((char *)storedrow)[db->stored_row_size] > db->data.data.end) {
+    return 0;
+  }
+  return 1;
+}
 
 int rydb_storedrow_to_row(const rydb_t *db, const rydb_stored_row_t *datarow, rydb_row_t *row) {
   row->num = rydb_row_to_rownum(db, datarow);
