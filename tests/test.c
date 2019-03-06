@@ -1442,9 +1442,6 @@ describe(hashtable) {
   static char path[256];
   
   before_each() {
-#ifdef RYDB_DEBUG
-    //rydb_debug_hash_key = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
-#endif
     db = rydb_new();
     assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
     strcpy(path, "test.db.XXXXXX");
@@ -1456,7 +1453,7 @@ describe(hashtable) {
     db = NULL;
     rmdir_recursive(path);
 #ifdef RYDB_DEBUG
-    //rydb_debug_hash_key = NULL;
+    rydb_debug_hash_key = NULL;
 #endif
   }
   
@@ -1470,6 +1467,34 @@ describe(hashtable) {
     }
   }
   
+#ifdef RYDB_DEBUG
+  test("debug-print hashtable contents") {
+    rydb_debug_hash_key = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"; 
+    rydb_config_index_hashtable_t cf = {
+      .rehash = RYDB_REHASH_DEFAULT, .hash_function = RYDB_HASH_SIPHASH,
+      .store_value = 1, .store_hash = 1, 
+      .collision_resolution = RYDB_OPEN_ADDRESSING
+    };
+    assert_db_ok(db, rydb_config_add_index_hashtable(db, "primary", 0, 5, RYDB_INDEX_UNIQUE, &cf));
+    cf.store_value=0;
+    assert_db_ok(db, rydb_config_add_index_hashtable(db, "secondary", 0, 5, RYDB_INDEX_UNIQUE, &cf));
+    cf.store_hash=0;
+    cf.rehash = RYDB_REHASH_ALL_AT_ONCE;
+    assert_db_ok(db, rydb_config_add_index_hashtable(db, "tertiary", 0, 5, RYDB_INDEX_DEFAULT, &cf));
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    
+    char str[128];
+    for(int i=0; i<2; i++) {
+      sprintf(str, "%izzz", i);
+      assert_db_ok(db, rydb_row_insert_str(db, str));
+    }
+    rydb_intercept_printfs();
+    rydb_hashtable_print(db, &db->index[0]);
+    rydb_hashtable_print(db, &db->index[1]);
+    rydb_hashtable_print(db, &db->index[2]);
+    rydb_unintercept_printfs();
+  }
+#endif
   static char testname[128];
   static int hashfunction[] = {
     RYDB_HASH_SIPHASH, RYDB_HASH_CRC32, RYDB_HASH_NOHASH
