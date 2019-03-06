@@ -686,6 +686,7 @@ describe(files) {
     rydb_config_add_index_hashtable(db, "banana", 5, 4, RYDB_INDEX_UNIQUE, NULL);
   }
   after_each() {
+    rydb_close(db);
     rmdir_recursive(path);
   }
   it("deletes all files on rydb_delete") {
