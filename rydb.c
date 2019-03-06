@@ -1453,8 +1453,8 @@ int rydb_open(rydb_t *db, const char *path, const char *name) {
       }
     }
   }
-  
-  db->stored_row_size = ry_align(db->config.row_len + db->config.link_pair_count * sizeof(rydb_rownum_t), 8); //let's make sure the data 
+  size_t stored_row_size = RYDB_ROW_DATA_OFFSET + db->config.row_len + db->config.link_pair_count * sizeof(rydb_rownum_t);
+  db->stored_row_size = ry_align(stored_row_size, 8); //let's make sure the data 
   if(new_db) {
     if(!rydb_debug_hash_key) {
       db->config.hash_key.quality = getrandombytes(db->config.hash_key.value, sizeof(db->config.hash_key.value));
