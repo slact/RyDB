@@ -2047,10 +2047,12 @@ void rydb_print_stored_data(rydb_t *db) {
   char header[RYDB_DATA_START_OFFSET + 1];
   memcpy(header, db->data.file.start, RYDB_DATA_START_OFFSET);
   header[RYDB_DATA_START_OFFSET] = '\00';
-  char datacpy[64];
-  printf("\n>>%s\n", header);
+  size_t row_data_maxlen = db->config.row_len;
+  char *data;
+  rydb_printf("\n>>%s\n", header);
+  rydb_printf(" stored_row_size: %"PRIu16"\n", db->stored_row_size);
   char rowtype_symbol[10];
-  
+  rydb_stored_row_t *prev = NULL;
   RYDB_EACH_ROW(db, cur) {
     if(cur->type == 0) {
       sprintf(rowtype_symbol, "\u2400");
@@ -2072,12 +2074,43 @@ void rydb_print_stored_data(rydb_t *db) {
       command = "\u21b5";
       rowtype = &rowtype[strlen("CMD_")];
     }
-    size_t len = db->stored_row_size - RYDB_ROW_DATA_OFFSET;
-    if(len > 62) {
-      len = 60;
+    int datalen;
+    rydb_row_cmd_header_t    *dh = (rydb_row_cmd_header_t *)(void *)cur->data;
+    char dataheader[32];
+    switch(cur->type) {
+      case RYDB_ROW_CMD_UPDATE1:
+        sprintf(dataheader, "(%"PRIu16",%"PRIu16")", dh->start, dh->len);
+        datalen = 0;
+        data = NULL;
+        break;
+      case RYDB_ROW_CMD_UPDATE2:
+        if(prev && prev->type == RYDB_ROW_CMD_UPDATE1) {
+          dataheader[0]='\00';
+          dh = (rydb_row_cmd_header_t *)(void *)prev->data;
+          datalen = dh->len;
+        }
+        else {
+          sprintf(dataheader, "(\?\?\?)");
+          datalen = row_data_maxlen;
+        }
+        data = cur->data;
+        break;
+      case RYDB_ROW_CMD_UPDATE:
+        sprintf(dataheader, "(%"PRIu16",%"PRIu16")", dh->start, dh->len);
+        datalen = dh->len;
+        data = (char *)&dh[1];
+        break;
+      default:
+        data = cur->data;
+        datalen = row_data_maxlen;
+        dataheader[0]='\00';
+        break;
+    }
+    if(datalen > 62) {
+      datalen = 60;
       trail = "...";
     }
-    memcpy(datacpy, cur->data, len);
-    printf("[%3"PRIu32"]%s%7s%s <%3"PRIu32"> %s%s\n", rydb_row_to_rownum(db, cur), rowtype_symbol, rowtype, command, cur->target_rownum, datacpy, trail);
+    rydb_printf("[%3"PRIu32"]%s%7s%s <%3"PRIu32"> %s%.*s%s\n", rydb_row_to_rownum(db, cur), rowtype_symbol, rowtype, command, cur->target_rownum, dataheader, datalen, data, trail);
+    prev = cur;
   }
 }
