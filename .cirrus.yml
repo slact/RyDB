@@ -5,11 +5,12 @@ linux_task:
     CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
   setup_script:
     - apt-get update
-    - apt-get install -y --no-install-recommends valgrind ccache
+    - apt-get install -y --no-install-recommends valgrind ccache clang
   build_script: make CC=gcc all
   test_script: make CC=gcc test
   test_valgrind_script: make CC=gcc valgrind
   test_optimized_script: make CC=gcc O=3 test
+  test_clang_sanitize_script: make sanitize
   #coveralls_script:
   #  - apt-get update
   #  - apt-get install -y --no-install-recommends python python-dev
@@ -20,7 +21,7 @@ linux_task:
   #  - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
   #  - /root/.local/bin/coveralls --exclude tests --gcov-options '\-lp'
   codecov_script:
-    - make CCACHE="" CC=gcc coverage-gcc-create
+    - make CC=gcc coverage-gcc-create
     - bash <(curl -s https://codecov.io/bash)
 
 osx_task:
