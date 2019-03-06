@@ -18,7 +18,8 @@ CFLAGS = -DSNOW_ENABLED -I../ -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-
 VALGRIND_FLAGS = --trace-children=no --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free --errors-for-leak-kinds=all --error-exitcode=2
 CALLGRIND_OUTFILE = callgrind-rydb-$(TIMESTAMP).out
 CALLGRIND_FLAGS = --tool=callgrind --dump-instr=yes --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=$(CALLGRIND_OUTFILE)
-MAYBES = --maybes
+MAYBES = 
+COLOR = --color
 TEST = *
 TIMER = 
 MULTIPLIER = 1
@@ -59,16 +60,16 @@ static: default
 
 
 run:
-	./$(TARGET) $(TIMER) $(MAYBES) --color --multiplier $(MULTIPLIER) "$(TEST)"
+	./$(TARGET) $(TIMER) $(MAYBES) $(COLOR) --multiplier $(MULTIPLIER) "$(TEST)"
 
 debug: default
-	kdbg ./$(TARGET) -a '$(MAYBES) --color --rerun-failed $(TIMER) "$(TEST)"'
+	kdbg ./$(TARGET) -a '$(MAYBES) $(COLOR) --rerun-failed $(TIMER) "$(TEST)"'
 
 valgrind:default
-	valgrind $(VALGRIND_FLAGS) ./$(TARGET) $(MAYBES) --color --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
+	valgrind $(VALGRIND_FLAGS) ./$(TARGET) $(MAYBES) $(COLOR) --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
 
 callgrind: default
-	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) $(MAYBES) --color --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
+	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) $(MAYBES) $(COLOR) --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
 
 coverage-gcc: O = 0
 coverage-gcc: CC = gcc
