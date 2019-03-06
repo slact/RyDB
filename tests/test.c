@@ -671,6 +671,27 @@ describe(rydb_open) {
   }
 }
 
+describe(files) {
+  static rydb_t *db;
+  static char path[64];
+  before_each() {
+    db = rydb_new();
+    strcpy(path, "test.db.XXXXXX");
+    mkdtemp(path);
+    config_testdb(db);
+    rydb_config_add_index_hashtable(db, "banana", 5, 4, RYDB_INDEX_UNIQUE, NULL);
+  }
+  after_each() {
+    rmdir_recursive(path);
+  }
+  it("deletes all files on rydb_delete") {
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    assert(count_files(path) > 1);
+    rydb_delete(db);
+    asserteq(count_files(path), 1); //the directory itself, nothing else
+  }
+}
+
 describe(row_operations) {
   static rydb_t *db = NULL;
   static char path[64];

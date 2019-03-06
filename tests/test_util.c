@@ -187,6 +187,21 @@ int rmdir_recursive(const char *path) {
   return 1;
 }
 
+static int counted_files;
+static int filecounter(const char *pathname, const struct stat *sbuf, int type, struct FTW *ftwb) {
+  (void)(type);
+  (void)(ftwb);
+  (void)(sbuf);
+  (void)(pathname);
+  counted_files++;
+  return 0;
+}
+int count_files(const char *path) {
+  counted_files = 0;
+  nftw(path, filecounter,10, FTW_DEPTH|FTW_MOUNT|FTW_PHYS);
+  return counted_files;
+}
+
 off_t filesize(const char *filename) {
   struct stat st;
   if (stat(filename, &st) == 0)

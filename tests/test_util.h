@@ -30,6 +30,7 @@ void fail_malloc_after(int n);
 void fail_malloc_later_each_time(void);
 void reset_malloc(void);
 
+int count_files(const char *path);
 int rmdir_recursive(const char *path);
 void rydb_print_stored_data(rydb_t *db);
 
