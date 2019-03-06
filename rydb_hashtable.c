@@ -400,7 +400,7 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
       return 0;
     }
     if(flagfail) {
-      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid rehash flags for hashtable \"%s\": %s are mutually exclusive", cf->name);
+      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid rehash flags for hashtable \"%s\": %s are mutually exclusive", cf->name, flagfail);
       return 0;
     }
     
