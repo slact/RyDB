@@ -229,8 +229,9 @@ struct rydb_s {
   rydb_file_t         lock;
   rydb_config_t       config;
   rydb_index_t       *index;
-  char               *index_scratch;
   uint8_t             unique_index_count;
+  char               *unique_index_scratch_buffer;
+  const char        **unique_index_scratch;
   rydb_index_t      **unique_index;
   uint8_t             lock_state;
   struct {

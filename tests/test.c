@@ -511,6 +511,7 @@ describe(rydb_open) {
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
+    assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_NOMEMORY);
     assert_db_ok(db, rydb_open(db, path, "open_test"));
     reset_malloc();
     
@@ -926,8 +927,6 @@ describe(transactions) {
     "5.here's another one",
     "6.zzzzzzzzzzzzzz"
   };
-
-  
   static int nrows = sizeof(rowdata)/sizeof(char *);
   struct cmd_rownum_out_of_range_check_s rangecheck;
   
@@ -1012,7 +1011,7 @@ describe(transactions) {
     }
     
     
-    subdesc("cmd_append") {
+    subdesc(cmd_append) {
       it("fails if it can't grow the file") {
         rydb_row_t row = {.type = RYDB_ROW_CMD_DELETE, .num = 1};
         assert_db_ok(db, rydb_transaction_start(db));
@@ -1323,6 +1322,54 @@ describe(transactions) {
       off_t new_sz = filesize(db->data.path);
       assert(new_sz <= old_sz);
       asserteq(n, nrows, "no rows should follow data after a reload");
+    }
+  }
+  
+  subdesc(uniqueness_constraints) {
+    static const char *fmt = "%i.........yeah?................";
+    static char buf[64];
+    
+    it("adds uniqueness constraints on insert") {
+      int max = 1000 * repeat_multiplier;
+      assert_db_ok(db, rydb_transaction_start(db));
+      for(int i=0; i<max; i++) {
+        sprintf(buf, fmt, i);
+        assert_db_ok(db, rydb_row_insert_str(db, buf));
+      }
+      for(int i=0; i<max; i++) {
+        sprintf(buf, fmt, i);
+        assert_db_fail(db, rydb_row_insert_str(db, buf), RYDB_ERROR_NOT_UNIQUE, "primary must be unique");
+      }
+      assert_db_ok(db, rydb_transaction_cancel(db));
+      for(int i=0; i<max; i++) {
+        sprintf(buf, fmt, i);
+        assert_db_ok(db, rydb_row_insert_str(db, buf));
+      }
+    }
+    
+    it("removes constraints on delete") {
+      assert_db_ok(db, rydb_transaction_start(db));
+      for(int i=0; i<nrows; i++) {
+        assert_db_ok(db, rydb_row_delete(db, i+1));
+      }
+      for(int i=0; i<nrows; i++) {
+        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
+        assert_db_fail(db, rydb_row_insert_str(db, rowdata[i]), RYDB_ERROR_NOT_UNIQUE, "must be unique");
+      }
+    }
+    
+    it("modifies constraints on update") {
+      assert_db_ok(db, rydb_transaction_start(db));
+      for(int i=0; i<nrows; i++) {
+        sprintf(buf, fmt, i);
+        assert_db_ok(db, rydb_row_update(db, i+1, buf, 0, 10));
+      }
+      for(int i=0; i<nrows; i++) {
+        sprintf(buf, fmt, i);
+        assert_db_fail(db, rydb_row_insert_str(db, buf), RYDB_ERROR_NOT_UNIQUE, "must be unique");
+        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
+        assert_db_fail(db, rydb_row_insert_str(db, rowdata[i]), RYDB_ERROR_NOT_UNIQUE, "must be unique");
+      }
     }
   }
 }

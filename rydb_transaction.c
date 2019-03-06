@@ -1,12 +1,7 @@
 #include "rydb_internal.h"
 #include <string.h>
 #include <assert.h>
-
-#ifdef __GNUC__
-#  define UNUSED(x) x __attribute__((__unused__))
-#else
-#  define UNUSED(x) x
-#endif
+#include <stdbool.h>
 
 static int rydb_cmd_rangecheck(rydb_t *db, const char *cmdname, rydb_stored_row_t *cmd, rydb_stored_row_t *dst) {
   if(!dst) {
@@ -388,24 +383,55 @@ int rydb_transaction_data_init(rydb_t *db) {
   return 1;
 }
 
+void rydb_transaction_data_free(rydb_t *db) {
+  rydb_transaction_data_reset(db);
+  if(db->unique_index_count > 0) {
+    rydb_mem.free(db->transaction.unique_index_constraints.added);
+    rydb_mem.free(db->transaction.unique_index_constraints.removed);
+  }
+}
+
 void rydb_transaction_data_reset(rydb_t *db) {
   db->transaction.active = 0;
   db->transaction.command_count = 0;
   if(!db->transaction.oneshot) {
     for(int i=0; i<db->unique_index_count; i++) {
-      RBTreeInvertedWalk iw;
-      RBNode *node;
-      RBTree *trees[] = {&db->transaction.unique_index_constraints.added[i], &db->transaction.unique_index_constraints.removed[i]};
-      for(int j = 0; j < 2; j++) {
-        RBTree *tree = trees[j];
-        rb_begin_inverted_walk(tree, &iw);
-        while((node = rb_inverted_walk(&iw)) != NULL) {
-          rb_delete(tree, node);
-        }
-      }
+      rb_free(&db->transaction.unique_index_constraints.added[i]);
+      rb_free(&db->transaction.unique_index_constraints.removed[i]);
     }
   }
   db->transaction.oneshot = 0;
+}
+
+uint_fast8_t rydb_transaction_check_unique(rydb_t *db, const char *val, off_t i) {
+  if(rb_find(&db->transaction.unique_index_constraints.removed[i], (const RBNode *)(val - sizeof(RBNode)))) {
+    return 1;
+  }
+  if(rb_find(&db->transaction.unique_index_constraints.added[i], (const RBNode *)(val - sizeof(RBNode)))) {
+    return 0;
+  }
+  return -1; //unknown
+}
+
+int rydb_transaction_unique_add(rydb_t *db, const char *val, off_t i) {
+  RBNode *node, *searchnode = (RBNode *)(val - sizeof(RBNode));
+  RBTree *removed_tree = &db->transaction.unique_index_constraints.removed[i];
+  if((node = rb_find(removed_tree, searchnode)) != NULL) {
+    rb_delete(removed_tree, node);
+  }
+  bool added;
+  rb_insert(&db->transaction.unique_index_constraints.added[i], searchnode, &added);
+  return 1;
+}
+int rydb_transaction_unique_remove(rydb_t *db, const char *val, off_t i) {
+  RBNode *node, *searchnode = (RBNode *)(val - sizeof(RBNode));
+  RBTree *added_tree = &db->transaction.unique_index_constraints.added[i];
+  if((node = rb_find(added_tree, searchnode)) != NULL) {
+    rb_delete(added_tree, node);
+  }
+  bool added;
+  rb_insert(&db->transaction.unique_index_constraints.removed[i], searchnode, &added);
+  return 1;
 }
 
 int rydb_transaction_finish_or_continue(rydb_t *db, int finish) {

@@ -27,6 +27,11 @@
 #define member_type(type, member) const void
 #endif
 
+#ifdef __GNUC__
+#  define UNUSED(x) x __attribute__((__unused__))
+#else
+#  define UNUSED(x) x
+#endif
 
     
 #define container_of(ptr, type, member) ((type *)( \
@@ -89,17 +94,19 @@ const char *rydb_rowtype_str(rydb_row_type_t type);
 int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row);
 int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row);
 int rydb_indices_update_row(rydb_t *db, rydb_stored_row_t *row, uint8_t step, off_t start, off_t end);
-int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end, uint_fast8_t set_error);
+int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end, uint_fast8_t set_error, void (*callback)(rydb_t *, int , off_t, off_t, rydb_rownum_t, const rydb_stored_row_t *, const char *));
 #define RYDB_EACH_INDEX(db, idx) \
   for(rydb_index_t *idx=&db->index[0], *idx_max = &db->index[db->config.index_count]; idx < idx_max; idx++)
 #define RYDB_EACH_UNIQUE_INDEX(db, idx) \
   for(rydb_index_t *idx = NULL, **_idx_cur = db->unique_index, **_idx_max = &db->unique_index[db->unique_index_count]; _idx_cur < _idx_max; _idx_cur++) \
     if((idx = *_idx_cur) != NULL)
 
-//transaction data stuff
 int rydb_transaction_data_init(rydb_t *db);
 void rydb_transaction_data_reset(rydb_t *db);
-
+void rydb_transaction_data_free(rydb_t *db);
+uint_fast8_t rydb_transaction_check_unique(rydb_t *db, const char *val, off_t i);
+int rydb_transaction_unique_add(rydb_t *db, const char *val, off_t i);
+int rydb_transaction_unique_remove(rydb_t *db, const char *val, off_t i);
 
 //NOTE: this only works correctly if the struct is made without padding
 typedef struct {
