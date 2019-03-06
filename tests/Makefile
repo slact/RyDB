@@ -58,16 +58,16 @@ static: default
 
 
 run:
-	./$(TARGET) $(TIMER) --multiplier $(MULTIPLIER) "$(TEST)"
+	./$(TARGET) $(TIMER) --color --multiplier $(MULTIPLIER) "$(TEST)"
 
 debug: default
-	kdbg ./$(TARGET) -a '--rerun-failed $(TIMER) "$(TEST)"'
+	kdbg ./$(TARGET) -a '--color --rerun-failed $(TIMER) "$(TEST)"'
 
 valgrind:default
-	valgrind $(VALGRIND_FLAGS) ./$(TARGET) --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
+	valgrind $(VALGRIND_FLAGS) ./$(TARGET) --color --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
 
 callgrind: default
-	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
+	valgrind $(CALLGRIND_FLAGS) ./$(TARGET) --color --multiplier $(MULTIPLIER) $(TIMER) "$(TEST)"
 
 coverage-gcc: O = 0
 coverage-gcc: CC = gcc
