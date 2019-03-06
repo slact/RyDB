@@ -720,12 +720,16 @@ describe(concurrency) {
     rydb_t *db2 = rydb_new();
     config_testdb(db2);
     assert_db_fail(db2, rydb_open(db2, path, "test"), RYDB_ERROR_LOCK_FAILED);
+    rydb_close(db);
+    rydb_close(db2);
   }
   it("can be forced unlocked") {
     assert_db_ok(db, rydb_open(db, path, "test"));
     rydb_t *db2 = rydb_new();
     rydb_force_unlock(db);
     assert_db_ok(db2, rydb_open(db2, path, "test"));
+    rydb_close(db);
+    rydb_close(db2);
   }
 }
 
