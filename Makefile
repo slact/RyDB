@@ -105,7 +105,7 @@ coverage-gcc-create:
 	-$(MAKE) -C $(TEST_DIR) run
 
 coverage-gcc: coverage-gcc-create
-	gcovr --html-details --exclude tests/snow.h --exclude tests/ -o coverage.html
+	gcovr --html-details --exclude tests/snow.h --exclude tests/ --exclude rbtree.c --exclude rbtree.h -o coverage.html
 	xdg-open ./coverage.html
 
 coverage-gcc-gcov: coverage-gcc-create
@@ -120,7 +120,7 @@ coverage:
 	$(MAKE) -C $(TEST_DIR) coverage
 	-LLVM_PROFILE_FILE=".profraw" $(MAKE) -C $(TEST_DIR) run
 	llvm-profdata merge -sparse $(TEST_DIR)/.profraw -o .profdata
-	llvm-cov show -format="html" -output-dir="coverage-report" -instr-profile=".profdata" "librydb.so" -object "tests/test" -ignore-filename-regex="tests/"
+	llvm-cov show -format="html" -output-dir="coverage-report" -instr-profile=".profdata" "librydb.so" -object "tests/test" -ignore-filename-regex="tests/|rbtree"
 	xdg-open ./coverage-report/index.html
 
 debug:	$(DNAME)
