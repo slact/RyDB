@@ -9,6 +9,7 @@ linux_task:
   build_script: make CC=gcc all
   test_script: make CC=gcc test
   test_optimized_script: make CC=gcc O=3 test
+  test_nodebug_script: make CC=gcc O=2 RYDB_DEBUG= test
   test_valgrind_script: make CC=gcc O=1 valgrind
   test_clang_sanitize_script:
     - make O=2 SANITIZE_ADDRESS_USE="" sanitize
