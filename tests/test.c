@@ -1673,12 +1673,18 @@ describe(storage) {
   static char testname[128];
   static int rowlen;
 
-  static int rownum = 100;
+  static int max_rownum = 500;
   for(rowlen = 1; rowlen < maxlen; rowlen+=rowlen< 15 ? 1 : (rowlen<50 ? 9 : 613)) {
     sprintf(testname, "storage with row length %i", rowlen);
     test(testname) {
       config_testdb(db, rowlen);
       assert_db_ok(db, rydb_open(db, path, "test"));
+      int rownum = max_rownum;
+      if(rowlen == 1) rownum = MIN(9, rownum);
+      else if(rowlen == 2) rownum = MIN(99, rownum);
+      else if(rowlen == 3) rownum = MIN(999, rownum);
+      else if(rowlen == 4) rownum = MIN(9999, rownum);
+      
       for(int i=1; i<=rownum; i++) {
         data_fill(data, rowlen, i);
         assert_db_ok(db, rydb_row_insert_str(db, data));
