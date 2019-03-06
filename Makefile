@@ -10,7 +10,8 @@ O=0
 CCACHE = ccache
 COLOR = always
 COLOR_OPT = -fdiagnostics-color=${COLOR}
-CFLAGS = -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC -DRYDB_DEBUG
+RYDB_DEBUG =  -DRYDB_DEBUG
+CFLAGS = -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC $(RYDB_DEBUG)
 VALGRIND_FLAGS = --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
 SANITIZE_ADDRESS_USE = -fsanitize-address-use-after-scope
 SANITIZE_FLAGS = $(SANITIZE_ADDRESS_USE) -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum -fstack-protector

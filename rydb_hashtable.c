@@ -1035,23 +1035,23 @@ int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_
 
 void rydb_bucket_print(const rydb_index_t *idx, const rydb_hashbucket_t *bucket) {
   rydb_config_index_t *cf = idx->config;
-  printf("  %p [%3"PRIu32"] ", (void *)bucket, (uint32_t )BUCKET_NUMBER(bucket, idx));
+  rydb_printf("  %p [%3"PRIu32"] ", (void *)bucket, (uint32_t )BUCKET_NUMBER(bucket, idx));
   if(bucket_is_empty(bucket)) {
-    printf("<EMPTY> ");
+    rydb_printf("<EMPTY> ");
   }
   else {
-    printf("<%5"PRIu32"> ", BUCKET_STORED_ROWNUM(bucket));
+    rydb_printf("<%5"PRIu32"> ", BUCKET_STORED_ROWNUM(bucket));
   }
   if(cf->type_config.hashtable.store_hash) {
     uint_fast8_t bits;
     uint64_t storedhash = bucket_stored_hash58_and_bits(bucket, &bits);
     uint64_t trimmed_storedhash = btrim64(storedhash, 64 - bits);
-    printf("%.2"PRIu8":%.18"PRIu64"[%.2"PRIu64"] ", bits, storedhash, trimmed_storedhash);
+    rydb_printf("%.2"PRIu8":%.18"PRIu64"[%.2"PRIu64"] ", bits, storedhash, trimmed_storedhash);
   }
   if(cf->type_config.hashtable.store_value) {
-    printf("\"%.*s\"", cf->len, BUCKET_STORED_VALUE(bucket, cf));
+    rydb_printf("\"%.*s\"", cf->len, BUCKET_STORED_VALUE(bucket, cf));
   }
-  printf("\n");
+  rydb_printf("\n");
 }
 
 void rydb_hashtable_print(const rydb_t *db, const rydb_index_t *idx) {
@@ -1073,7 +1073,7 @@ void rydb_hashtable_print(const rydb_t *db, const rydb_index_t *idx) {
     
   size_t    entry_sz = bucket_size(idx->config);
   
-  printf(fmt, idx->config->name, hexbuf, 
+  rydb_printf(fmt, idx->config->name, hexbuf, 
          header->reserved,
          header->active,
          header->bucket.count.total,
@@ -1082,7 +1082,7 @@ void rydb_hashtable_print(const rydb_t *db, const rydb_index_t *idx) {
          (uint32_t) entry_sz,
          header->bucket.bitlevel.top.bits,  header->bucket.bitlevel.top.count);
   for(int i=0; i<header->bucket.count.sub_bitlevels; i++) {
-    printf("           %4d: bits: %2"PRIu8" n: %"PRIu32"\n", i+1, header->bucket.bitlevel.sub[i].bits, header->bucket.bitlevel.sub[i].count);
+    rydb_printf("           %4d: bits: %2"PRIu8" n: %"PRIu32"\n", i+1, header->bucket.bitlevel.sub[i].bits, header->bucket.bitlevel.sub[i].count);
   }
   
   rydb_hashbucket_t         *bucket = hashtable_bucket(idx, 0);

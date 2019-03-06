@@ -25,6 +25,17 @@ int intercepted_fprintf( FILE * stream, const char * format, ... ) {
   va_end(ap);
   return rc;
 }
+int rydb_intercept_printfs(void) {
+  rydb_printf = intercepted_printf;
+  rydb_fprintf = intercepted_fprintf;
+  return 1;
+}
+int rydb_unintercept_printfs(void) {
+  rydb_printf = printf;
+  rydb_fprintf = fprintf;
+  return 1;
+}
+#endif
 
 int sed_meta_file(rydb_t *db, char *regex) {
   char cmd[1024];
@@ -61,18 +72,6 @@ int rydb_reopen(rydb_t **db) {
   *db = rydb_new();
   return rydb_open(*db, path, name);
 }
-
-int rydb_intercept_printfs(void) {
-  rydb_printf = intercepted_printf;
-  rydb_fprintf = intercepted_fprintf;
-  return 1;
-}
-int rydb_unintercept_printfs(void) {
-  rydb_printf = printf;
-  rydb_fprintf = fprintf;
-  return 1;
-}
-#endif
 
 void config_testdb(rydb_t *db) {
   assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));

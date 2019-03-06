@@ -20,6 +20,20 @@
 #define RYDB_ROW_DATA_OFFSET offsetof(rydb_stored_row_t, data)
 #define RYDB_DATA_START_OFFSET ry_align(RYDB_ROW_DATA_OFFSET + strlen(RYDB_DATA_HEADER_STRING), 8)
 
+#ifdef RYDB_DEBUG
+  extern int rydb_debug_refuse_to_run_transaction_without_commit;
+  extern int rydb_debug_disable_urandom;
+  extern const char *rydb_debug_hash_key;
+  extern int (*rydb_printf)( const char * format, ... );
+  extern int (*rydb_fprintf)( FILE * stream, const char * format, ... );
+#else
+  #define rydb_debug_refuse_to_run_transaction_without_commit 1
+  #define rydb_debug_disable_urandom 0
+  #define rydb_debug_hash_key 0
+  #define rydb_printf printf
+  #define rydb_fprintf fprintf
+#endif
+
 #ifndef container_of
 #ifdef __GNUC__
 #define member_type(type, member) __typeof__ (((type *)0)->member)

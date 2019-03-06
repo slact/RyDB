@@ -1263,8 +1263,8 @@ describe(transactions) {
         rydb_debug_refuse_to_run_transaction_without_commit = 0;
         assert_db_fail(db, rydb_transaction_run(db, NULL), RYDB_ERROR_TRANSACTION_FAILED, "committed without ending on a COMMIT");
         rydb_debug_refuse_to_run_transaction_without_commit = 1;
-#endif
       }
+#endif
     }
     
     it("refuses to finish a transaction that wasn't started") {
