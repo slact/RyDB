@@ -713,11 +713,13 @@ static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucke
   }
   rydb_hashbucket_t         *dst = hashtable_bucket(idx, new_hash);
   const rydb_hashbucket_t   *buckets_end = hashtable_bucket(idx, header->bucket.count.total);
+  DBG("buckets_end: %p\n", buckets_end);
   DBG_BUCKET("dst bucket (unwalked) ", idx, dst)
   while(dst < buckets_end && dst != bucket && !bucket_is_empty(dst)) {
     dst = bucket_next(idx, dst, 1);
   }
   if(dst >= buckets_end) {
+    DBG("dst bucket > end\n")
     off_t bucket_offset = bucket - idx->index.data.start;
     if(!rydb_file_ensure_size(db, &idx->index, dst - idx->index.file.start + sz)) {
       return 0;
@@ -762,6 +764,8 @@ static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   size_t                     bucket_sz = bucket_size(cf);
   size_t                     new_data_sz = max_bucket * bucket_sz;
   uint64_t                   prev_total_buckets = header->bucket.count.total;
+  bool                       rehash_all = cf->type_config.hashtable.rehash & RYDB_REHASH_ALL_AT_ONCE;
+  
   if(!rydb_file_ensure_size(db, &idx->index, RYDB_INDEX_HASHTABLE_START_OFFSET + new_data_sz)) {
     return 0;
   }
@@ -769,31 +773,33 @@ static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   
   idx->index.data.end = idx->index.file.end;
   hashtable_reserve(header);
-  
-  if(prev_total_buckets > 0 && cf->type_config.hashtable.rehash & RYDB_REHASH_ALL_AT_ONCE) {
-    rydb_hashbucket_t         *bucket;
-    rydb_hashbucket_t         *buckets_start = hashtable_bucket(idx, 0);
-  //rydb_hashtable_print(db, idx);
-    for(bucket = hashtable_bucket(idx, prev_total_buckets - 1); bucket >= buckets_start; bucket = bucket_next(idx, bucket, -1)) {
-      if(bucket_is_empty(bucket)) {
-        continue;
-      }
-      DBG("rehash after grow()\n")
-      DBG_HASHTABLE(db, idx)
-      if(!bucket_rehash(db, idx, bucket, current_hashbits, 0, 1)) {
-        return 0;
-      }
-      //rydb_hashtable_print(db, idx);
-    }
-  }
-  else if(current_hashbits != 0) {
+  if(current_hashbits>0 && !rehash_all) {
     hashtable_bitlevel_push(header);
     header->bucket.bitlevel.top.count = 0;
   }
   header->bucket.bitlevel.top.bits++;
-  
+  if(header->bucket.count.total > max_bucket) {
+    max_bucket = header->bucket.count.total;
+  }
   header->bucket.count.load_factor_max = max_bucket * cf->type_config.hashtable.load_factor_max;
   header->bucket.count.total = max_bucket;
+  
+  if(current_hashbits>0 && rehash_all) {
+    rydb_hashbucket_t         *bucket;
+    rydb_hashbucket_t         *buckets_start = hashtable_bucket(idx, 0);
+    DBG("hashtable_grow all-at-once\n")
+    DBG_HASHTABLE(db, idx)
+    
+    for(bucket = hashtable_bucket(idx, prev_total_buckets - 1); bucket >= buckets_start; bucket = bucket_next(idx, bucket, -1)) {
+      if(bucket_is_empty(bucket)) {
+        continue;
+      }
+      if(!bucket_rehash(db, idx, bucket, current_hashbits, 0, 1)) {
+        return 0;
+      }
+    }
+    DBG_HASHTABLE(db, idx)
+  }
   
   hashtable_release(header);
   return 1;
