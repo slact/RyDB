@@ -378,6 +378,9 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
       return 0;
     }
     uint8_t rehash = advanced_config->rehash;
+    if(rehash == RYDB_REHASH_DEFAULT) {
+      rehash = RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS;
+    }
     char *flagfail = NULL;
     if(rehash > RYDB_REHASH_INCREMENTAL) {
       rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid rehash flags for hashtable \"%s\"", cf->name);
@@ -406,10 +409,8 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
     }
     
     cf->type_config.hashtable = *advanced_config;
+    cf->type_config.hashtable.rehash = rehash;
     
-    if(cf->type_config.hashtable.rehash == RYDB_REHASH_DEFAULT) {
-      cf->type_config.hashtable.rehash = RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS;
-    }
     if(cf->type_config.hashtable.load_factor_max == 0) {
       cf->type_config.hashtable.load_factor_max = RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR;
     }
