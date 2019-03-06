@@ -1571,164 +1571,181 @@ describe(transactions) {
   }
 }
 
-describe(hashtable) {
+describe(indexing) {
   static rydb_t *db;
   static char path[256];
-  
   before_each() {
     db = rydb_new();
     assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
-    strcpy(path, "test.db.XXXXXX");
-    mkdtemp(path);
+    strcpy(path, "test.db.XXXXXX"); mkdtemp(path);
   }
-
   after_each() {
     rydb_close(db);
-    db = NULL;
     rmdir_recursive(path);
-#ifdef RYDB_DEBUG
-    rydb_debug_hash_key = NULL;
-#endif
   }
-  
-  test("adding rows to hashtable") {
+  it("fails on unknown index name") {
     assert_db_ok(db, rydb_open(db, path, "test"));
-    char str[128];
-    for(int i=1; i<200; i++) {
-      sprintf(str, "%izzz", i);
-      assert_db_ok(db, rydb_row_insert_str(db, str));
-      //rydb_hashtable_print(db, &db->index[0]);
-    }
+    assert_db_fail(db, rydb_index_find_row_str(db, "bananaindex", "match", NULL), RYDB_ERROR_INDEX_NOT_FOUND, "[Ii]ndex \\w+ does not exist");
   }
   
-
-  static char testname[128];
-  static int hashfunction[] = {
-    RYDB_HASH_SIPHASH, RYDB_HASH_CRC32, RYDB_HASH_NOHASH
-  };
-  static int t, start, rh;
-  static uint8_t rehash[] = {RYDB_REHASH_ALL_AT_ONCE, RYDB_REHASH_MANUAL, RYDB_REHASH_INCREMENTAL};
-  static char   *rehash_name[] = {"all-at-once", "manual", "incremental"};
-  for(rh=0; rh<3; rh++) {
-    for(start=0; start <=9; start+=9) {
-      for(t=0; t<3; t++) {
-        sprintf(testname, "finding rows (index start at %i) in %s %s-rehash hashtable", start, rydb_hashfunction_to_str(hashfunction[t]), rehash_name[rh]);
-        test(testname) {
-          rydb_config_index_hashtable_t cf = {
-            .rehash = rehash[rh],
-            .hash_function = hashfunction[t],
-            .store_value = 0,
-            .store_hash = 1,
-            .collision_resolution = RYDB_OPEN_ADDRESSING
-          };
-          rydb_config_index_hashtable_t cf2 = cf;
-          cf2.store_value = 1;
-          assert_db_ok(db, rydb_config_add_index_hashtable(db, "primary", start, 5, RYDB_INDEX_UNIQUE, &cf));
-          assert_db_ok(db, rydb_config_add_index_hashtable(db, "secondary", start, 5, RYDB_INDEX_DEFAULT, &cf2));
-          assert_db_ok(db, rydb_open(db, path, "test"));
-          char str[128], searchstr[128];
-          const char *fmt = "%i,%i!%i|%i&%i*%i~%i@%i$%i*%i!";
-          asserteq(rydb_find_row_str(db, "nil", NULL), 0);
-          
-          int maxrows = 1000 * repeat_multiplier;
-          for(int i=0; i<maxrows; i++) {
-            //printf("i: %i\n", i);
-            sprintf(str, fmt, i, i, i, i, i, i, i, i, i, i);
-            memset(&str[ROW_LEN], '\00', 128 - ROW_LEN);
-            assert_db_ok(db, rydb_row_insert_str(db, str));
-            //rydb_hashtable_print(db, &db->index[0]);
-            
-            if(rehash[rh] == RYDB_REHASH_MANUAL && i%(maxrows/10) == 0) {
-              assert_db_ok(db, rydb_index_rehash(db, "primary"));
-              assert_db_ok(db, rydb_index_rehash(db, "secondary"));
-            }
-            for(int j=0; j<=i; j++) {
-              sprintf(searchstr, fmt, j, j, j, j, j, j, j, j, j, j);
-              memset(&searchstr[ROW_LEN], '\00', 128 - ROW_LEN);
-              rydb_row_t found_row, found_row2;
-              //raise(SIGSTOP);
-              //printf("i: %i, j: %i, finding \"%s\"\n", i, j, &searchstr[start]);
-              int found = rydb_find_row_str(db, &searchstr[start], &found_row);
-              int found_secondary = rydb_index_find_row_str(db, "secondary", &searchstr[start], &found_row2);
-              if (j <= i) {
-                asserteq(found, 1);
-                asserteq(found_secondary, 1);
-                asserteq(strcmp(searchstr, found_row.data), 0);
-                asserteq(strcmp(searchstr, found_row2.data), 0);
-                asserteq(found_row.num, j+1);
-                asserteq(found_row2.num, j+1);
-              }
-              else {
-                asserteq(found, 0);
-                asserteq(found_secondary, 0);
-              }
-            }
-          }
-        }
-      }
+  subdesc(hashtable) {
+  
+    before_each() {
+      db = rydb_new();
+      assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
+      strcpy(path, "test.db.XXXXXX");
+      mkdtemp(path);
     }
-  }
-  for(t=0; t<3; t++) {
-    sprintf(testname, "delete rows in hashtable %s", rydb_hashfunction_to_str(hashfunction[t]));
-    test(testname) {
-      rydb_config_index_hashtable_t cf = {
-        .hash_function = hashfunction[t],
-        .store_value = 0,
-        .store_hash = 1,
-        .collision_resolution = RYDB_OPEN_ADDRESSING
-      };
-      rydb_config_index_hashtable_t cf2 = cf;
-      cf2.store_value = 1;
-      rydb_config_add_index_hashtable(db, "primary", 0, 5, RYDB_INDEX_UNIQUE, &cf);
-      rydb_config_add_index_hashtable(db, "secondary", 0, 5, RYDB_INDEX_DEFAULT, &cf2);
+
+    after_each() {
+      rydb_close(db);
+      db = NULL;
+      rmdir_recursive(path);
+  #ifdef RYDB_DEBUG
+      rydb_debug_hash_key = NULL;
+  #endif
+    }
+    
+    test("adding rows to hashtable") {
       assert_db_ok(db, rydb_open(db, path, "test"));
       char str[128];
-      char *fmt = "%izzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
-      int numrows = 1000 * repeat_multiplier;
-      for(int i=1; i<=numrows; i++) {
-        sprintf(str, fmt, i);
+      for(int i=1; i<200; i++) {
+        sprintf(str, "%izzz", i);
         assert_db_ok(db, rydb_row_insert_str(db, str));
-      }
-      hashtable_header_count_check(db, &db->index[0], numrows);
-      
-      for(int i=1; i<=numrows; i++) {
-        sprintf(str, fmt, i);
-        assert_db_ok(db, rydb_row_delete(db, i));
-        hashtable_header_count_check(db, &db->index[0], numrows - i);
         //rydb_hashtable_print(db, &db->index[0]);
-        for(int j=1; j<=numrows; j++) {
-          sprintf(str, fmt, j);
-          rydb_row_t found_row, found_row2;
-          int        rc, rc2;
-          //printf("find %s\n", str);
-          rc = rydb_find_row_str(db, str, &found_row);
-          rc2 = rydb_index_find_row_str(db, "secondary", str, &found_row2);
-          assert_db(db);
-          if(j <= i) {
-            asserteq(rc, 0);
-            asserteq(rc2, 0);
-          }
-          else {
-            assert(rc);
-            assert(rc2);
-            asserteq(found_row.num, j);
-            asserteq(found_row2.num, j);
+      }
+    }
+    
+
+    static char testname[128];
+    static int hashfunction[] = {
+      RYDB_HASH_SIPHASH, RYDB_HASH_CRC32, RYDB_HASH_NOHASH
+    };
+    static int t, start, rh;
+    static uint8_t rehash[] = {RYDB_REHASH_ALL_AT_ONCE, RYDB_REHASH_MANUAL, RYDB_REHASH_INCREMENTAL};
+    static char   *rehash_name[] = {"all-at-once", "manual", "incremental"};
+    for(rh=0; rh<3; rh++) {
+      for(start=0; start <=9; start+=9) {
+        for(t=0; t<3; t++) {
+          sprintf(testname, "finding rows (index start at %i) in %s %s-rehash hashtable", start, rydb_hashfunction_to_str(hashfunction[t]), rehash_name[rh]);
+          test(testname) {
+            rydb_config_index_hashtable_t cf = {
+              .rehash = rehash[rh],
+              .hash_function = hashfunction[t],
+              .store_value = 0,
+              .store_hash = 1,
+              .collision_resolution = RYDB_OPEN_ADDRESSING
+            };
+            rydb_config_index_hashtable_t cf2 = cf;
+            cf2.store_value = 1;
+            assert_db_ok(db, rydb_config_add_index_hashtable(db, "primary", start, 5, RYDB_INDEX_UNIQUE, &cf));
+            assert_db_ok(db, rydb_config_add_index_hashtable(db, "secondary", start, 5, RYDB_INDEX_DEFAULT, &cf2));
+            assert_db_ok(db, rydb_open(db, path, "test"));
+            char str[128], searchstr[128];
+            const char *fmt = "%i,%i!%i|%i&%i*%i~%i@%i$%i*%i!";
+            asserteq(rydb_find_row_str(db, "nil", NULL), 0);
+            
+            int maxrows = 1000 * repeat_multiplier;
+            for(int i=0; i<maxrows; i++) {
+              //printf("i: %i\n", i);
+              sprintf(str, fmt, i, i, i, i, i, i, i, i, i, i);
+              memset(&str[ROW_LEN], '\00', 128 - ROW_LEN);
+              assert_db_ok(db, rydb_row_insert_str(db, str));
+              //rydb_hashtable_print(db, &db->index[0]);
+              
+              if(rehash[rh] == RYDB_REHASH_MANUAL && i%(maxrows/10) == 0) {
+                assert_db_ok(db, rydb_index_rehash(db, "primary"));
+                assert_db_ok(db, rydb_index_rehash(db, "secondary"));
+              }
+              for(int j=0; j<=i; j++) {
+                sprintf(searchstr, fmt, j, j, j, j, j, j, j, j, j, j);
+                memset(&searchstr[ROW_LEN], '\00', 128 - ROW_LEN);
+                rydb_row_t found_row, found_row2;
+                //raise(SIGSTOP);
+                //printf("i: %i, j: %i, finding \"%s\"\n", i, j, &searchstr[start]);
+                int found = rydb_find_row_str(db, &searchstr[start], &found_row);
+                int found_secondary = rydb_index_find_row_str(db, "secondary", &searchstr[start], &found_row2);
+                if (j <= i) {
+                  asserteq(found, 1);
+                  asserteq(found_secondary, 1);
+                  asserteq(strcmp(searchstr, found_row.data), 0);
+                  asserteq(strcmp(searchstr, found_row2.data), 0);
+                  asserteq(found_row.num, j+1);
+                  asserteq(found_row2.num, j+1);
+                }
+                else {
+                  asserteq(found, 0);
+                  asserteq(found_secondary, 0);
+                }
+              }
+            }
           }
         }
       }
     }
+    for(t=0; t<3; t++) {
+      sprintf(testname, "delete rows in hashtable %s", rydb_hashfunction_to_str(hashfunction[t]));
+      test(testname) {
+        rydb_config_index_hashtable_t cf = {
+          .hash_function = hashfunction[t],
+          .store_value = 0,
+          .store_hash = 1,
+          .collision_resolution = RYDB_OPEN_ADDRESSING
+        };
+        rydb_config_index_hashtable_t cf2 = cf;
+        cf2.store_value = 1;
+        rydb_config_add_index_hashtable(db, "primary", 0, 5, RYDB_INDEX_UNIQUE, &cf);
+        rydb_config_add_index_hashtable(db, "secondary", 0, 5, RYDB_INDEX_DEFAULT, &cf2);
+        assert_db_ok(db, rydb_open(db, path, "test"));
+        char str[128];
+        char *fmt = "%izzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+        int numrows = 1000 * repeat_multiplier;
+        for(int i=1; i<=numrows; i++) {
+          sprintf(str, fmt, i);
+          assert_db_ok(db, rydb_row_insert_str(db, str));
+        }
+        hashtable_header_count_check(db, &db->index[0], numrows);
+        
+        for(int i=1; i<=numrows; i++) {
+          sprintf(str, fmt, i);
+          assert_db_ok(db, rydb_row_delete(db, i));
+          hashtable_header_count_check(db, &db->index[0], numrows - i);
+          //rydb_hashtable_print(db, &db->index[0]);
+          for(int j=1; j<=numrows; j++) {
+            sprintf(str, fmt, j);
+            rydb_row_t found_row, found_row2;
+            int        rc, rc2;
+            //printf("find %s\n", str);
+            rc = rydb_find_row_str(db, str, &found_row);
+            rc2 = rydb_index_find_row_str(db, "secondary", str, &found_row2);
+            assert_db(db);
+            if(j <= i) {
+              asserteq(rc, 0);
+              asserteq(rc2, 0);
+            }
+            else {
+              assert(rc);
+              assert(rc2);
+              asserteq(found_row.num, j);
+              asserteq(found_row2.num, j);
+            }
+          }
+        }
+      }
+    }
+    
+    it("obeys uniqueness criteria") {
+      //char str[128];
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      assert_db_ok(db, rydb_row_insert_str(db, "hello this is a string"));
+      assert_db_ok(db, rydb_row_insert_str(db, "oh this is a different string"));
+      assert_db_ok(db, rydb_row_insert_str(db, "samestring"));
+      assert_db_fail(db, rydb_row_insert_str(db, "samestring"), RYDB_ERROR_NOT_UNIQUE, "primary must be unique");
+    }
   }
-  
-  it("obeys uniqueness criteria") {
-    //char str[128];
-    assert_db_ok(db, rydb_open(db, path, "test"));
-    assert_db_ok(db, rydb_row_insert_str(db, "hello this is a string"));
-    assert_db_ok(db, rydb_row_insert_str(db, "oh this is a different string"));
-    assert_db_ok(db, rydb_row_insert_str(db, "samestring"));
-    assert_db_fail(db, rydb_row_insert_str(db, "samestring"), RYDB_ERROR_NOT_UNIQUE, "primary must be unique");
-  }
-}
 
+
+}
 describe(storage) {
   static rydb_t *db;
   static char path[64];
