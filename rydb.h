@@ -293,6 +293,9 @@ int rydb_transaction_start(rydb_t *db);
 int rydb_transaction_finish(rydb_t *db);
 int rydb_transaction_cancel(rydb_t *db);
 
+//row by rownum
+int rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row);
+
 //find by primary index
 int rydb_find_row(rydb_t *db, const char *val, size_t len, rydb_row_t *result);
 int rydb_find_row_str(rydb_t *db, const char *str, rydb_row_t *result);

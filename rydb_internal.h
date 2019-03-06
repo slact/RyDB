@@ -78,6 +78,7 @@ void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...
 int rydb_ensure_open(rydb_t *db);
 int rydb_ensure_closed(rydb_t *db, const char *msg);
 
+int rydb_stored_row_in_range(rydb_t *db, rydb_stored_row_t *row);
 int rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum); //save an error on failure
 
 //these always succeed

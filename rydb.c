@@ -2026,6 +2026,22 @@ int rydb_storedrow_to_row(const rydb_t *db, const rydb_stored_row_t *datarow, ry
   return 1;
 }
 
+int rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row) {
+  rydb_stored_row_t *storedrow = rydb_rownum_to_row(db, rownum);
+  if(!storedrow || !rydb_stored_row_in_range(db, storedrow)) {
+    return 0;
+  }
+
+  rydb_row_type_t rowtype = storedrow->type;
+  if(rowtype != RYDB_ROW_DATA && rowtype != RYDB_ROW_EMPTY) {
+    return 0;
+  }
+  if(row) {
+    rydb_storedrow_to_row(db, storedrow, row);
+  }
+  return 1;
+}
+
 void rydb_print_stored_data(rydb_t *db) {
   const char *rowtype;
   char header[RYDB_DATA_START_OFFSET + 1];

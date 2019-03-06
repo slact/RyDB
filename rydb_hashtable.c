@@ -905,7 +905,9 @@ int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *val
   }
   
   DBG("val: %s found: %s\n", val, &datarow->data[idx->config->start])
-  rydb_storedrow_to_row(db, datarow, row);
+  if(row) {
+    rydb_storedrow_to_row(db, datarow, row);
+  }
   
   if(bitlevel_count >= 0 && (idx->config->type_config.hashtable.rehash & RYDB_REHASH_INCREMENTAL_ON_READ)) {
     hashtable_reserve(hashtable_header(idx));
