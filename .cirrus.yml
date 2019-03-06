@@ -7,15 +7,16 @@ linux_task:
   build_script: make CCACHE="" CC=gcc all
   tests_script: make CCACHE="" CC=gcc test
   test_optimized_script: make CCACHE="" CC=gcc O=3 test
-  coveralls_script:
     - apt-get update
-    - apt-get install -y --no-install-recommends python python-dev
-    - wget https://bootstrap.pypa.io/get-pip.py
-    - python get-pip.py
-    - pip install --user cpp-coveralls
-    - pip install --user pyYAML
-    - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
-    - /root/.local/bin/coveralls --exclude tests --gcov-options '\-lp'
+  #coveralls_script:
+  #  - apt-get update
+  #  - apt-get install -y --no-install-recommends python python-dev
+  #  - wget https://bootstrap.pypa.io/get-pip.py
+  #  - python get-pip.py
+  #  - pip install --user cpp-coveralls
+  #  - pip install --user pyYAML
+  #  - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
+  #  - /root/.local/bin/coveralls --exclude tests --gcov-options '\-lp'
   codecov_script:
     - make CCACHE="" CC=gcc coverage-gcc-create
     - bash <(curl -s https://codecov.io/bash)
