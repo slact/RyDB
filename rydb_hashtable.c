@@ -755,6 +755,33 @@ static int bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucke
   return 1;
 }
 
+int rydb_index_hashtable_rehash(rydb_t *db, rydb_index_t *idx, off_t last_possible_bucket, uint_fast8_t current_hashbits, int reserve) {
+  rydb_hashbucket_t         *bucket;
+  rydb_hashbucket_t         *buckets_start = hashtable_bucket(idx, 0);
+  rydb_hashtable_header_t   *header = hashtable_header(idx);
+  const bool                 store_hash = idx->config->type_config.hashtable.store_hash;
+  if(reserve) hashtable_reserve(header);
+  if(last_possible_bucket == 0) {
+    last_possible_bucket = header->bucket.count.total;
+  }
+  if(current_hashbits == 0 && !store_hash) {
+    current_hashbits = header->bucket.bitlevel.top.bits;
+  }
+  for(bucket = hashtable_bucket(idx, last_possible_bucket - 1); bucket >= buckets_start; bucket = bucket_next(idx, bucket, -1)) {
+    if(bucket_is_empty(bucket)) {
+      continue;
+    }
+    if(store_hash) {
+      current_hashbits = bucket_stored_hash_bits(bucket);
+    }
+    if(!bucket_rehash(db, idx, bucket, current_hashbits, 0, 1)) {
+      if(reserve) hashtable_release(hashtable_header(idx));
+      return 0;
+    }
+  }
+  if(reserve) hashtable_release(hashtable_header(idx));
+  return 1;
+}
 
 static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
@@ -785,23 +812,10 @@ static int hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   header->bucket.count.total = max_bucket;
   
   if(current_hashbits>0 && rehash_all) {
-    rydb_hashbucket_t         *bucket;
-    rydb_hashbucket_t         *buckets_start = hashtable_bucket(idx, 0);
-    DBG("hashtable_grow all-at-once\n")
-    DBG_HASHTABLE(db, idx)
-    
-    for(bucket = hashtable_bucket(idx, prev_total_buckets - 1); bucket >= buckets_start; bucket = bucket_next(idx, bucket, -1)) {
-      if(bucket_is_empty(bucket)) {
-        continue;
-      }
-      if(!bucket_rehash(db, idx, bucket, current_hashbits, 0, 1)) {
-        return 0;
-      }
-    }
-    DBG_HASHTABLE(db, idx)
+    rydb_index_hashtable_rehash(db, idx, prev_total_buckets, current_hashbits, 0);
   }
   
-  hashtable_release(header);
+  hashtable_release(hashtable_header(idx));
   return 1;
 }
 

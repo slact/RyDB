@@ -627,7 +627,7 @@ describe(rydb_open) {
           {"unique", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
           {"hash_function", "BananaHash", RYDB_ERROR_FILE_INVALID, ".*"},
           {"hash_function", "CRC32", RYDB_NO_ERROR, NULL},
-          {"hash_function", "none", RYDB_NO_ERROR, NULL},
+          {"hash_function", "nohash", RYDB_NO_ERROR, NULL},
           {"hash_function", "SipHash", RYDB_NO_ERROR, NULL},
           {"load_factor_max", "10", RYDB_ERROR_FILE_INVALID, "invalid"},
           {"rehash_flags", "30", RYDB_ERROR_FILE_INVALID, "invalid"},
@@ -1498,6 +1498,11 @@ describe(hashtable) {
             memset(&str[ROW_LEN-2], '\00', 128 - ROW_LEN);
             assert_db_ok(db, rydb_row_insert_str(db, str));
             //rydb_hashtable_print(db, &db->index[0]);
+            
+            if(rehash[rh] == RYDB_REHASH_MANUAL && i%(maxrows/10) == 0) {
+              assert_db_ok(db, rydb_index_rehash(db, "primary"));
+              assert_db_ok(db, rydb_index_rehash(db, "secondary"));
+            }
             for(int j=0; j<=i; j++) {
               sprintf(searchstr, fmt, j, j, j, j, j, j, j, j, j, j);
               memset(&searchstr[ROW_LEN-2], '\00', 128 - ROW_LEN);

@@ -179,7 +179,9 @@ typedef enum {
   RYDB_ERROR_ROWNUM_OUT_OF_RANGE  = 19,
   RYDB_ERROR_DATABASE_CLOSED      = 20,
   RYDB_ERROR_DATABASE_OPEN        = 21,
-  RYDB_ERROR_NOT_UNIQUE           = 22
+  RYDB_ERROR_NOT_UNIQUE           = 22,
+  RYDB_ERROR_INDEX_NOT_FOUND      = 23,
+  RYDB_ERROR_WRONG_INDEX_TYPE     = 24
 } rydb_error_code_t;
 const char *rydb_error_code_str(rydb_error_code_t code);
 
@@ -296,6 +298,9 @@ int rydb_find_row(rydb_t *db, const char *val, size_t len, rydb_row_t *result);
 int rydb_find_row_str(rydb_t *db, const char *str, rydb_row_t *result);
 int rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_row_t *result);
 int rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *str, rydb_row_t *result);
+
+//index-specific stuff
+int rydb_index_rehash(rydb_t *db, const char *index_name);
 
 int rydb_close(rydb_t *db); //also free()s db
 int rydb_delete(rydb_t *db); //deletes all files in an open db

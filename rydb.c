@@ -125,6 +125,10 @@ const char *rydb_error_code_str(rydb_error_code_t code) {
     return "RYDB_ERROR_DATABASE_OPEN";
   case RYDB_ERROR_NOT_UNIQUE:
     return "RYDB_ERROR_NOT_UNIQUE";
+  case RYDB_ERROR_INDEX_NOT_FOUND:
+    return "RYDB_ERROR_INDEX_NOT_FOUND";
+    case RYDB_ERROR_WRONG_INDEX_TYPE:
+    return "RYDB_ERROR_WRONG_INDEX_TYPE";
   }
   return "???";
 }
@@ -443,6 +447,15 @@ static int rydb_find_index_num(const rydb_t *db, const char *name) {
     return -1;
   }
   return cf - cf_start;
+}
+
+static rydb_index_t *rydb_get_index(rydb_t *db, const char *name) {
+  int             indexnum = rydb_find_index_num(db, name);
+  if(indexnum == -1) {
+    rydb_set_error(db, RYDB_ERROR_INDEX_NOT_FOUND, "Index %s does not exist in this database", name);
+    return 0;
+  }
+  return &db->index[indexnum];
 }
 
 static int rydb_config_index_check_flags(rydb_t *db, const rydb_config_index_t *idx) {
@@ -1939,8 +1952,9 @@ int rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *val,
 }
 
 int rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_row_t *result) {
-  int             indexnum = rydb_find_index_num(db, index_name);
-  rydb_index_t   *idx = &db->index[indexnum];
+  rydb_index_t   *idx = rydb_get_index(db, index_name);
+  if(!idx) return 0;
+  
   const char     *searchval;
   char           *allocd_searchval = NULL;
   size_t          indexed_data_len = idx->config->len;
@@ -1968,6 +1982,16 @@ int rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, siz
   }
   if(allocd_searchval) free(allocd_searchval);
   return 0;
+}
+
+int rydb_index_rehash(rydb_t *db, const char *index_name) {
+  rydb_index_t   *idx = rydb_get_index(db, index_name);
+  if(!idx) return 0;
+  if(idx->config->type != RYDB_INDEX_HASHTABLE) {
+    rydb_set_error(db, RYDB_ERROR_WRONG_INDEX_TYPE, "Index %s is not a hashtable, cannot rehash", idx->config->name);
+    return 0;
+  }
+  return rydb_index_hashtable_rehash(db, idx, 0, 0, 1);
 }
 
 /*

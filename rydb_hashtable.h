@@ -23,6 +23,8 @@ int rydb_hashtable_release(const rydb_index_t *idx);
 int rydb_index_hashtable_contains(const rydb_t *db, const rydb_index_t *idx, const char *val);
 
 int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *val, rydb_row_t *row);
+int rydb_index_hashtable_rehash(rydb_t *db, rydb_index_t *idx, off_t last_possible_bucket, uint_fast8_t current_hashbits, int reserve);
+
 char *rydb_hashfunction_to_str(rydb_hash_function_t hashfn);
 typedef struct {
   rydb_rownum_t count;
