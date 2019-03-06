@@ -82,6 +82,9 @@ extern void rb_delete(RBTree *rb, RBNode *node);
 
 extern void rb_tree_debug_print(RBTree* rb, rb_sprintfunc sprintfunc);
 
+//free all nodes in tree
+extern void rb_free(RBTree *rb);
+
 typedef enum RBTreeNextStep
 {
 	NextStepNone,

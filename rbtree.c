@@ -819,6 +819,31 @@ rb_direct_walk(RBTreeDirectWalk* dw)
 }
 
 /*
+static void rb_str_sprintfunc(RBNode *x, char* buff) {
+  sprintf(buff, "%.4s", (char *)&x[1]);
+}
+*/
+
+static void recursive_rb_free(RBTree *rb, RBNode *cur) {
+	if(cur == RBNIL) {
+		return;
+	}
+	recursive_rb_free(rb, cur->left);
+	recursive_rb_free(rb, cur->right);
+	rb->freefunc(cur, rb->arg);
+}
+
+void rb_free(RBTree *rb) {
+	//rb_tree_debug_print(rb, rb_str_sprintfunc);
+	RBNode *node;
+	node = rb->root;
+	if (rb->freefunc && node != RBNIL) {
+		recursive_rb_free(rb, node);
+	}
+	rb->root = RBNIL;
+}
+
+/*
  * Begin inverted walk (a.k.a post-order traversal).
  */
 void
@@ -844,14 +869,14 @@ rb_inverted_walk(RBTreeInvertedWalk* iw)
 {
 	RBNode* came_from;
 
-    if(iw->is_over)
-        return NULL;
+	if(iw->is_over)
+		return NULL;
 
-    if(iw->last_visited == NULL)
-    {
-        iw->last_visited = iw->rb->root;
+	if(iw->last_visited == NULL)
+	{
+		iw->last_visited = iw->rb->root;
 		iw->next_step = NextStepLeft;
-    }
+	}
 
 loop:
 	switch(iw->next_step)
