@@ -294,7 +294,7 @@ int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE
   if(strcmp("CRC32", hash_func_buf) == 0) {
     hashtable_config.hash_function = RYDB_HASH_CRC32;
   }
-  else if(strcmp("none", hash_func_buf) == 0) {
+  else if(strcmp("nohash", hash_func_buf) == 0) {
     hashtable_config.hash_function = RYDB_HASH_NOHASH;
   }
   else if(strcmp("SipHash", hash_func_buf) == 0) {
@@ -321,7 +321,7 @@ char *rydb_hashfunction_to_str(rydb_hash_function_t hashfn) {
     case RYDB_HASH_CRC32:
       return "CRC32";
     case RYDB_HASH_NOHASH:
-      return "none";
+      return "nohash";
     case RYDB_HASH_SIPHASH:
       return "SipHash";
     case RYDB_HASH_INVALID:
