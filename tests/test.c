@@ -636,8 +636,8 @@ describe(rydb_open) {
           {"collision_resolution", "3", RYDB_ERROR_FILE_INVALID, "invalid"},
           {"link_pair_count", "9000", RYDB_ERROR_FILE_INVALID, "invalid"},
         };
-        
-        for(unsigned i=0; i< sizeof(metachecks)/sizeof(metachecks[0]); i++) {
+        static unsigned i;
+        for(i=0; i< sizeof(metachecks)/sizeof(metachecks[0]); i++) {
           char testname[128];
           struct metaload_test_s *chk = &metachecks[i];
           sprintf(testname, "fails on bad %s", chk->name);
