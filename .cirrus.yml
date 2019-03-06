@@ -7,8 +7,8 @@ linux_task:
     - apt-get update
     - apt-get install -y --no-install-recommends valgrind ccache
   build_script: make CC=gcc all
-  tests_script: make CC=gcc test
-  test_valgrind: make CC=gcc valgrind
+  test_script: make CC=gcc test
+  test_valgrind_script: make CC=gcc valgrind
   test_optimized_script: make CC=gcc O=3 test
   #coveralls_script:
   #  - apt-get update
