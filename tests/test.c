@@ -1692,10 +1692,12 @@ describe(indexing) {
           .store_hash = 1,
           .collision_resolution = RYDB_OPEN_ADDRESSING
         };
-        rydb_config_index_hashtable_t cf2 = cf;
-        cf2.store_value = 1;
         rydb_config_add_index_hashtable(db, "primary", 0, 5, RYDB_INDEX_UNIQUE, &cf);
-        rydb_config_add_index_hashtable(db, "secondary", 0, 5, RYDB_INDEX_DEFAULT, &cf2);
+        cf.store_value = 1;
+        rydb_config_add_index_hashtable(db, "secondary", 0, 5, RYDB_INDEX_DEFAULT, &cf);
+        cf.store_hash = 0;
+        cf.rehash = RYDB_REHASH_ALL_AT_ONCE;
+        rydb_config_add_index_hashtable(db, "tertiary", 0, 5, RYDB_INDEX_DEFAULT, &cf);
         assert_db_ok(db, rydb_open(db, path, "test"));
         char str[128];
         char *fmt = "%izzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
@@ -1713,21 +1715,25 @@ describe(indexing) {
           //rydb_hashtable_print(db, &db->index[0]);
           for(int j=1; j<=numrows; j++) {
             sprintf(str, fmt, j);
-            rydb_row_t found_row, found_row2;
-            int        rc, rc2;
+            rydb_row_t found_row, found_row2, found_row3;
+            int        rc, rc2, rc3;
             //printf("find %s\n", str);
             rc = rydb_find_row_str(db, str, &found_row);
             rc2 = rydb_index_find_row_str(db, "secondary", str, &found_row2);
+            rc3 = rydb_index_find_row_str(db, "tertiary", str, &found_row3);
             assert_db(db);
             if(j <= i) {
               asserteq(rc, 0);
               asserteq(rc2, 0);
+              asserteq(rc3, 0);
             }
             else {
               assert(rc);
               assert(rc2);
+              assert(rc3);
               asserteq(found_row.num, j);
               asserteq(found_row2.num, j);
+              asserteq(found_row3.num, j);
             }
           }
         }
