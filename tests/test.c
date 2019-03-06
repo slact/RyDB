@@ -80,7 +80,7 @@ describe(config) {
     }
     
     it("fails if db is already open") {
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "config_test"));
       assert_db_fail(db, rydb_config_row(db, 10, 4), RYDB_ERROR_DATABASE_OPEN, "open .*cannot be configured");
     }
@@ -171,7 +171,7 @@ describe(config) {
       }
     }
     it("fails if db is already open") {
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "config_test"));
       assert_db_fail(db, rydb_config_add_row_link(db, "next", "prev"), RYDB_ERROR_DATABASE_OPEN, "open .*cannot be configured");
     }
@@ -270,7 +270,7 @@ describe(config) {
       reset_malloc();
     }
     it("fails if db is already open") {
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "config_test"));
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, NULL), RYDB_ERROR_DATABASE_OPEN, "open and cannot be configured");
     }
@@ -370,7 +370,7 @@ describe(config) {
       asserteq(db->config.revision, 0);
     }
     it("fails if db is already open") {
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "config_test"));
       assert_db_fail(db, rydb_config_revision(db, RYDB_REVISION_MAX + 1), RYDB_ERROR_DATABASE_OPEN);
     }
@@ -401,7 +401,7 @@ describe(sizing) {
       assert_db(db);
       strcpy(path, "test.db.XXXXXX");
       mkdtemp(path);
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "test"));
     }
     after_each() {
@@ -515,7 +515,8 @@ describe(errors_and_debug) {
     rydb_print_stored_data(db);
     assert_db_ok(db, rydb_transaction_start(db));
     assert_db_ok(db, rydb_row_update(db, 1, "hey", 3, 3));
-    assert_db_ok(db, rydb_row_update(db, 1, "zzzzzzzzzzzzzzzzzzzzzzzzzz", 0, ROW_LEN));
+    assert_db_ok(db, rydb_row_update(db, 1, "123456789012345678901234567890", 0, ROW_LEN));
+    rydb_print_stored_data(db);
     assert_db_ok(db, rydb_row_insert_str(db,  "beep"));
     assert_db_ok(db, rydb_row_delete(db,  3));
     assert_db_ok(db, rydb_row_swap(db, 1, 2));
@@ -579,7 +580,7 @@ describe(rydb_open) {
   }
   
   it("fails to do stuff when not open") {
-    config_testdb(db);
+    config_testdb(db, 0);
     assert_db_fail(db, rydb_row_insert_str(db, "hello"), RYDB_ERROR_DATABASE_CLOSED);
     
   }
@@ -611,12 +612,12 @@ describe(rydb_open) {
     }
     
     it("writes and reopens metadata") {
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "test"));
       rydb_close(db);
       
       db = rydb_new();
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_config_add_row_link(db, "front", "back"));
       assert_db_fail(db, rydb_open(db, path, "test"), RYDB_ERROR_CONFIG_MISMATCH, "[Mm]ismatch.*link.*count");
       rydb_close(db);
@@ -629,14 +630,14 @@ describe(rydb_open) {
     it("saves and reloads the hash key correctly") {
       char hashkey[16];
       int hashkey_quality;
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "test"));
       memcpy(hashkey, db->config.hash_key.value, 16);
       hashkey_quality = db->config.hash_key.quality;
       rydb_close(db);
       
       db = rydb_new();
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "test"));
       assert(memcmp(db->config.hash_key.value, hashkey, 16) == 0);
       assert(db->config.hash_key.quality == hashkey_quality);
@@ -647,7 +648,7 @@ describe(rydb_open) {
           db = rydb_new();
           strcpy(path, "test.db.XXXXXX");
           mkdtemp(path);
-          config_testdb(db);
+          config_testdb(db, 0);
           assert_db_ok(db, rydb_open(db, path, "test"));
         }
         after_each() {
@@ -739,7 +740,7 @@ describe(files) {
     db = rydb_new();
     strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
-    config_testdb(db);
+    config_testdb(db, 0);
     rydb_config_add_index_hashtable(db, "banana", 5, 4, RYDB_INDEX_UNIQUE, NULL);
   }
   after_each() {
@@ -761,7 +762,7 @@ describe(concurrency) {
     db = rydb_new();
     strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
-    config_testdb(db);
+    config_testdb(db, 0);
   }
   after_each() {
     rmdir_recursive(path);
@@ -776,7 +777,7 @@ describe(concurrency) {
   it("allows only one writer") {
     assert_db_ok(db, rydb_open(db, path, "test"));
     rydb_t *db2 = rydb_new();
-    config_testdb(db2);
+    config_testdb(db2, 0);
     assert_db_fail(db2, rydb_open(db2, path, "test"), RYDB_ERROR_LOCK_FAILED);
     rydb_close(db);
     rydb_close(db2);
@@ -810,7 +811,7 @@ describe(row_operations) {
     db = rydb_new();
     strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
-    config_testdb(db);
+    config_testdb(db, 0);
     assert_db_ok(db, rydb_open(db, path, "test"));
   }
   after_each() {
@@ -825,7 +826,7 @@ describe(row_operations) {
       rydb_close(db);
       
       db = rydb_new();
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "test"));
       assert_data_match(db, rowdata, nrows - 2);  
       
@@ -1055,7 +1056,7 @@ describe(transactions) {
     db = rydb_new();
     strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
-    config_testdb(db);
+    config_testdb(db, 0);
     assert_db_ok(db, rydb_open(db, path, "test"));
     assert_db_insert_rows(db, rowdata, nrows);
   }
@@ -1182,7 +1183,7 @@ describe(transactions) {
       it("fails when UPDATE2 is preceded by nothing") {
         rydb_close(db);
         db = rydb_new();
-        config_testdb(db);
+        config_testdb(db, 0);
         assert_db_ok(db, rydb_open(db, path, "UPDATE2_test"));
         rydb_row_t row = {.type = RYDB_ROW_CMD_UPDATE2, .data="abababa", .len=4, .num=3};
         assert_db_ok(db, rydb_transaction_start(db));
@@ -1242,7 +1243,7 @@ describe(transactions) {
       it("fails when SWAP2 is preceded by nothing") {
         rydb_close(db);
         db = rydb_new();
-        config_testdb(db);
+        config_testdb(db, 0);
         assert_db_ok(db, rydb_open(db, path, "SWAP2_test"));
         rydb_row_t row = {.type = RYDB_ROW_CMD_SWAP2, .data="abababa", .len=4, .num=3};
         assert_db_ok(db, rydb_transaction_start(db));
@@ -1374,7 +1375,7 @@ describe(transactions) {
       rydb_close(db);
       
       db = rydb_new();
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "test"));
       //rydb_print_stored_data(db);
       
@@ -1388,7 +1389,7 @@ describe(transactions) {
       rydb_close(db);
       
       db = rydb_new();
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "test"));
       //rydb_print_stored_data(db);
       
@@ -1411,7 +1412,7 @@ describe(transactions) {
       rydb_close(db);
       
       db = rydb_new();
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "test"));
       char *results[] = {
         rowdata[1], NULL, rowdata[2], rowdata[3], NULL, rowdata[4], "7.an insertion", "yeaps"
@@ -1431,7 +1432,7 @@ describe(transactions) {
       rydb_close(db);
       
       db = rydb_new();
-      config_testdb(db);
+      config_testdb(db, 0);
       assert_db_ok(db, rydb_open(db, path, "test"));
       //rydb_print_stored_data(db);
       assert_data_match(db, rowdata, nrows);
@@ -1551,11 +1552,13 @@ describe(hashtable) {
           assert_db_ok(db, rydb_open(db, path, "test"));
           char str[128], searchstr[128];
           const char *fmt = "%i,%i!%i|%i&%i*%i~%i@%i$%i*%i!";
+          asserteq(rydb_find_row_str(db, "nil", NULL), 0);
+          
           int maxrows = 1000 * repeat_multiplier;
           for(int i=0; i<maxrows; i++) {
             //printf("i: %i\n", i);
             sprintf(str, fmt, i, i, i, i, i, i, i, i, i, i);
-            memset(&str[ROW_LEN-2], '\00', 128 - ROW_LEN);
+            memset(&str[ROW_LEN], '\00', 128 - ROW_LEN);
             assert_db_ok(db, rydb_row_insert_str(db, str));
             //rydb_hashtable_print(db, &db->index[0]);
             
@@ -1565,7 +1568,7 @@ describe(hashtable) {
             }
             for(int j=0; j<=i; j++) {
               sprintf(searchstr, fmt, j, j, j, j, j, j, j, j, j, j);
-              memset(&searchstr[ROW_LEN-2], '\00', 128 - ROW_LEN);
+              memset(&searchstr[ROW_LEN], '\00', 128 - ROW_LEN);
               rydb_row_t found_row, found_row2;
               //raise(SIGSTOP);
               //printf("i: %i, j: %i, finding \"%s\"\n", i, j, &searchstr[start]);
@@ -1650,7 +1653,57 @@ describe(hashtable) {
   }
 }
 
+describe(storage) {
+  static rydb_t *db;
+  static char path[64];
+  static char *data;
+  static int  maxlen = 12000;
+  before_each() {
+    db = rydb_new();
+    strcpy(path, "test.db.XXXXXX");
+    mkdtemp(path);
+    data = malloc(maxlen);
+  }
+  after_each() {
+    rydb_close(db);
+    rmdir_recursive(path);
+    free(data);
+  }
+  
+  static char testname[128];
+  static int rowlen;
 
+  static int rownum = 100;
+  for(rowlen = 1; rowlen < maxlen; rowlen+=rowlen< 15 ? 1 : (rowlen<50 ? 9 : 613)) {
+    sprintf(testname, "storage with row length %i", rowlen);
+    test(testname) {
+      config_testdb(db, rowlen);
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      for(int i=1; i<=rownum; i++) {
+        data_fill(data, rowlen, i);
+        assert_db_ok(db, rydb_row_insert_str(db, data));
+      }
+      for(int i=1; i<=rownum + 4; i++) {
+        rydb_row_t row;
+        int rc = rydb_find_row_at(db, i, &row);
+        //printf("%i\n", i);
+        if(i<=rownum) {
+          data_fill(data, rowlen, i);
+          asserteq(rc, 1);
+          
+          asserteq(memcmp(data, row.data, rowlen), 0);
+        }
+        else if(i == rownum + 1) {
+          asserteq(rc, 1);
+          asserteq(row.type, RYDB_ROW_EMPTY);
+        }
+        else {
+          asserteq(rc, 0);
+        }
+      }
+    }
+  }
+}
 int set_test_options(int *argc, char **argv) {
   int i = 1;
   while(i < *argc) {

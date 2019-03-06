@@ -73,10 +73,18 @@ int rydb_reopen(rydb_t **db) {
   return rydb_open(*db, path, name);
 }
 
-void config_testdb(rydb_t *db) {
-  assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
-  assert_db_ok(db, rydb_config_add_index_hashtable(db, "foo", 5, 5, RYDB_INDEX_DEFAULT, NULL));
-  assert_db_ok(db, rydb_config_add_index_hashtable(db, "bar", 10, 5, RYDB_INDEX_DEFAULT, NULL));
+void config_testdb(rydb_t *db, int rowlen) {
+  if(rowlen==0) {
+    rowlen = ROW_LEN;
+  }
+  int row_index_len = rowlen < ROW_INDEX_LEN ? rowlen : ROW_INDEX_LEN;
+  assert_db_ok(db, rydb_config_row(db, rowlen, row_index_len));
+  if(rowlen > 10) {
+    assert_db_ok(db, rydb_config_add_index_hashtable(db, "foo", 5, 5, RYDB_INDEX_DEFAULT, NULL));
+  }
+  if(rowlen > 15) {
+    assert_db_ok(db, rydb_config_add_index_hashtable(db, "bar", 10, 5, RYDB_INDEX_DEFAULT, NULL));
+  }
   assert_db_ok(db, rydb_config_add_row_link(db, "next", "prev"));
   assert_db_ok(db, rydb_config_add_row_link(db, "fwd", "rew"));
 }
@@ -244,6 +252,21 @@ char *argv_extract2(int *argc, char **argv, off_t i) {
   }
   *argc-=2;
   return ret;
+}
+
+void data_fill(char *buf, int len, int i) {
+  char chunk[32];
+  sprintf(chunk, "%i ", i);
+  char *end = &buf[len];
+  char *cur;
+  size_t clen = strlen(chunk);
+  for(cur = buf; &cur[clen] < &buf[len]; cur+=clen) {
+    memcpy(cur, chunk, clen);
+  }
+  if(end - cur > 0) {
+    memcpy(cur, chunk, end - cur);
+  }
+  end[0]='\00';
 }
 
 const uint8_t vectors_siphash_2_4_64[64][8] = {

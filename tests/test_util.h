@@ -22,7 +22,8 @@
 int is_little_endian(void);
 
 #define ROW_LEN 20
-void config_testdb(rydb_t *db);
+#define ROW_INDEX_LEN 5
+void config_testdb(rydb_t *db, int rowlen);
 
 void test_errhandler(rydb_t *db, rydb_error_t *err, void *privdata);
 
@@ -39,6 +40,8 @@ char intercepted_printf_buf[4096];
 int rydb_intercept_printfs(void);
 int rydb_unintercept_printfs(void);
 #endif
+
+void data_fill(char *buf, int len, int i);
 
 int rydb_reopen(rydb_t **db);
 
