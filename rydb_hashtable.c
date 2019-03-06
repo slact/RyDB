@@ -1017,23 +1017,6 @@ int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_r
   hashtable_release(header);
   return 1;
 }
-int rydb_index_hashtable_update_add_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end) {
-  
-  (void)(db);
-  (void)(idx);
-  (void)(row);
-  (void)(start);
-  (void)(end);
-  return 1; 
-}
-int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end) {
-  (void)(db);
-  (void)(idx);
-  (void)(row);
-  (void)(start);
-  (void)(end);
-  return 1;
-}
 
 void rydb_bucket_print(const rydb_index_t *idx, const rydb_hashbucket_t *bucket) {
   rydb_config_index_t *cf = idx->config;

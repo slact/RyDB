@@ -14,8 +14,6 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *idx_
 
 int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
 int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
-int rydb_index_hashtable_update_add_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end);
-int rydb_index_hashtable_update_remove_row(rydb_t *db,  rydb_index_t *idx, rydb_stored_row_t *row, off_t start, off_t end);
 
 int rydb_hashtable_reserve(const rydb_index_t *idx);
 int rydb_hashtable_release(const rydb_index_t *idx);
