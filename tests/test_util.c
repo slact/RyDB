@@ -89,7 +89,7 @@ int ___rydb_failed_as_expected(rydb_t *db, char *callstr, int rc, rydb_error_cod
     return 0;
   }
   if(!err) {
-    snprintf(errmsg_result, MAXERRLEN, "Expected %s to fail with error %s [%i], but failed without setting an errir instead", callstr, rydb_error_code_str(expected_error_code), expected_error_code);
+    snprintf(errmsg_result, MAXERRLEN, "Expected %s to fail with error %s [%i], but failed without setting an error instead", callstr, rydb_error_code_str(expected_error_code), expected_error_code);
     return 0;
   }
   char buf[900];
