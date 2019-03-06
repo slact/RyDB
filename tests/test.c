@@ -1619,6 +1619,5 @@ int main(int argc, char **argv) {
   if(!set_test_options(&argc, argv)) {
     return 1;
   }
-  printf("okay...\n");
   return snow_main_function(argc, argv);
 }
