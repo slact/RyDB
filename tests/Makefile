@@ -20,7 +20,7 @@ CALLGRIND_FLAGS = --tool=callgrind --dump-instr=yes --collect-jumps=yes  --colle
 
 TEST = *
 TIMER = 
-MULTIPLIER = 0.1
+MULTIPLIER = 1
 
 .PHONY: default all clean force run coverage coverage-gcc
 
@@ -58,7 +58,7 @@ static: default
 
 
 run:
-	./$(TARGET) $(TIMER) "$(TEST)"
+	./$(TARGET) $(TIMER) --multiplier $(MULTIPLIER) "$(TEST)"
 
 debug: default
 	kdbg ./$(TARGET) -a '--rerun-failed $(TIMER) "$(TEST)"'

@@ -12,7 +12,7 @@ COLOR = always
 COLOR_OPT = -fdiagnostics-color=${COLOR}
 CFLAGS = -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC -DRYDB_DEBUG
 VALGRIND_FLAGS = --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
-SANITIZE_FLAGS = -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum -fstack-protector
+SANITIZE_FLAGS = -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum -fstack-protector -Wno-error=unused-command-line-argument
 CALLGRIND_FLAGS = --tool=callgrind --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=callgrind-rydb-%p.out
 ANALYZE_FLAGS = -maxloop 100 -enable-checker alpha.clone -enable-checker alpha.core -enable-checker alpha.deadcode -enable-checker alpha.security -enable-checker alpha.unix -enable-checker nullability
 CLANG_TIDY_CHECKS = bugprone-*, readability-*, performance-*, google-*, cert-*, -cert-err34-c, -google-readability-todo, -clang-diagnostic-unused-function
@@ -78,13 +78,6 @@ clang:	default
 analyze:clean
 	scan-build $(ANALYZE_FLAGS) --view -stats $(MAKE) O=$(O) CC=clang CFLAGS="$(CFLAGS)" CCACHE=""
 
-sanitize:CC = clang
-sanitize:COLOR_OPT = ""
-sanitize:LDFLAGS = -fsanitize=address
-sanitize:LIBS += -lubsan
-sanitize:CFLAGS += $(SANITIZE_FLAGS)
-sanitize:default
-
 tidy:   clean default
 	clang-tidy -checks="$(CLANG_TIDY_CHECKS)" *.c
 
@@ -126,9 +119,17 @@ coverage:
 debug:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR) debug
 valgrind:	$(DNAME)
-	$(MAKE) -C $(TEST_DIR) valgrind
-sanitize:	sanitize
+	$(MAKE) -C $(TEST_DIR) MULTIPLIER=0.1 valgrind
+
+sanitize:CC = clang
+sanitize:COLOR_OPT = ""
+sanitize:LDFLAGS = -fsanitize=address
+sanitize:LIBS += -lubsan
+sanitize:CFLAGS += $(SANITIZE_FLAGS) $(SANITIZE_EXTRA_FLAGS)
+sanitize:default
+sanitize:
 	$(MAKE) -C $(TEST_DIR) sanitize
-	$(MAKE) -C $(TEST_DIR) run
+	$(MAKE) -C $(TEST_DIR) MULTIPLIER=0.4 run
+
 callgrind: $(DNAME)
 	$(MAKE) -C $(TEST_DIR) callgrind
