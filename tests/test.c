@@ -543,11 +543,10 @@ describe(rydb_open) {
   }
   after_each() {
     reset_malloc();
-    rydb_close(db);
+    if(db) rydb_close(db);
     rmdir_recursive(path);
   }
   it("fails if row length is not configured") {
-    db = rydb_new();
     assert_db_fail(db, rydb_open(db, path, "open_test"), RYDB_ERROR_BAD_CONFIG, "row length not set");
   }
   it("gracefully fails when out of memory") {
@@ -1751,6 +1750,8 @@ describe(storage) {
   static int rowlen;
 
   static int max_rownum = 500;
+  max_rownum *= repeat_multiplier;
+  
   for(rowlen = 1; rowlen < maxlen; rowlen+=rowlen< 15 ? 1 : (rowlen<50 ? 9 : 613)) {
     sprintf(testname, "storage with row length %i", rowlen);
     test(testname) {
