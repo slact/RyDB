@@ -3,11 +3,13 @@ linux_task:
     image: gcc:latest
   env:
     CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
-    
-  build_script: make CCACHE="" CC=gcc all
-  tests_script: make CCACHE="" CC=gcc test
-  test_optimized_script: make CCACHE="" CC=gcc O=3 test
+  setup_script:
     - apt-get update
+    - apt-get install -y --no-install-recommends valgrind ccache
+  build_script: make CC=gcc all
+  tests_script: make CC=gcc test
+  test_valgrind: make CC=gcc valgrind
+  test_optimized_script: make CC=gcc O=3 test
   #coveralls_script:
   #  - apt-get update
   #  - apt-get install -y --no-install-recommends python python-dev
