@@ -221,6 +221,10 @@ describe(config) {
       cf.store_hash = 0;
       assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Rr]equires store_hash");
       
+      cf.rehash = RYDB_REHASH_DEFAULT;
+      cf.store_hash = 0;
+      assert_db_fail(db, rydb_config_add_index_hashtable(db, "foobar", 5, 5, RYDB_INDEX_DEFAULT, &cf), RYDB_ERROR_BAD_CONFIG, "[Rr]equires store_hash");
+      
     }
     it("fails if index name is weird") {
       char bigname[RYDB_NAME_MAX_LEN+10];
@@ -1465,50 +1469,55 @@ describe(hashtable) {
   static int hashfunction[] = {
     RYDB_HASH_SIPHASH, RYDB_HASH_CRC32, RYDB_HASH_NOHASH
   };
-  static int t, start;
-  for(start=0; start <=9; start+=9) {
-    for(t=0; t<3; t++) {
-      sprintf(testname, "finding rows (index start at %i) in %s hashtable", start, rydb_hashfunction_to_str(hashfunction[t]));
-      test(testname) {
-        rydb_config_index_hashtable_t cf = {
-          .hash_function = hashfunction[t],
-          .store_value = 0,
-          .store_hash = 1,
-          .collision_resolution = RYDB_OPEN_ADDRESSING
-        };
-        rydb_config_index_hashtable_t cf2 = cf;
-        cf2.store_value = 1;
-        rydb_config_add_index_hashtable(db, "primary", start, 5, RYDB_INDEX_UNIQUE, &cf);
-        rydb_config_add_index_hashtable(db, "secondary", start, 5, RYDB_INDEX_DEFAULT, &cf2);
-        assert_db_ok(db, rydb_open(db, path, "test"));
-        char str[128], searchstr[128];
-        const char *fmt = "%i,%i!%i|%i&%i*%i~%i@%i$%i*%i!";
-        int maxrows = 1000 * repeat_multiplier;
-        for(int i=0; i<maxrows; i++) {
-          //printf("i: %i\n", i);
-          sprintf(str, fmt, i, i, i, i, i, i, i, i, i, i);
-          memset(&str[ROW_LEN-2], '\00', 128 - ROW_LEN);
-          assert_db_ok(db, rydb_row_insert_str(db, str));
-          //rydb_hashtable_print(db, &db->index[0]);
-          for(int j=0; j<=i; j++) {
-            sprintf(searchstr, fmt, j, j, j, j, j, j, j, j, j, j);
-            memset(&searchstr[ROW_LEN-2], '\00', 128 - ROW_LEN);
-            rydb_row_t found_row, found_row2;
-            //raise(SIGSTOP);
-            //printf("i: %i, j: %i, finding \"%s\"\n", i, j, &searchstr[start]);
-            int found = rydb_find_row_str(db, &searchstr[start], &found_row);
-            int found_secondary = rydb_index_find_row_str(db, "secondary", &searchstr[start], &found_row2);
-            if (j <= i) {
-              asserteq(found, 1);
-              asserteq(found_secondary, 1);
-              asserteq(strcmp(searchstr, found_row.data), 0);
-              asserteq(strcmp(searchstr, found_row2.data), 0);
-              asserteq(found_row.num, j+1);
-              asserteq(found_row2.num, j+1);
-            }
-            else {
-              asserteq(found, 0);
-              asserteq(found_secondary, 0);
+  static int t, start, rh;
+  static uint8_t rehash[] = {RYDB_REHASH_ALL_AT_ONCE, RYDB_REHASH_MANUAL, RYDB_REHASH_INCREMENTAL};
+  static char   *rehash_name[] = {"all-at-once", "manual", "incremental"};
+  for(rh=0; rh<3; rh++) {
+    for(start=0; start <=9; start+=9) {
+      for(t=0; t<3; t++) {
+        sprintf(testname, "finding rows (index start at %i) in %s %s-rehash hashtable", start, rydb_hashfunction_to_str(hashfunction[t]), rehash_name[rh]);
+        test(testname) {
+          rydb_config_index_hashtable_t cf = {
+            .rehash = rehash[rh],
+            .hash_function = hashfunction[t],
+            .store_value = 0,
+            .store_hash = 1,
+            .collision_resolution = RYDB_OPEN_ADDRESSING
+          };
+          rydb_config_index_hashtable_t cf2 = cf;
+          cf2.store_value = 1;
+          assert_db_ok(db, rydb_config_add_index_hashtable(db, "primary", start, 5, RYDB_INDEX_UNIQUE, &cf));
+          assert_db_ok(db, rydb_config_add_index_hashtable(db, "secondary", start, 5, RYDB_INDEX_DEFAULT, &cf2));
+          assert_db_ok(db, rydb_open(db, path, "test"));
+          char str[128], searchstr[128];
+          const char *fmt = "%i,%i!%i|%i&%i*%i~%i@%i$%i*%i!";
+          int maxrows = 1000 * repeat_multiplier;
+          for(int i=0; i<maxrows; i++) {
+            //printf("i: %i\n", i);
+            sprintf(str, fmt, i, i, i, i, i, i, i, i, i, i);
+            memset(&str[ROW_LEN-2], '\00', 128 - ROW_LEN);
+            assert_db_ok(db, rydb_row_insert_str(db, str));
+            //rydb_hashtable_print(db, &db->index[0]);
+            for(int j=0; j<=i; j++) {
+              sprintf(searchstr, fmt, j, j, j, j, j, j, j, j, j, j);
+              memset(&searchstr[ROW_LEN-2], '\00', 128 - ROW_LEN);
+              rydb_row_t found_row, found_row2;
+              //raise(SIGSTOP);
+              //printf("i: %i, j: %i, finding \"%s\"\n", i, j, &searchstr[start]);
+              int found = rydb_find_row_str(db, &searchstr[start], &found_row);
+              int found_secondary = rydb_index_find_row_str(db, "secondary", &searchstr[start], &found_row2);
+              if (j <= i) {
+                asserteq(found, 1);
+                asserteq(found_secondary, 1);
+                asserteq(strcmp(searchstr, found_row.data), 0);
+                asserteq(strcmp(searchstr, found_row2.data), 0);
+                asserteq(found_row.num, j+1);
+                asserteq(found_row2.num, j+1);
+              }
+              else {
+                asserteq(found, 0);
+                asserteq(found_secondary, 0);
+              }
             }
           }
         }
