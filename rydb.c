@@ -2043,7 +2043,9 @@ void rydb_print_stored_data(rydb_t *db) {
     }
     char *trail = "";
     rowtype = rydb_rowtype_str(cur->type);
-    rowtype = &rowtype[strlen("RYDB_ROW_")];
+    if(rowtype[0]=='R') {
+      rowtype = &rowtype[strlen("RYDB_ROW_")];
+    }
     char *command = " ";
     
     if(memcmp(rowtype, "CMD_", 4) == 0) {
