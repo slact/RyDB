@@ -573,6 +573,7 @@ int rydb_force_unlock(rydb_t *db) {
   lock->write = 0;
   lock->read = 0;
   lock->client = 0;
+  return 1;
 }
 
 int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
@@ -1926,30 +1927,37 @@ int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data
   return 1;
 }
 
-int rydb_find_row_str(rydb_t *db, char *val, rydb_row_t *row) {
- return rydb_find_row(db, val, strlen(val), row);
+int rydb_find_row(rydb_t *db, const char *val, size_t len, rydb_row_t *result) {
+  return rydb_index_find_row(db, "primary", val, len, result);
+}
+int rydb_find_row_str(rydb_t *db, const char *str, rydb_row_t *result) {
+  return rydb_index_find_row_str(db, "primary", str, result);
 }
 
-int rydb_find_row(rydb_t *db, char *val, size_t len, rydb_row_t *result) {
-  int             indexnum = rydb_find_index_num(db, "primary");
+int rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *val, rydb_row_t *row) {
+ return rydb_index_find_row(db, index_name, val, strlen(val), row);
+}
+
+int rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_row_t *result) {
+  int             indexnum = rydb_find_index_num(db, index_name);
   rydb_index_t   *idx = &db->index[indexnum];
-  char           *searchval;
-  int             allocd = 0;
+  const char     *searchval;
+  char           *allocd_searchval = NULL;
   size_t          indexed_data_len = idx->config->len;
   if(len < indexed_data_len) {
-    if ((searchval = calloc(1, indexed_data_len)) == NULL) {
+    if ((allocd_searchval = calloc(1, indexed_data_len)) == NULL) {
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Cannot allocate memory for search string");
       return 0;
     }
-    allocd = 1;
-    memcpy(searchval, val, indexed_data_len);
+    memcpy(allocd_searchval, val, indexed_data_len);
+    searchval = allocd_searchval;
   }
   else {
     searchval = val;
   }
   switch(idx->config->type) {
     case RYDB_INDEX_HASHTABLE:
-      if(allocd) free(searchval);
+      if(allocd_searchval) free(allocd_searchval);
       return rydb_index_hashtable_find_row(db, idx, searchval, result);
     case RYDB_INDEX_BTREE:
       assert(0); //not implemented
@@ -1958,7 +1966,7 @@ int rydb_find_row(rydb_t *db, char *val, size_t len, rydb_row_t *result) {
       assert(0); //not supported
       break;
   }
-  if(allocd) free(searchval);
+  if(allocd_searchval) free(allocd_searchval);
   return 0;
 }
 

@@ -291,11 +291,15 @@ int rydb_transaction_start(rydb_t *db);
 int rydb_transaction_finish(rydb_t *db);
 int rydb_transaction_cancel(rydb_t *db);
 
-int rydb_find_row(rydb_t *db, char *val, size_t len, rydb_row_t *result);
-int rydb_find_row_str(rydb_t *db, char *str, rydb_row_t *result);
+//find by primary index
+int rydb_find_row(rydb_t *db, const char *val, size_t len, rydb_row_t *result);
+int rydb_find_row_str(rydb_t *db, const char *str, rydb_row_t *result);
+int rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_row_t *result);
+int rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *str, rydb_row_t *result);
 
 int rydb_close(rydb_t *db); //also free()s db
 int rydb_delete(rydb_t *db); //deletes all files in an open db
+int rydb_force_unlock(rydb_t *db);
 
 
 #endif //_RYDB_H
