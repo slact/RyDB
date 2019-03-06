@@ -6,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 #include <signal.h>
+#include <stdbool.h>
 
 #define PRINT_DBG 0
 
