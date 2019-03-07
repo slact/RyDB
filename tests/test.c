@@ -1585,7 +1585,7 @@ describe(indexing) {
   }
   it("fails on unknown index name") {
     assert_db_ok(db, rydb_open(db, path, "test"));
-    assert_db_fail(db, rydb_index_find_row_str(db, "bananaindex", "match", NULL), RYDB_ERROR_INDEX_NOT_FOUND, "[Ii]ndex \\w+ does not exist");
+    assert_db_fail(db, rydb_index_find_row_str(db, "bananaindex", "match", NULL), RYDB_ERROR_INDEX_NOT_FOUND, "[Ii]ndex .+ does not exist");
   }
   
   subdesc(hashtable) {
