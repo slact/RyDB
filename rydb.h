@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include "rbtree.h"
 
 #define RYDB_FORMAT_VERSION 1
@@ -261,27 +262,26 @@ struct rydb_s {
 };// rydb_t
 
 
-int rydb_global_config_allocator(rydb_allocator_t *);
+void rydb_global_config_allocator(rydb_allocator_t *);
 rydb_t *rydb_new(void);
 
-int rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len);
-int rydb_config_revision(rydb_t *db, unsigned revision);
-int rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name);
-int rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, uint8_t flags, rydb_config_index_hashtable_t *advanced_config);
+bool rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len);
+bool rydb_config_revision(rydb_t *db, unsigned revision);
+bool rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *reverse_link_name);
+bool rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned start, unsigned len, uint8_t flags, rydb_config_index_hashtable_t *advanced_config);
 
-int rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void *), void *pd);
+bool rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void *), void *pd);
 
-int rydb_open(rydb_t *db, const char *path, const char *name);
+bool rydb_open(rydb_t *db, const char *path, const char *name);
 
 
 rydb_row_t *rydb_row_find(rydb_t *db, const char *id); //return 1 if found, 0 if not found
 
-int rydb_row_safe_to_write_directly_check(rydb_t *db, rydb_row_t *row, uint16_t start, uint16_t len);
-int rydb_row_insert(rydb_t *db, const char *data, uint16_t len);
-int rydb_row_insert_str(rydb_t *db, const char *data);
-int rydb_row_delete(rydb_t *db, rydb_rownum_t rownum);
-int rydb_row_update(rydb_t *db, rydb_rownum_t rownum, const char *data, uint16_t start, uint16_t len);
-int rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2);
+bool rydb_row_insert(rydb_t *db, const char *data, uint16_t len);
+bool rydb_row_insert_str(rydb_t *db, const char *data);
+bool rydb_row_delete(rydb_t *db, rydb_rownum_t rownum);
+bool rydb_row_update(rydb_t *db, rydb_rownum_t rownum, const char *data, uint16_t start, uint16_t len);
+bool rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2);
 
 rydb_error_t *rydb_error(const rydb_t *db);
 int rydb_error_print(const rydb_t *db);
@@ -289,25 +289,25 @@ int rydb_error_fprint(const rydb_t *db, FILE *file);
 int rydb_error_snprint(const rydb_t *db, char *buf, size_t buflen);
 void rydb_error_clear(rydb_t *db);
 
-int rydb_transaction_start(rydb_t *db);
-int rydb_transaction_finish(rydb_t *db);
-int rydb_transaction_cancel(rydb_t *db);
+bool rydb_transaction_start(rydb_t *db);
+bool rydb_transaction_finish(rydb_t *db);
+bool rydb_transaction_cancel(rydb_t *db);
 
 //row by rownum
-int rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row);
+bool rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row);
 
 //find by primary index
-int rydb_find_row(rydb_t *db, const char *val, size_t len, rydb_row_t *result);
-int rydb_find_row_str(rydb_t *db, const char *str, rydb_row_t *result);
-int rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_row_t *result);
-int rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *str, rydb_row_t *result);
+bool rydb_find_row(rydb_t *db, const char *val, size_t len, rydb_row_t *result);
+bool rydb_find_row_str(rydb_t *db, const char *str, rydb_row_t *result);
+bool rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_row_t *result);
+bool rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *str, rydb_row_t *result);
 
 //index-specific stuff
-int rydb_index_rehash(rydb_t *db, const char *index_name);
+bool rydb_index_rehash(rydb_t *db, const char *index_name);
 
-int rydb_close(rydb_t *db); //also free()s db
-int rydb_delete(rydb_t *db); //deletes all files in an open db
-int rydb_force_unlock(rydb_t *db);
+bool rydb_close(rydb_t *db); //also free()s db
+bool rydb_delete(rydb_t *db); //deletes all files in an open db
+bool rydb_force_unlock(rydb_t *db);
 
 
 #endif //_RYDB_H

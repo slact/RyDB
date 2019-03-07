@@ -62,40 +62,40 @@
 #define RYDB_REVERSE_EACH_CMD_ROW(db, cur) for(rydb_stored_row_t *cur = rydb_rownum_to_row(db, db->cmd_next_rownum - 1); cur >= rydb_rownum_to_row(db, db->data_next_rownum); cur = rydb_row_next(cur, db->stored_row_size, -1))
 #define RYDB_EACH_ROW(db, cur) for(rydb_stored_row_t *cur = (void *)db->data.data.start; (char *)cur <= (char *)db->data.file.end - db->stored_row_size; cur = rydb_row_next(cur, db->stored_row_size, 1))
 
-int rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f);
-int rydb_file_open_index(rydb_t *db, rydb_index_t *idx);
-int rydb_file_open_index_map(rydb_t *db, rydb_index_t *idx);
+bool rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f);
+bool rydb_file_open_index(rydb_t *db, rydb_index_t *idx);
+bool rydb_file_open_index_map(rydb_t *db, rydb_index_t *idx);
 
-int rydb_file_close(rydb_t *db, rydb_file_t *f);
-int rydb_file_close_index(rydb_t *db, rydb_index_t *idx);
-int rydb_file_close_data(rydb_t *db, rydb_index_t *idx);
+bool rydb_file_close(rydb_t *db, rydb_file_t *f);
+bool rydb_file_close_index(rydb_t *db, rydb_index_t *idx);
+bool rydb_file_close_data(rydb_t *db, rydb_index_t *idx);
 
-int rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz);
-int rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz);
+bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz);
+bool rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz);
 
 void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
 
-int rydb_ensure_open(rydb_t *db);
-int rydb_ensure_closed(rydb_t *db, const char *msg);
+bool rydb_ensure_open(rydb_t *db);
+bool rydb_ensure_closed(rydb_t *db, const char *msg);
 
-int rydb_stored_row_in_range(rydb_t *db, rydb_stored_row_t *row);
-int rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum); //save an error on failure
+bool rydb_stored_row_in_range(rydb_t *db, rydb_stored_row_t *row);
+bool rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum); //save an error on failure
 
-//these always succeed
-int rydb_transaction_finish_or_continue(rydb_t *db, int finish);
-int rydb_transaction_start_oneshot_or_continue(rydb_t *db, int *transaction_started);
-int rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started);
-int rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run);
 
-int rydb_storedrow_to_row(const rydb_t *db, const rydb_stored_row_t *datarow, rydb_row_t *row);
+bool rydb_transaction_finish_or_continue(rydb_t *db, int finish);
+bool rydb_transaction_start_oneshot_or_continue(rydb_t *db, int *transaction_started);
+bool rydb_transaction_start_or_continue(rydb_t *db, int *transaction_started);
+bool rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run);
+
+void rydb_storedrow_to_row(const rydb_t *db, const rydb_stored_row_t *datarow, rydb_row_t *row);
 rydb_stored_row_t *rydb_rownum_to_row(const rydb_t *db, const rydb_rownum_t rownum);
 rydb_rownum_t rydb_row_to_rownum(const rydb_t *db, const rydb_stored_row_t *row);
 uint_fast16_t rydb_row_data_size(const rydb_t *db, const rydb_row_t *row);
-int rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count);
+bool rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count);
 void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_just_emptied);
 
 
-int getrandombytes(unsigned char *p, size_t len);
+bool getrandombytes(unsigned char *p, size_t len);
 uint64_t crc32(const uint8_t *data, size_t data_len);
 uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k);
 
@@ -106,22 +106,22 @@ char *rydb_strdup(const char *str);
 const char *rydb_rowtype_str(rydb_row_type_t type);
 
 //indexing stuff
-int rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row);
-int rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row);
-int rydb_indices_update_row(rydb_t *db, rydb_stored_row_t *row, uint8_t step, off_t start, off_t end);
-int rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end, uint_fast8_t set_error, void (*callback)(rydb_t *, int , off_t, off_t, rydb_rownum_t, const rydb_stored_row_t *, const char *));
+bool rydb_indices_remove_row(rydb_t *db, rydb_stored_row_t *row);
+bool rydb_indices_add_row(rydb_t *db, rydb_stored_row_t *row);
+bool rydb_indices_update_row(rydb_t *db, rydb_stored_row_t *row, uint_fast8_t step, off_t start, off_t end);
+bool rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *data, off_t start, off_t end, uint_fast8_t set_error, void (*callback)(rydb_t *, int , off_t, off_t, rydb_rownum_t, const rydb_stored_row_t *, const char *));
 #define RYDB_EACH_INDEX(db, idx) \
   for(rydb_index_t *idx=&db->index[0], *idx_max = &db->index[db->config.index_count]; idx < idx_max; idx++)
 #define RYDB_EACH_UNIQUE_INDEX(db, idx) \
   for(rydb_index_t *idx = NULL, **_idx_cur = db->unique_index, **_idx_max = &db->unique_index[db->unique_index_count]; _idx_cur < _idx_max; _idx_cur++) \
     if((idx = *_idx_cur) != NULL)
 
-int rydb_transaction_data_init(rydb_t *db);
+bool rydb_transaction_data_init(rydb_t *db);
 void rydb_transaction_data_reset(rydb_t *db);
 void rydb_transaction_data_free(rydb_t *db);
 uint_fast8_t rydb_transaction_check_unique(rydb_t *db, const char *val, off_t i);
-int rydb_transaction_unique_add(rydb_t *db, const char *val, off_t i);
-int rydb_transaction_unique_remove(rydb_t *db, const char *val, off_t i);
+bool rydb_transaction_unique_add(rydb_t *db, const char *val, off_t i);
+bool rydb_transaction_unique_remove(rydb_t *db, const char *val, off_t i);
 
 //NOTE: this only works correctly if the struct is made without padding
 typedef struct {

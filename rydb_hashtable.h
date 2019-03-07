@@ -4,24 +4,24 @@
 
 #define RYDB_HASHTABLE_DEFAULT_MAX_LOAD_FACTOR 0.60
 #define RYDB_HASHTABLE_DEFAULT_REHASH_FLAGS RYDB_REHASH_INCREMENTAL
-int rydb_index_hashtable_open(rydb_t *db, rydb_index_t *idx);
+bool rydb_index_hashtable_open(rydb_t *db, rydb_index_t *idx);
 
-int rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
-int rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
+bool rydb_meta_load_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
+bool rydb_meta_save_index_hashtable(rydb_t *db, rydb_config_index_t *idx_cf, FILE *fp);
 
-int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *idx_cf, rydb_config_index_hashtable_t *advanced_config);
+bool rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *idx_cf, rydb_config_index_hashtable_t *advanced_config);
 
 
-int rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
-int rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
+bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
+bool rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
 
-int rydb_hashtable_reserve(const rydb_index_t *idx);
-int rydb_hashtable_release(const rydb_index_t *idx);
+void rydb_hashtable_reserve(const rydb_index_t *idx);
+void rydb_hashtable_release(const rydb_index_t *idx);
 
-int rydb_index_hashtable_contains(const rydb_t *db, const rydb_index_t *idx, const char *val);
+bool rydb_index_hashtable_contains(const rydb_t *db, const rydb_index_t *idx, const char *val);
 
-int rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *val, rydb_row_t *row);
-int rydb_index_hashtable_rehash(rydb_t *db, rydb_index_t *idx, off_t last_possible_bucket, uint_fast8_t current_hashbits, int reserve);
+bool rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *val, rydb_row_t *row);
+bool rydb_index_hashtable_rehash(rydb_t *db, rydb_index_t *idx, off_t last_possible_bucket, uint_fast8_t current_hashbits, int reserve);
 
 char *rydb_hashfunction_to_str(rydb_hash_function_t hashfn);
 typedef struct {
