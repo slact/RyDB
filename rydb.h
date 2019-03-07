@@ -10,10 +10,13 @@
 #define RYDB_FORMAT_VERSION 1
 
 typedef uint32_t rydb_rownum_t;
-#define RYDB_ROWNUM_MAX  ((rydb_rownum_t ) -1)
+#define RYDB_ROWNUM_MAX  ((rydb_rownum_t ) -100)
 #define RYDB_ROWNUM_NULL ((rydb_rownum_t ) 0)
+#define RYDB_ROWNUM_INVALID ((rydb_rownum_t ) -1)
+#define RYDB_ROWNUM_PREV  ((rydb_rownum_t ) -3)
+#define RYDB_ROWNUM_NEXT  ((rydb_rownum_t ) -2)
 
-#define RYDB_ROW_LINK_PAIRS_MAX 16
+#define RYDB_ROW_LINK_PAIRS_MAX 5
 
 #define RYDB_NAME_MAX_LEN 64
 #define RYDB_INDICES_MAX 32
@@ -54,6 +57,8 @@ typedef struct {
   const char     *data;
   uint16_t        start;
   uint16_t        len;
+  rydb_rownum_t  *links;
+  rydb_rownum_t   linkbuf[RYDB_ROW_LINK_PAIRS_MAX * 2];
 } rydb_row_t;
 
 typedef struct {
@@ -144,11 +149,6 @@ typedef struct {
   rydb_config_index_t *config;
   rydb_index_state_t   state;
 } rydb_index_t;
-
-typedef struct {
-  uint16_t next;
-  uint16_t prev;
-} rydb_row_link_t;
 
 typedef struct {
   const char *next;
@@ -310,6 +310,10 @@ bool rydb_find_row(rydb_t *db, const char *val, size_t len, rydb_row_t *result);
 bool rydb_find_row_str(rydb_t *db, const char *str, rydb_row_t *result);
 bool rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_row_t *result);
 bool rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *str, rydb_row_t *result);
+
+//row links
+bool rydb_row_set_link(rydb_t *db, rydb_row_t *row, const char *link_name, rydb_row_t *linked_row);
+bool rydb_row_set_link_rownum(rydb_t *db, rydb_row_t *row, const char *link_name, rydb_rownum_t linked_rownum);
 
 //index-specific stuff
 bool rydb_index_rehash(rydb_t *db, const char *index_name);
