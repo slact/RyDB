@@ -1589,7 +1589,7 @@ void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_
   db->data_next_rownum = rydb_row_next_rownum(db, cur, 1);
 }
 
-bool rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
+bool rydb_insert(rydb_t *db, const char *data, uint16_t len) {
   if(!rydb_ensure_open(db)) {
     return false;
   }
@@ -1615,8 +1615,8 @@ bool rydb_row_insert(rydb_t *db, const char *data, uint16_t len) {
   return rydb_transaction_finish_or_continue(db, txstarted);
 }
 
-bool rydb_row_insert_str(rydb_t *db, const char *data) {
-  return rydb_row_insert(db, data, strlen(data)+1);
+bool rydb_insert_str(rydb_t *db, const char *data) {
+  return rydb_insert(db, data, strlen(data)+1);
 }
 
 bool rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum) {
@@ -1640,7 +1640,7 @@ static void tx_unique_callback_update(rydb_t *db, int i, off_t start, UNUSED(off
 }
 
 
-bool rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, const uint16_t start, const uint16_t len) {
+bool rydb_update_rownum(rydb_t *db, const rydb_rownum_t rownum, const char *data, const uint16_t start, const uint16_t len) {
   if(!rydb_ensure_open(db)) {
     return false;
   }
@@ -1681,7 +1681,7 @@ bool rydb_row_update(rydb_t *db, const rydb_rownum_t rownum, const char *data, c
   return rydb_transaction_finish_or_continue(db, txstarted);
 }
 
-bool rydb_row_delete(rydb_t *db, rydb_rownum_t rownum) {
+bool rydb_delete_rownum(rydb_t *db, rydb_rownum_t rownum) {
   if(!rydb_ensure_open(db)) {
     return false;
   }
@@ -1717,7 +1717,7 @@ bool rydb_row_delete(rydb_t *db, rydb_rownum_t rownum) {
   return rydb_transaction_finish_or_continue(db, txstarted);
 }
 
-bool rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
+bool rydb_swap_rownum(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2) {
   if(!rydb_ensure_open(db)) {
     return false;
   }

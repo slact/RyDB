@@ -205,7 +205,7 @@ do { \
     int ___maxrows = nrows; \
     char **___rowdata = rows; \
     for(int ___i=0; ___i<___maxrows; ___i++) { \
-      assert_db_ok(db, rydb_row_insert_str(db, ___rowdata[___i])); \
+      assert_db_ok(db, rydb_insert_str(db, ___rowdata[___i])); \
     } \
   } while(0);
   

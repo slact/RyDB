@@ -274,6 +274,12 @@ typedef struct {
   }                 state;
 } rydb_cursor_t;
 
+rydb_error_t *rydb_error(const rydb_t *db);
+int rydb_error_print(const rydb_t *db);
+int rydb_error_fprint(const rydb_t *db, FILE *file);
+int rydb_error_snprint(const rydb_t *db, char *buf, size_t buflen);
+void rydb_error_clear(rydb_t *db);
+
 void rydb_global_config_allocator(rydb_allocator_t *);
 rydb_t *rydb_new(void);
 
@@ -286,17 +292,11 @@ bool rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, voi
 
 bool rydb_open(rydb_t *db, const char *path, const char *name);
 
-bool rydb_row_insert(rydb_t *db, const char *data, uint16_t len);
-bool rydb_row_insert_str(rydb_t *db, const char *data);
-bool rydb_row_delete(rydb_t *db, rydb_rownum_t rownum);
-bool rydb_row_update(rydb_t *db, rydb_rownum_t rownum, const char *data, uint16_t start, uint16_t len);
-bool rydb_row_swap(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2);
-
-rydb_error_t *rydb_error(const rydb_t *db);
-int rydb_error_print(const rydb_t *db);
-int rydb_error_fprint(const rydb_t *db, FILE *file);
-int rydb_error_snprint(const rydb_t *db, char *buf, size_t buflen);
-void rydb_error_clear(rydb_t *db);
+bool rydb_insert(rydb_t *db, const char *data, uint16_t len);
+bool rydb_insert_str(rydb_t *db, const char *data);
+bool rydb_delete_rownum(rydb_t *db, rydb_rownum_t rownum);
+bool rydb_update_rownum(rydb_t *db, rydb_rownum_t rownum, const char *data, uint16_t start, uint16_t len);
+bool rydb_swap_rownum(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2);
 
 bool rydb_transaction_start(rydb_t *db);
 bool rydb_transaction_finish(rydb_t *db);

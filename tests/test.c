@@ -479,7 +479,7 @@ describe(errors_and_debug) {
   }
   
   test("debug-print hashtable contents") {
-    rydb_debug_hash_key = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"; 
+    //rydb_debug_hash_key = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"; 
     assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
     rydb_config_index_hashtable_t cf = {
       .rehash = RYDB_REHASH_DEFAULT, .hash_function = RYDB_HASH_SIPHASH,
@@ -497,7 +497,7 @@ describe(errors_and_debug) {
     char str[128];
     for(int i=0; i<2; i++) {
       sprintf(str, "%izzz", i);
-      assert_db_ok(db, rydb_row_insert_str(db, str));
+      assert_db_ok(db, rydb_insert_str(db, str));
     }
     rydb_hashtable_print(db, &db->index[0]);
     rydb_hashtable_print(db, &db->index[1]);
@@ -510,16 +510,16 @@ describe(errors_and_debug) {
     char str[128];
     for(int i=0; i<5; i++) {
       sprintf(str, "%izzz", i);
-      assert_db_ok(db, rydb_row_insert_str(db, str));
+      assert_db_ok(db, rydb_insert_str(db, str));
     }
     rydb_print_stored_data(db);
     assert_db_ok(db, rydb_transaction_start(db));
-    assert_db_ok(db, rydb_row_update(db, 1, "hey", 3, 3));
-    assert_db_ok(db, rydb_row_update(db, 1, "123456789012345678901234567890", 0, ROW_LEN));
+    assert_db_ok(db, rydb_update_rownum(db, 1, "hey", 3, 3));
+    assert_db_ok(db, rydb_update_rownum(db, 1, "123456789012345678901234567890", 0, ROW_LEN));
     rydb_print_stored_data(db);
-    assert_db_ok(db, rydb_row_insert_str(db,  "beep"));
-    assert_db_ok(db, rydb_row_delete(db,  3));
-    assert_db_ok(db, rydb_row_swap(db, 1, 2));
+    assert_db_ok(db, rydb_insert_str(db,  "beep"));
+    assert_db_ok(db, rydb_delete_rownum(db,  3));
+    assert_db_ok(db, rydb_swap_rownum(db, 1, 2));
     rydb_row_t rows[] = {
       {.type = RYDB_ROW_CMD_COMMIT},
       {.type = 250, .data="INVALID", .len=7, .num=0},
@@ -583,7 +583,7 @@ describe(rydb_open) {
   
   it("fails to do stuff when not open") {
     config_testdb(db, 0);
-    assert_db_fail(db, rydb_row_insert_str(db, "hello"), RYDB_ERROR_DATABASE_CLOSED);
+    assert_db_fail(db, rydb_insert_str(db, "hello"), RYDB_ERROR_DATABASE_CLOSED);
     
   }
   
@@ -932,19 +932,19 @@ describe(row_operations) {
   
   subdesc(delete) {
     it("fails to delete out-of-range data rows") {
-      assert_db_fail(db, rydb_row_delete(db, 0), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
-      assert_db_fail(db, rydb_row_delete(db, 1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
-      assert_db_fail(db, rydb_row_delete(db, 100), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_delete_rownum(db, 0), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_delete_rownum(db, 1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_delete_rownum(db, 100), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
       
       assert_db_insert_rows(db, rowdata, nrows);
-      assert_db_fail(db, rydb_row_delete(db, nrows+1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_delete_rownum(db, nrows+1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
     }
     
     it("deletes rows from data end") {
       assert_db_insert_rows(db, rowdata, nrows);
       //rydb_print_stored_data(db);
       for(int i=nrows; i>0; i--) {
-        assert_db_ok(db, rydb_row_delete(db, i));
+        assert_db_ok(db, rydb_delete_rownum(db, i));
         assert_db_fail(db, rydb_rownum_in_data_range(db, i), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
         asserteq(db->data_next_rownum, i);
         asserteq(db->cmd_next_rownum, i);
@@ -971,7 +971,7 @@ describe(row_operations) {
       row->type = RYDB_ROW_EMPTY;
       
       //now delete the last row, and see if data_next_row is updated correctly
-      assert_db_ok(db, rydb_row_delete(db, nrows));
+      assert_db_ok(db, rydb_delete_rownum(db, nrows));
       asserteq(db->data_next_rownum, nrows-2);
       asserteq(db->cmd_next_rownum, nrows-2);
       //rydb_print_stored_data(db);
@@ -983,14 +983,14 @@ describe(row_operations) {
       
       for(int i=1; i<=nrows; i++) {
         //rydb_print_stored_data(db);
-        assert_db_ok(db, rydb_row_delete(db, i));
+        assert_db_ok(db, rydb_delete_rownum(db, i));
         rydb_stored_row_t *row = rydb_rownum_to_row(db, i);
         assertneq(row, NULL);
         assert_db_row_type(db, row, RYDB_ROW_EMPTY);
         if(i < nrows) {
           // double-deletion is acceptable on all but the last data row,
           // since we don't track holes in data (YET)
-          assert_db_ok(db, rydb_row_delete(db, i));
+          assert_db_ok(db, rydb_delete_rownum(db, i));
           assert_db_ok(db, rydb_rownum_in_data_range(db, i));
           asserteq(db->data_next_rownum, nrows+1);
           asserteq(db->cmd_next_rownum, nrows+1);
@@ -1007,9 +1007,9 @@ describe(row_operations) {
       assert_db_insert_rows(db, rowdata, nrows);
       
       assert_db_ok(db, rydb_transaction_start(db));
-      assert_db_ok(db, rydb_row_delete(db, nrows));
-      assert_db_ok(db, rydb_row_delete(db, nrows));
-      assert_db_ok(db, rydb_row_delete(db, nrows));
+      assert_db_ok(db, rydb_delete_rownum(db, nrows));
+      assert_db_ok(db, rydb_delete_rownum(db, nrows));
+      assert_db_ok(db, rydb_delete_rownum(db, nrows));
       assert_data_match(db, rowdata, nrows);
       assert_data_rownum_type(db, nrows+1, RYDB_ROW_CMD_DELETE);
       assert_data_rownum_type(db, nrows+2, RYDB_ROW_CMD_DELETE);
@@ -1019,7 +1019,7 @@ describe(row_operations) {
       assert_data_match(db, rowdata, nrows - 1);
       
       //and it works fine afterwards
-      assert_db_ok(db, rydb_row_insert_str(db, "after"));
+      assert_db_ok(db, rydb_insert_str(db, "after"));
       char *rowdata_results2[] = {
         rowdata[0], rowdata[1], rowdata[2], rowdata[3], rowdata[4], "after"
       };
@@ -1029,14 +1029,14 @@ describe(row_operations) {
   
   subdesc(swap) {
     it("fails on out-of-range swaps") {
-      assert_db_fail(db, rydb_row_swap(db, 0, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_swap_rownum(db, 0, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
       assert_db_insert_rows(db, rowdata, nrows);
-      assert_db_fail(db, rydb_row_swap(db, 1, nrows+1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
-      assert_db_fail(db, rydb_row_swap(db, nrows+1, 1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_swap_rownum(db, 1, nrows+1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_swap_rownum(db, nrows+1, 1), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
     }
     it("swaps two rows close to the middle") {
       assert_db_insert_rows(db, rowdata, nrows);
-      assert_db_ok(db, rydb_row_swap(db, 2, nrows-2));
+      assert_db_ok(db, rydb_swap_rownum(db, 2, nrows-2));
       char *rowdata_results[] = {
         rowdata[0], rowdata[3], rowdata[2], rowdata[1], rowdata[4], rowdata[5]
       };
@@ -1047,7 +1047,7 @@ describe(row_operations) {
       assert_db_insert_rows(db, rowdata, nrows);
       //this should move the first row all the way down
       for(int i = 2; i <= nrows; i++) {
-        assert_db_ok(db, rydb_row_swap(db, i, i-1));
+        assert_db_ok(db, rydb_swap_rownum(db, i, i-1));
       }
       //rydb_print_stored_data(db);
       char *rowdata_results[] = {
@@ -1058,17 +1058,17 @@ describe(row_operations) {
     
     it("swaps rows with an empty row") {
       assert_db_insert_rows(db, rowdata, nrows);
-      assert_db_ok(db, rydb_row_delete(db, 1));
+      assert_db_ok(db, rydb_delete_rownum(db, 1));
       
       char *rowdata_results[] = {
         NULL, rowdata[1], rowdata[2], rowdata[3], rowdata[4], rowdata[5]
       };
       assert_data_match(db, rowdata_results, nrows);
       
-      assert_db_ok(db, rydb_row_swap(db, 1, nrows-1));
-      assert_db_ok(db, rydb_row_delete(db, nrows-2));
-      assert_db_ok(db, rydb_row_swap(db, nrows, nrows-2));
-      assert_db_ok(db, rydb_row_insert_str(db, "after"));
+      assert_db_ok(db, rydb_swap_rownum(db, 1, nrows-1));
+      assert_db_ok(db, rydb_delete_rownum(db, nrows-2));
+      assert_db_ok(db, rydb_swap_rownum(db, nrows, nrows-2));
+      assert_db_ok(db, rydb_insert_str(db, "after"));
       
       char *rowdata_results2[] = {
         rowdata[4], rowdata[1], rowdata[2], rowdata[5], "after", NULL
@@ -1079,20 +1079,20 @@ describe(row_operations) {
   
   subdesc(update) {
     it("fails on out-of-range updates") {
-      assert_db_fail(db, rydb_row_update(db, 0, "hey", 3, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
-      assert_db_fail(db, rydb_row_update(db, 9, "hey", 3, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_update_rownum(db, 0, "hey", 3, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_update_rownum(db, 9, "hey", 3, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
       assert_db_insert_rows(db, rowdata, nrows);
-      assert_db_fail(db, rydb_row_update(db, nrows+1, "hey", 3, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
+      assert_db_fail(db, rydb_update_rownum(db, nrows+1, "hey", 3, 3), RYDB_ERROR_ROWNUM_OUT_OF_RANGE);
     }
     it("fails on updates that are longer than the row length") {
       assert_db_insert_rows(db, rowdata, nrows);
-      assert_db_fail(db, rydb_row_update(db, 1, "hey", ROW_LEN, 3), RYDB_ERROR_DATA_TOO_LARGE, "[Dd]ata length.* exceeds row length");
-      assert_db_fail(db, rydb_row_update(db, 1, "zzzzzzzzzzzzzzzzzzzzzzzzzz", 0, ROW_LEN+1), RYDB_ERROR_DATA_TOO_LARGE);
+      assert_db_fail(db, rydb_update_rownum(db, 1, "hey", ROW_LEN, 3), RYDB_ERROR_DATA_TOO_LARGE, "[Dd]ata length.* exceeds row length");
+      assert_db_fail(db, rydb_update_rownum(db, 1, "zzzzzzzzzzzzzzzzzzzzzzzzzz", 0, ROW_LEN+1), RYDB_ERROR_DATA_TOO_LARGE);
     }
     
     it("updates a small part of a row") {
       assert_db_insert_rows(db, rowdata, nrows);
-      assert_db_ok(db, rydb_row_update(db, nrows, "hey", 3, 3));
+      assert_db_ok(db, rydb_update_rownum(db, nrows, "hey", 3, 3));
       char *rowdata_results[] = {
         rowdata[0], rowdata[1], rowdata[2], rowdata[3], rowdata[4], "6.zheyzzzzzzzzzz"
       };
@@ -1101,8 +1101,8 @@ describe(row_operations) {
     
     it("updates a large part of a row") {
       assert_db_insert_rows(db, rowdata, nrows);
-      assert_db_ok(db, rydb_row_update(db, nrows, "heywhatis this even", 3, 17));
-      assert_db_ok(db, rydb_row_update(db, nrows-1, "................................", 0, ROW_LEN));
+      assert_db_ok(db, rydb_update_rownum(db, nrows, "heywhatis this even", 3, 17));
+      assert_db_ok(db, rydb_update_rownum(db, nrows-1, "................................", 0, ROW_LEN));
       char *rowdata_results[] = {
         rowdata[0], rowdata[1], rowdata[2], rowdata[3], "....................", "6.zheywhatis this ev"
       };
@@ -1375,7 +1375,7 @@ describe(transactions) {
       
       it("fails if SWAP1 fails") {
         assert_db_ok(db, rydb_transaction_start(db));
-        assert_db_ok(db, rydb_row_swap(db, 1, 2));
+        assert_db_ok(db, rydb_swap_rownum(db, 1, 2));
         rydb_stored_row_t *s = rydb_rownum_to_row(db, nrows + 2);
         s->type = RYDB_ROW_EMPTY;
         assert_db_fail(db, rydb_transaction_finish(db), RYDB_ERROR_TRANSACTION_FAILED);
@@ -1385,15 +1385,15 @@ describe(transactions) {
     subdesc(COMMIT) {
       it("refuses to run an uncommitted transaction") {
         assert_db_ok(db, rydb_transaction_start(db));
-        assert_db_ok(db, rydb_row_swap(db, 1, 2));
-        assert_db_ok(db, rydb_row_swap(db, 2, 3));
+        assert_db_ok(db, rydb_swap_rownum(db, 1, 2));
+        assert_db_ok(db, rydb_swap_rownum(db, 2, 3));
         assert_db_fail_match_errstr(db, rydb_transaction_run(db, NULL), RYDB_ERROR_TRANSACTION_INCOMPLETE, "doesn't end with a COMMIT");
       }
 #ifdef RYDB_DEBUG
       it("notices if forced to run through an uncommitted transaction") {
         assert_db_ok(db, rydb_transaction_start(db));
-        assert_db_ok(db, rydb_row_swap(db, 1, 2));
-        assert_db_ok(db, rydb_row_swap(db, 2, 3));
+        assert_db_ok(db, rydb_swap_rownum(db, 1, 2));
+        assert_db_ok(db, rydb_swap_rownum(db, 2, 3));
         rydb_debug_refuse_to_run_transaction_without_commit = 0;
         assert_db_fail(db, rydb_transaction_run(db, NULL), RYDB_ERROR_TRANSACTION_FAILED, "committed without ending on a COMMIT");
         rydb_debug_refuse_to_run_transaction_without_commit = 1;
@@ -1414,8 +1414,8 @@ describe(transactions) {
     }
     it("cancels an ongoing transaction") {
       assert_db_ok(db, rydb_transaction_start(db));
-      assert_db_ok(db, rydb_row_delete(db, 1));
-      assert_db_ok(db, rydb_row_delete(db, 2));
+      assert_db_ok(db, rydb_delete_rownum(db, 1));
+      assert_db_ok(db, rydb_delete_rownum(db, 2));
       assert_db_ok(db, rydb_transaction_cancel(db));
       
       assert_data_match(db, rowdata, nrows);
@@ -1423,11 +1423,11 @@ describe(transactions) {
   }
   
 #define RYDB_ROW_TXTEST_COMMANDS(db) \
-  assert_db_ok(db, rydb_row_swap(db, 1, 2)); \
-  assert_db_ok(db, rydb_row_delete(db, 2)); \
-  assert_db_ok(db, rydb_row_delete(db, 6)); \
-  assert_db_ok(db, rydb_row_insert_str(db, "7.an insertion")); \
-  assert_db_ok(db, rydb_row_swap(db, 5, 6))
+  assert_db_ok(db, rydb_swap_rownum(db, 1, 2)); \
+  assert_db_ok(db, rydb_delete_rownum(db, 2)); \
+  assert_db_ok(db, rydb_delete_rownum(db, 6)); \
+  assert_db_ok(db, rydb_insert_str(db, "7.an insertion")); \
+  assert_db_ok(db, rydb_swap_rownum(db, 5, 6))
   
   subdesc(restore_log) {
     static char *result_rowdata[] = {
@@ -1479,10 +1479,10 @@ describe(transactions) {
       RYDB_ROW_TXTEST_COMMANDS(db);
       assert_data_match(db, rowdata, nrows);
       assert_db_ok(db, rydb_data_append_cmd_rows(db, &commit, 1));
-      assert_db_ok(db, rydb_row_insert_str(db, "yeaps"));
+      assert_db_ok(db, rydb_insert_str(db, "yeaps"));
       assert_db_ok(db, rydb_data_append_cmd_rows(db, &commit, 1));
-      assert_db_ok(db, rydb_row_delete(db, 1)); //this should be discarded
-      assert_db_ok(db, rydb_row_swap(db, 5, 6)); //and this
+      assert_db_ok(db, rydb_delete_rownum(db, 1)); //this should be discarded
+      assert_db_ok(db, rydb_swap_rownum(db, 5, 6)); //and this
       // (because a commit does not follow
       //don't finish the transaction
       rydb_close(db);
@@ -1499,10 +1499,10 @@ describe(transactions) {
     it("truncates the filesize to the end of the data rows") {
       off_t old_sz = filesize(db->data.path);
       assert_db_ok(db, rydb_transaction_start(db));
-      assert_db_ok(db, rydb_row_swap(db, 1, 2));
-      assert_db_ok(db, rydb_row_delete(db, 2));
-      assert_db_ok(db, rydb_row_delete(db, 6));
-      assert_db_ok(db, rydb_row_swap(db, 5, 6));
+      assert_db_ok(db, rydb_swap_rownum(db, 1, 2));
+      assert_db_ok(db, rydb_delete_rownum(db, 2));
+      assert_db_ok(db, rydb_delete_rownum(db, 6));
+      assert_db_ok(db, rydb_swap_rownum(db, 5, 6));
       //rydb_print_stored_data(db);
       //don't finish the transaction
       rydb_close(db);
@@ -1531,27 +1531,27 @@ describe(transactions) {
       assert_db_ok(db, rydb_transaction_start(db));
       for(int i=0; i<max; i++) {
         sprintf(buf, fmt, i);
-        assert_db_ok(db, rydb_row_insert_str(db, buf));
+        assert_db_ok(db, rydb_insert_str(db, buf));
       }
       for(int i=0; i<max; i++) {
         sprintf(buf, fmt, i);
-        assert_db_fail(db, rydb_row_insert_str(db, buf), RYDB_ERROR_NOT_UNIQUE, "primary must be unique");
+        assert_db_fail(db, rydb_insert_str(db, buf), RYDB_ERROR_NOT_UNIQUE, "primary must be unique");
       }
       assert_db_ok(db, rydb_transaction_cancel(db));
       for(int i=0; i<max; i++) {
         sprintf(buf, fmt, i);
-        assert_db_ok(db, rydb_row_insert_str(db, buf));
+        assert_db_ok(db, rydb_insert_str(db, buf));
       }
     }
     
     it("removes constraints on delete") {
       assert_db_ok(db, rydb_transaction_start(db));
       for(int i=0; i<nrows; i++) {
-        assert_db_ok(db, rydb_row_delete(db, i+1));
+        assert_db_ok(db, rydb_delete_rownum(db, i+1));
       }
       for(int i=0; i<nrows; i++) {
-        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
-        assert_db_fail(db, rydb_row_insert_str(db, rowdata[i]), RYDB_ERROR_NOT_UNIQUE, "must be unique");
+        assert_db_ok(db, rydb_insert_str(db, rowdata[i]));
+        assert_db_fail(db, rydb_insert_str(db, rowdata[i]), RYDB_ERROR_NOT_UNIQUE, "must be unique");
       }
     }
     
@@ -1559,13 +1559,13 @@ describe(transactions) {
       assert_db_ok(db, rydb_transaction_start(db));
       for(int i=0; i<nrows; i++) {
         sprintf(buf, fmt, i);
-        assert_db_ok(db, rydb_row_update(db, i+1, buf, 0, 10));
+        assert_db_ok(db, rydb_update_rownum(db, i+1, buf, 0, 10));
       }
       for(int i=0; i<nrows; i++) {
         sprintf(buf, fmt, i);
-        assert_db_fail(db, rydb_row_insert_str(db, buf), RYDB_ERROR_NOT_UNIQUE, "must be unique");
-        assert_db_ok(db, rydb_row_insert_str(db, rowdata[i]));
-        assert_db_fail(db, rydb_row_insert_str(db, rowdata[i]), RYDB_ERROR_NOT_UNIQUE, "must be unique");
+        assert_db_fail(db, rydb_insert_str(db, buf), RYDB_ERROR_NOT_UNIQUE, "must be unique");
+        assert_db_ok(db, rydb_insert_str(db, rowdata[i]));
+        assert_db_fail(db, rydb_insert_str(db, rowdata[i]), RYDB_ERROR_NOT_UNIQUE, "must be unique");
       }
     }
   }
@@ -1611,7 +1611,7 @@ describe(indexing) {
       char str[128];
       for(int i=1; i<200; i++) {
         sprintf(str, "%izzz", i);
-        assert_db_ok(db, rydb_row_insert_str(db, str));
+        assert_db_ok(db, rydb_insert_str(db, str));
         //rydb_hashtable_print(db, &db->index[0]);
       }
     }
@@ -1651,7 +1651,7 @@ describe(indexing) {
               //printf("i: %i\n", i);
               sprintf(str, fmt, i, i, i, i, i, i, i, i, i, i);
               memset(&str[ROW_LEN], '\00', 128 - ROW_LEN);
-              assert_db_ok(db, rydb_row_insert_str(db, str));
+              assert_db_ok(db, rydb_insert_str(db, str));
               //rydb_hashtable_print(db, &db->index[0]);
               
               if(rehash[rh] == RYDB_REHASH_MANUAL && i%(maxrows/10) == 0) {
@@ -1706,13 +1706,13 @@ describe(indexing) {
         int numrows = 1000 * repeat_multiplier;
         for(int i=1; i<=numrows; i++) {
           sprintf(str, fmt, i);
-          assert_db_ok(db, rydb_row_insert_str(db, str));
+          assert_db_ok(db, rydb_insert_str(db, str));
         }
         hashtable_header_count_check(db, &db->index[0], numrows);
         
         for(int i=1; i<=numrows; i++) {
           sprintf(str, fmt, i);
-          assert_db_ok(db, rydb_row_delete(db, i));
+          assert_db_ok(db, rydb_delete_rownum(db, i));
           hashtable_header_count_check(db, &db->index[0], numrows - i);
           //rydb_hashtable_print(db, &db->index[0]);
           for(int j=1; j<=numrows; j++) {
@@ -1760,7 +1760,7 @@ describe(indexing) {
         for(int i=1; i<=numrows; i++) {
           rydb_row_t row;
           data_fill(data, rowlen, i);
-          assert_db_ok(db, rydb_row_insert_str(db, data));
+          assert_db_ok(db, rydb_insert_str(db, data));
           int rc = rydb_find_row_str(db, data, &row);
           asserteq(rc, 1);
           asserteq(memcmp(data, row.data, rowlen), 0);
@@ -1773,10 +1773,10 @@ describe(indexing) {
       //char str[128];
       assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
       assert_db_ok(db, rydb_open(db, path, "test"));
-      assert_db_ok(db, rydb_row_insert_str(db, "hello this is a string"));
-      assert_db_ok(db, rydb_row_insert_str(db, "oh this is a different string"));
-      assert_db_ok(db, rydb_row_insert_str(db, "samestring"));
-      assert_db_fail(db, rydb_row_insert_str(db, "samestring"), RYDB_ERROR_NOT_UNIQUE, "primary must be unique");
+      assert_db_ok(db, rydb_insert_str(db, "hello this is a string"));
+      assert_db_ok(db, rydb_insert_str(db, "oh this is a different string"));
+      assert_db_ok(db, rydb_insert_str(db, "samestring"));
+      assert_db_fail(db, rydb_insert_str(db, "samestring"), RYDB_ERROR_NOT_UNIQUE, "primary must be unique");
     }
   }
 
@@ -1818,7 +1818,7 @@ describe(storage) {
       
       for(int i=1; i<=rownum; i++) {
         data_fill(data, rowlen, i);
-        assert_db_ok(db, rydb_row_insert_str(db, data));
+        assert_db_ok(db, rydb_insert_str(db, data));
       }
       for(int i=1; i<=rownum + 4; i++) {
         rydb_row_t row;
