@@ -427,10 +427,12 @@ int rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf, 
   return 1;
 }
 
-static uint64_t nohash(const char *data, const size_t len, const uint8_t trim) {
+static uint64_t nohash(const char *data, size_t len) {
   uint64_t h = 0;
-  assert(trim <= 64);
-  memcpy((char *)&h, data, (len > (size_t )(64-trim) ? (size_t )(64-trim) : len));
+  if(len > sizeof(h)) {
+    len = sizeof(h);
+  }
+  memcpy((char *)&h, data, len);
   return h;
 }
 
@@ -468,7 +470,7 @@ static uint64_t hash_value(const rydb_t *db, const rydb_config_index_t *idx, con
       h = btrim64(crc32((const uint8_t *)data, idx->len), trim);
       break;
     case RYDB_HASH_NOHASH:
-      h = nohash(data, idx->len, trim);
+      h = btrim64(nohash(data, idx->len), trim);
       break;
     case RYDB_HASH_SIPHASH:
       h = btrim64(siphash((const uint8_t *)data, idx->len, db->config.hash_key.value), trim);
