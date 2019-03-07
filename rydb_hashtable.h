@@ -30,6 +30,8 @@ typedef struct {
   /* whoa that's a lot of padding at the end there here...*/
 }rydb_hashtable_bitlevel_count_t;
 
+#define RYDB_HASHTABLE_BUCKET_MAX_BITLEVELS (8*sizeof(rydb_rownum_t) + 1)
+
 typedef struct {
   int8_t          reserved; //reserved for writing
   uint8_t         active;
@@ -42,7 +44,7 @@ typedef struct {
     }               count;
     struct {
       rydb_hashtable_bitlevel_count_t top; //top bitlevel count
-      rydb_hashtable_bitlevel_count_t sub[2*(sizeof(rydb_rownum_t)+1)];
+      rydb_hashtable_bitlevel_count_t sub[RYDB_HASHTABLE_BUCKET_MAX_BITLEVELS];
     }              bitlevel;
   }               bucket;
 } rydb_hashtable_header_t;
