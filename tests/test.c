@@ -1592,7 +1592,6 @@ describe(indexing) {
   
     before_each() {
       db = rydb_new();
-      assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
       strcpy(path, "test.db.XXXXXX");
       mkdtemp(path);
     }
@@ -1607,6 +1606,7 @@ describe(indexing) {
     }
     
     test("adding rows to hashtable") {
+      assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
       assert_db_ok(db, rydb_open(db, path, "test"));
       char str[128];
       for(int i=1; i<200; i++) {
@@ -1629,6 +1629,7 @@ describe(indexing) {
         for(t=0; t<3; t++) {
           sprintf(testname, "finding rows (index start at %i) in %s %s-rehash hashtable", start, rydb_hashfunction_to_str(hashfunction[t]), rehash_name[rh]);
           test(testname) {
+            assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
             rydb_config_index_hashtable_t cf = {
               .rehash = rehash[rh],
               .hash_function = hashfunction[t],
@@ -1684,8 +1685,9 @@ describe(indexing) {
       }
     }
     for(t=0; t<3; t++) {
-      sprintf(testname, "delete rows in hashtable %s", rydb_hashfunction_to_str(hashfunction[t]));
+      sprintf(testname, "delete rows in %s hashtable", rydb_hashfunction_to_str(hashfunction[t]));
       test(testname) {
+        assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
         rydb_config_index_hashtable_t cf = {
           .hash_function = hashfunction[t],
           .store_value = 0,
@@ -1740,8 +1742,36 @@ describe(indexing) {
       }
     }
     
+    for(t=0; t<3; t++) {
+      sprintf(testname, "works with long index %s hashtable", rydb_hashfunction_to_str(hashfunction[t]));
+      test(testname) {
+        int rowlen = 2000, indexlen = 1500;
+        char *data = malloc(rowlen+1);
+        assert_db_ok(db, rydb_config_row(db, rowlen, indexlen));
+        rydb_config_index_hashtable_t cf = {
+          .hash_function = hashfunction[t],
+          .store_value = 0,
+          .store_hash = 1,
+          .collision_resolution = RYDB_OPEN_ADDRESSING
+        };
+        rydb_config_add_index_hashtable(db, "primary", 0, indexlen, RYDB_INDEX_UNIQUE, &cf);
+        assert_db_ok(db, rydb_open(db, path, "test"));
+        int numrows = 1000 * repeat_multiplier;
+        for(int i=1; i<=numrows; i++) {
+          rydb_row_t row;
+          data_fill(data, rowlen, i);
+          assert_db_ok(db, rydb_row_insert_str(db, data));
+          int rc = rydb_find_row_str(db, data, &row);
+          asserteq(rc, 1);
+          asserteq(memcmp(data, row.data, rowlen), 0);
+        }
+        free(data);
+      }
+    }
+    
     it("obeys uniqueness criteria") {
       //char str[128];
+      assert_db_ok(db, rydb_config_row(db, ROW_LEN, 5));
       assert_db_ok(db, rydb_open(db, path, "test"));
       assert_db_ok(db, rydb_row_insert_str(db, "hello this is a string"));
       assert_db_ok(db, rydb_row_insert_str(db, "oh this is a different string"));
