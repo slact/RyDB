@@ -18,7 +18,7 @@ static bool rydb_cmd_rangecheck(rydb_t *db, const char *cmdname, rydb_stored_row
 
 bool rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) {
   uint_fast16_t        rowsize = db->stored_row_size;
-  if(!rydb_file_ensure_size(db, &db->data, (db->cmd_next_rownum + count) * rowsize)) {
+  if(!rydb_file_ensure_size(db, &db->data, (db->cmd_next_rownum + count) * rowsize, NULL)) {
     return false;
   }
   rydb_stored_row_t   *newrows_start = rydb_rownum_to_row(db, db->cmd_next_rownum);

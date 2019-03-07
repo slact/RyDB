@@ -719,13 +719,16 @@ static bool bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *buck
   }
   if(dst >= buckets_end) {
     DBG("dst bucket > end\n")
-    off_t bucket_offset = bucket - idx->index.data.start;
-    if(!rydb_file_ensure_size(db, &idx->index, dst - idx->index.file.start + sz)) {
+    
+    ptrdiff_t remap_offset;
+    if(!rydb_file_ensure_size(db, &idx->index, dst - idx->index.file.start + sz, &remap_offset)) {
       return false;
     }
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
     header->bucket.count.total++; //record bucket overflow
-    bucket = &idx->index.data.start[bucket_offset]; //the bucket, too;
+    bucket = REMAP_OFFSET(bucket, remap_offset);
+    dst = REMAP_OFFSET(dst, remap_offset);
+    buckets_end = REMAP_OFFSET(buckets_end, remap_offset);
   }
   DBG_BUCKET("dst bucket            ", idx, dst);
   
@@ -792,7 +795,7 @@ static bool hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   uint64_t                   prev_total_buckets = header->bucket.count.total;
   bool                       rehash_all = cf->type_config.hashtable.rehash & RYDB_REHASH_ALL_AT_ONCE;
   
-  if(!rydb_file_ensure_size(db, &idx->index, RYDB_INDEX_HASHTABLE_START_OFFSET + new_data_sz)) {
+  if(!rydb_file_ensure_size(db, &idx->index, RYDB_INDEX_HASHTABLE_START_OFFSET + new_data_sz, NULL)) {
     return false;
   }
   header = hashtable_header(idx); //get the header again -- the mmap address may have changed
@@ -825,7 +828,7 @@ bool rydb_index_hashtable_open(rydb_t *db,  rydb_index_t *idx) {
   if(!rydb_file_open_index(db, idx)) {
     return false;
   }
-  if(!rydb_file_ensure_size(db, &idx->index, RYDB_INDEX_HASHTABLE_START_OFFSET)) {
+  if(!rydb_file_ensure_size(db, &idx->index, RYDB_INDEX_HASHTABLE_START_OFFSET, NULL)) {
     return false;
   }
   idx->index.data.start = idx->index.file.start + RYDB_INDEX_HASHTABLE_START_OFFSET;
@@ -944,6 +947,7 @@ bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row
   //open addressing, linear probing, no loopback to start
   while(bucket < buckets_end && !bucket_is_empty(bucket)) {
     if(try_to_rehash) {
+      DBG("try to rehash...")
       uint_fast8_t  rehash_candidate_bits;
       uint64_t rehash_candidate_hashvalue = bucket_stored_hash58_and_bits(bucket, &rehash_candidate_bits);
       uint64_t old_bitlevel_hashvalue = btrim64(rehash_candidate_hashvalue, 64 - rehash_candidate_bits);
@@ -970,16 +974,22 @@ bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row
     bucket += bucket_sz;
     buckets_skipped++;
   }
-  
+  DBG_HASHTABLE(db, idx)
   if(bucket >= buckets_end) {
+    DBG("bucket >= buckets_end\n");
     // just append this bucket as "overflow" to the end
     // we do this so that growing the hashtable is an in-place operation.
     // if the hashtable looped back to the beginning, the looped-back run from the last bucket would
     // need to be moved.
-    if(!rydb_file_ensure_size(db, &idx->index, bucket - idx->index.file.start + bucket_size(cf))) {
+    ptrdiff_t remap_offset;
+    if(!rydb_file_ensure_size(db, &idx->index, bucket - idx->index.file.start + bucket_size(cf), &remap_offset)) {
       return false;
     }
-    header = hashtable_header(idx); //file might have gotten remapped, get the header again
+    if(remap_offset != 0) {
+      header = hashtable_header(idx);
+      bucket = REMAP_OFFSET(bucket, remap_offset);
+      buckets_end = REMAP_OFFSET(buckets_end, remap_offset);
+    }
   }
   //rydb_hashtable_header_t hdr = *header;
   if(!bucket_is_empty(bucket)) {

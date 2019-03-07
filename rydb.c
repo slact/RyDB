@@ -530,7 +530,7 @@ static void rydb_free(rydb_t *db) {
 
 static bool rydb_lock(rydb_t *db, uint8_t lockflags) {
   rydb_lockdata_t *lock;
-  if (!rydb_file_ensure_size(db, &db->lock, sizeof(*lock))) {
+  if (!rydb_file_ensure_size(db, &db->lock, sizeof(*lock), NULL)) {
     rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Failed to grow lockfile");
     return false;
   }
@@ -576,7 +576,7 @@ static bool rydb_unlock(rydb_t *db, uint8_t lockflags) {
 
 bool rydb_force_unlock(rydb_t *db) {
   rydb_lockdata_t *lock;
-  if (!rydb_file_ensure_size(db, &db->lock, sizeof(*lock))) {
+  if (!rydb_file_ensure_size(db, &db->lock, sizeof(*lock), NULL)) {
     //file's too small to have been a valid lockfile.... probably?....
     //TODO: this is a copout. flesh out the possibility of a corrupt/partial lockfile
     return true;
@@ -588,9 +588,9 @@ bool rydb_force_unlock(rydb_t *db) {
   return true;
 }
 
-bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
+bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz, ptrdiff_t *remmap_offset) {
   size_t current_mmap_sz = f->mmap.end - f->mmap.start;;
-  
+  ptrdiff_t offset = 0;
   if(min_sz > current_mmap_sz) {
     size_t new_mmap_sz = current_mmap_sz;
     while(new_mmap_sz < min_sz) new_mmap_sz *= 2;
@@ -602,6 +602,7 @@ bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
     //msync(f->mmap.start, current_mmap_sz, MS_ASYNC);
     if(munmap(f->mmap.start, current_mmap_sz) != 0) {
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "failed to munmap file %s", f->path);
+      if(remmap_offset) *remmap_offset = offset;
       return false;
     }
     remapped = mmap(f->mmap.start, new_mmap_sz, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
@@ -614,19 +615,20 @@ bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
     if(!remapped) {
       //printf("failed to remap file %s\n", f->path);
       rydb_set_error(db, RYDB_ERROR_NOMEMORY, "failed to remap file %s", f->path);
+      if(remmap_offset) *remmap_offset = offset;
       return false;
     }
-    ssize_t remap_offset = remapped - f->mmap.start;
+    offset = remapped - f->mmap.start;
     
     //printf("remapped file %s from %p-%p to %p-%p\n", f->path, (void *)f->mmap.start, (void *)&f->mmap.start[current_mmap_sz], (void *)remapped, (void *)&remapped[new_mmap_sz]);
     f->mmap.end = &f->mmap.start[new_mmap_sz];
-    if(remap_offset != 0) {
-      f->mmap.start += remap_offset;
-      f->mmap.end   += remap_offset;
-      f->file.start += remap_offset;
-      f->file.end   += remap_offset;
-      f->data.start += remap_offset;
-      f->data.end   += remap_offset;
+    if(offset != 0) {
+      f->mmap.start += offset;
+      f->mmap.end   += offset;
+      f->file.start += offset;
+      f->file.end   += offset;
+      f->data.start += offset;
+      f->data.end   += offset;
     }
   }
   
@@ -635,6 +637,7 @@ bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
     ssize_t file_sz_diff = min_sz - file_sz;
     if(ftruncate(f->fd, min_sz) == -1) {
       rydb_set_error(db, RYDB_ERROR_FILE_SIZE, "Failed to grow file to size %zu", min_sz);
+      if(remmap_offset) *remmap_offset = offset;
       return false;
     }
     if(f->file.end == f->data.end) {
@@ -642,7 +645,7 @@ bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz) {
     }
     f->file.end += file_sz_diff;
   }
-  
+  if(remmap_offset) *remmap_offset = offset;
   return true;
 }
 
@@ -1331,7 +1334,7 @@ bool rydb_open(rydb_t *db, const char *path, const char *name) {
   if(!rydb_file_open(db, "data", &db->data)) {
     return rydb_open_abort(db);
   }
-  if(!rydb_file_ensure_size(db, &db->data, RYDB_DATA_START_OFFSET)) {
+  if(!rydb_file_ensure_size(db, &db->data, RYDB_DATA_START_OFFSET, NULL)) {
     return rydb_open_abort(db);
   }
   db->data.data.start = &db->data.file.start[RYDB_DATA_START_OFFSET];

@@ -261,6 +261,18 @@ struct rydb_s {
   
 };// rydb_t
 
+typedef struct {
+  rydb_t            *db;
+  rydb_index_t      *idx;
+  off_t              rows_seen;
+  union {
+    struct {
+      uint64_t          hash;
+      uint64_t          bucketnum;
+      uint_fast8_t      hashbits;
+    }                 hashtable;
+  }                 state;
+} rydb_cursor_t;
 
 void rydb_global_config_allocator(rydb_allocator_t *);
 rydb_t *rydb_new(void);
@@ -273,9 +285,6 @@ bool rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned star
 bool rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void *), void *pd);
 
 bool rydb_open(rydb_t *db, const char *path, const char *name);
-
-
-rydb_row_t *rydb_row_find(rydb_t *db, const char *id); //return 1 if found, 0 if not found
 
 bool rydb_row_insert(rydb_t *db, const char *data, uint16_t len);
 bool rydb_row_insert_str(rydb_t *db, const char *data);

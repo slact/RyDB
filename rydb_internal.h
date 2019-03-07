@@ -62,6 +62,8 @@
 #define RYDB_REVERSE_EACH_CMD_ROW(db, cur) for(rydb_stored_row_t *cur = rydb_rownum_to_row(db, db->cmd_next_rownum - 1); cur >= rydb_rownum_to_row(db, db->data_next_rownum); cur = rydb_row_next(cur, db->stored_row_size, -1))
 #define RYDB_EACH_ROW(db, cur) for(rydb_stored_row_t *cur = (void *)db->data.data.start; (char *)cur <= (char *)db->data.file.end - db->stored_row_size; cur = rydb_row_next(cur, db->stored_row_size, 1))
 
+#define REMAP_OFFSET(ptr, offset) (void *)(((char *)ptr) + offset)
+
 bool rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f);
 bool rydb_file_open_index(rydb_t *db, rydb_index_t *idx);
 bool rydb_file_open_index_map(rydb_t *db, rydb_index_t *idx);
@@ -70,7 +72,7 @@ bool rydb_file_close(rydb_t *db, rydb_file_t *f);
 bool rydb_file_close_index(rydb_t *db, rydb_index_t *idx);
 bool rydb_file_close_data(rydb_t *db, rydb_index_t *idx);
 
-bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz);
+bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz, ptrdiff_t *realloc_offset);
 bool rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz);
 
 void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
