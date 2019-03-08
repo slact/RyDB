@@ -148,6 +148,8 @@ const char*rydb_debug_hash_key;
 #define rydb_debug_hash_key 0
 #endif
 
+
+const char *rydb_overlay_data_on_row_for_index(const rydb_t *db, char *dst, rydb_rownum_t rownum, const rydb_stored_row_t **cached_row, const char *overlay, off_t ostart, off_t oend, off_t istart, off_t iend);
 //debug stuff?
 void rydb_print_stored_data(rydb_t *db);
 

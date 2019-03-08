@@ -520,8 +520,8 @@ static void rydb_free(rydb_t *db) {
   rydb_subfree(&db->config.index);
   rydb_subfree(&db->index);
   rydb_subfree(&db->unique_index);
-  rydb_subfree(&db->unique_index_scratch);
-  rydb_subfree(&db->unique_index_scratch_buffer);
+  rydb_subfree(&db->index_scratch);
+  rydb_subfree(&db->index_scratch_buffer);
   if(db->config.link) {
     for(int i = 0; i < db->config.link_pair_count * 2; i++) {
       rydb_subfree(&db->config.link[i].next);
@@ -1295,8 +1295,8 @@ static bool rydb_open_abort(rydb_t *db) {
   rydb_close_nofree(db);
   rydb_subfree(&db->index);
   rydb_subfree(&db->unique_index);
-  rydb_subfree(&db->unique_index_scratch);
-  rydb_subfree(&db->unique_index_scratch_buffer);
+  rydb_subfree(&db->index_scratch);
+  rydb_subfree(&db->index_scratch_buffer);
   db->state = RYDB_STATE_CLOSED;
   return false;
 }
@@ -1443,11 +1443,11 @@ bool rydb_open(rydb_t *db, const char *path, const char *name) {
       }
       
       //allocate some index string buffer space
-      if((db->unique_index_scratch_buffer = rydb_mem.malloc(total_unique_index_len)) == NULL) {
+      if((db->index_scratch_buffer = rydb_mem.malloc(total_unique_index_len)) == NULL) {
         rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index scratchspace buffer");
         return rydb_open_abort(db);
       }
-      if((db->unique_index_scratch = rydb_mem.malloc(sizeof(rydb_index_t *) * db->unique_index_count)) == NULL) {
+      if((db->index_scratch = rydb_mem.malloc(sizeof(rydb_index_t *) * db->unique_index_count)) == NULL) {
         rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Unable to allocate memory for index scratchspace");
         return rydb_open_abort(db);
       }
@@ -1796,7 +1796,7 @@ static inline bool index_data_in_range(off_t start, off_t end, off_t idx_start, 
   return true;
 }
 
-static const char *rydb_overlay_data_on_row_for_index(const rydb_t *db, char *dst, rydb_rownum_t rownum, const rydb_stored_row_t **cached_row, const char *overlay, off_t ostart, off_t oend, off_t istart, off_t iend) {
+const char *rydb_overlay_data_on_row_for_index(const rydb_t *db, char *dst, rydb_rownum_t rownum, const rydb_stored_row_t **cached_row, const char *overlay, off_t ostart, off_t oend, off_t istart, off_t iend) {
   off_t ilen = iend - istart, olen = oend - ostart;
   
   if(ostart <= istart && olen >= ilen) {
@@ -1883,7 +1883,7 @@ bool rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *dat
   const rydb_stored_row_t   *row = NULL;
   int                        i = 0;
   uint_fast8_t               tx_unique;
-  char                      *dst = db->unique_index_scratch_buffer;
+  char                      *dst = db->index_scratch_buffer;
   RYDB_EACH_UNIQUE_INDEX(db, idx) {
     rydb_config_index_t *cf = idx->config;
     off_t idx_start = cf->start;
@@ -1893,7 +1893,7 @@ bool rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *dat
       continue;
     }
     const char *val = rydb_overlay_data_on_row_for_index(db, dst, rownum, &row, data, start, end, idx_start, idx_end);
-    db->unique_index_scratch[i] = val;
+    db->index_scratch[i] = val;
     dst += cf->len;
     if(db->transaction.active && !db->transaction.oneshot) {
       tx_unique = rydb_transaction_check_unique(db, val, i);
@@ -1930,7 +1930,7 @@ bool rydb_indices_check_unique(rydb_t *db, rydb_rownum_t rownum, const char *dat
     i = 0;
     RYDB_EACH_UNIQUE_INDEX(db, idx) {
       rydb_config_index_t *cf = idx->config;
-      callback(db, i, cf->start, 0, rownum, row, db->unique_index_scratch[i]);
+      callback(db, i, cf->start, 0, rownum, row, db->index_scratch[i]);
       i++;
     }
   }
