@@ -148,6 +148,45 @@ const char*rydb_debug_hash_key;
 #define rydb_debug_hash_key 0
 #endif
 
+#define rydb_ll_push(type, head, cur, prev, next) do { \
+  type *__head = head; \
+  if(__head) { \
+    __head->prev = cur; \
+    (cur)->next = __head; \
+    (cur)->prev = NULL; \
+    head = (cur); \
+  } \
+  else { \
+    head = (cur); \
+    (cur)->prev = NULL; \
+    (cur)->next = NULL; \
+  } \
+} while(0)
+
+#define rydb_ll_remove(type, head, cur, prev, next) do { \
+  if(head == cur) { \
+    type *__next = cur->next; \
+    head = __next; \
+    if(__next) __next->prev == NULL; \
+  } \
+  else { \
+    type *__prev = cur->prev; \
+    type *__next = cur->next; \
+    if(__prev) { \
+      __prev->next = __next; \
+    } \
+    if(__next) { \
+      __next->prev = __prev; \
+    } \
+  } \
+} while(0)
+
+#define rydb_index_cursor_attach(index, cur) \
+  rydb_ll_push(rydb_cursor_t, index->cursor, cur, prev, next)
+  
+#define rydb_index_cursor_detach(index, cur) \
+  rydb_ll_remove(rydb_cursor_t, index->cursor, cur, prev, next)
+
 
 const char *rydb_overlay_data_on_row_for_index(const rydb_t *db, char *dst, rydb_rownum_t rownum, const rydb_stored_row_t **cached_row, const char *overlay, off_t ostart, off_t oend, off_t istart, off_t iend);
 //debug stuff?
