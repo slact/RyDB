@@ -126,6 +126,8 @@ const char *rydb_error_code_str(rydb_error_code_t code) {
     return "RYDB_ERROR_NOT_UNIQUE";
   case RYDB_ERROR_INDEX_NOT_FOUND:
     return "RYDB_ERROR_INDEX_NOT_FOUND";
+  case RYDB_ERROR_INDEX_INVALID:
+    return "RYDB_ERROR_INDEX_INVALID";
   case RYDB_ERROR_WRONG_INDEX_TYPE:
     return "RYDB_ERROR_WRONG_INDEX_TYPE";
   case RYDB_ERROR_LINK_NOT_FOUND:

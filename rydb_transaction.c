@@ -75,6 +75,10 @@ static inline bool rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
     rydb_indices_remove_row(db, dst);
   }
   
+  if(!rydb_indices_add_row(db, dst)) {
+    return false;
+  }
+  
   if(cmd == dst) {
     //set this very rownum
     cmd->type = RYDB_ROW_DATA;
@@ -85,7 +89,6 @@ static inline bool rydb_cmd_set(rydb_t *db, rydb_stored_row_t *cmd) {
     dst->type = RYDB_ROW_DATA;
     cmd->type = RYDB_ROW_EMPTY;
   }
-  rydb_indices_add_row(db, dst);
   rydb_rownum_t dst_rownum = rydb_row_to_rownum(db, dst);
   if(dst_rownum >= db->data_next_rownum) {
     db->data_next_rownum = dst_rownum + 1;

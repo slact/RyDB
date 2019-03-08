@@ -520,6 +520,7 @@ static inline bool hashtable_bitlevel_push(rydb_t *db, rydb_index_t *idx, rydb_h
   uint_fast8_t count = header->bucket.count.bitlevels;
   assert(count > 0);
   if(count +1 >= RYDB_HASHTABLE_BUCKET_MAX_BITLEVELS) {
+    rydb_set_error(db, RYDB_ERROR_INDEX_INVALID, "Not enough bitlevels in hashtable \"%s\": need %"PRIu8", have space for %"PRIu8, idx->config->name, count+1, count);
     return false;
   }
   for(int i = count; i > 0; i--) {
