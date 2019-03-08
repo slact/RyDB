@@ -53,7 +53,7 @@ int main(void) {
     return 1;
   }
   
-  rydb_row_insert_str(db, "heywhatthecrap even is this");
+  rydb_insert_str(db, "heywhatthecrap even is this");
   
   rydb_close(db);
   return error_found;
