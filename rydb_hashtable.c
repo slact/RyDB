@@ -856,7 +856,7 @@ bool rydb_index_hashtable_open(rydb_t *db,  rydb_index_t *idx) {
   //we shouldn't be here
   return false;
 }
-static rydb_hashbucket_t *hashtable_find_bucket(const rydb_t *db, const rydb_index_t *idx, const char *val, int_fast8_t *bitlevel_n) {
+static rydb_hashbucket_t *hashtable_find_bucket(const rydb_t *db, const rydb_index_t *idx, const char *val, int_fast8_t *bitlevel_n, uint64_t *hashvalue_ptr) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   const rydb_config_index_t *cf = idx->config;
   const uint64_t             hashvalue = hash_value(db, cf, val, 0);
@@ -870,6 +870,8 @@ static rydb_hashbucket_t *hashtable_find_bucket(const rydb_t *db, const rydb_ind
   const off_t                data_len = cf->len;
   int_fast8_t                bitlevel_count = -1;
   const rydb_hashtable_bitlevel_count_t *bitlevel = NULL;
+  if(hashvalue_ptr) *hashvalue_ptr = hashvalue;
+  
   
 
   for(uint_fast8_t i=0, max = header->bucket.count.bitlevels; i<max; i++) {
@@ -889,7 +891,7 @@ static rydb_hashbucket_t *hashtable_find_bucket(const rydb_t *db, const rydb_ind
 
 //assumes value length >= indexed value length
 bool rydb_index_hashtable_contains(const rydb_t *db, const rydb_index_t *idx, const char *val) {
-  return hashtable_find_bucket(db, idx, val, NULL) != NULL;
+  return hashtable_find_bucket(db, idx, val, NULL, NULL) != NULL;
 }
 
 //assumes val is at least as long as the indexed data
@@ -901,7 +903,7 @@ bool rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *va
   rydb_hashbucket_t        *bucket;
   rydb_rownum_t             rownum;
   rydb_stored_row_t        *datarow;
-  if((bucket = hashtable_find_bucket(db, idx, val, &bitlevel_count)) == NULL) {
+  if((bucket = hashtable_find_bucket(db, idx, val, &bitlevel_count, NULL)) == NULL) {
     return false;
   }
   if((rownum = BUCKET_STORED_ROWNUM(bucket)) == 0) {
@@ -1017,7 +1019,7 @@ bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row
 bool rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
   DBG("remove row\n")
   DBG_HASHTABLE(db, idx)
-  rydb_hashbucket_t        *bucket = hashtable_find_bucket(db, idx, &row->data[idx->config->start], NULL);
+  rydb_hashbucket_t        *bucket = hashtable_find_bucket(db, idx, &row->data[idx->config->start], NULL, NULL);
   if(!bucket) {
     DBG("bucket ain't here\n")
     return false;
