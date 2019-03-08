@@ -505,33 +505,28 @@ void rydb_hashtable_release(const rydb_index_t *idx) {
 
 static void hashtable_bitlevel_subtract(rydb_hashtable_header_t *header, int level) {
   assert(level >= 0);
-  assert(header->bucket.bitlevel.sub[level].count > 0);
+  assert(header->bucket.bitlevel[level].count > 0);
   DBG("bitlevel subtract lvl %i\n", level)
-  if(--header->bucket.bitlevel.sub[level].count == 0) {
-    for(int i =  level+1; i < header->bucket.count.sub_bitlevels; i++) {
-      header->bucket.bitlevel.sub[i-1] = header->bucket.bitlevel.sub[i];
+  if(--header->bucket.bitlevel[level].count == 0 && level > 0) {
+    for(int i =  level+1; i < header->bucket.count.bitlevels; i++) {
+      header->bucket.bitlevel[i-1] = header->bucket.bitlevel[i];
     }
-    header->bucket.count.sub_bitlevels--;
+    header->bucket.count.bitlevels--;
   }
 }
 
-static const rydb_hashtable_bitlevel_count_t *hashtable_bitlevel_next(const rydb_hashtable_header_t *header, const rydb_hashtable_bitlevel_count_t *bitlevel) {
-  if(bitlevel == NULL) {
-    return &header->bucket.bitlevel.top;
+static inline bool hashtable_bitlevel_push(rydb_t *db, rydb_index_t *idx, rydb_hashtable_header_t *header) {
+  DBG("push bitlevel #%i\n", header->bucket.count.bitlevels);
+  uint_fast8_t count = header->bucket.count.bitlevels;
+  assert(count > 0);
+  if(count +1 >= RYDB_HASHTABLE_BUCKET_MAX_BITLEVELS) {
+    return false;
   }
-  bitlevel++;
-  if(bitlevel < &header->bucket.bitlevel.sub[header->bucket.count.sub_bitlevels]) {
-    return bitlevel;
+  for(int i = count; i > 0; i--) {
+    header->bucket.bitlevel[i] = header->bucket.bitlevel[i-1];
   }
-  return NULL;
-}
-
-static void hashtable_bitlevel_push(rydb_hashtable_header_t *header) {
-  for(int i = header->bucket.count.sub_bitlevels - 1; i >= 0; i--) {
-    header->bucket.bitlevel.sub[i+1] = header->bucket.bitlevel.sub[i];
-  }
-  header->bucket.bitlevel.sub[0] = header->bucket.bitlevel.top;
-  header->bucket.count.sub_bitlevels++;
+  header->bucket.count.bitlevels++;
+  return true;
 }
 
 static inline size_t bucket_size(const rydb_config_index_t *cf) {
@@ -648,7 +643,7 @@ static inline void bucket_write(const rydb_t *db, const rydb_index_t *idx, rydb_
   }
 }
 static inline void bucket_remove(const rydb_t *db, const rydb_index_t *idx, rydb_hashtable_header_t *header, rydb_hashbucket_t *bucket, const rydb_hashbucket_t *buckets_end, size_t bucket_sz, uint_fast8_t subtract_from_totals) {
-  uint_fast8_t         hashbits = header->bucket.bitlevel.top.bits;
+  uint_fast8_t         hashbits = header->bucket.bitlevel[0].bits;
   uint_fast8_t         removed_bucket_hashbits = 0;
   uint64_t             emptybucketnum = BUCKET_NUMBER(bucket, idx);
   rydb_hashbucket_t   *emptybucket = bucket;
@@ -682,12 +677,12 @@ static inline void bucket_remove(const rydb_t *db, const rydb_index_t *idx, rydb
 #endif
   if(subtract_from_totals) {
     header->bucket.count.used--;
-    if(!have_stored_hash || removed_bucket_hashbits == header->bucket.bitlevel.top.bits) {
-      header->bucket.bitlevel.top.count--;
+    if(!have_stored_hash || removed_bucket_hashbits == header->bucket.bitlevel[0].bits) {
+      header->bucket.bitlevel[0].count--;
     }
     else {
-      for(uint_fast8_t i=0, max = header->bucket.count.sub_bitlevels; i<max; i++) {
-        if(header->bucket.bitlevel.sub[i].bits == removed_bucket_hashbits) {
+      for(uint_fast8_t i=0, max = header->bucket.count.bitlevels; i<max; i++) {
+        if(header->bucket.bitlevel[i].bits == removed_bucket_hashbits) {
           hashtable_bitlevel_subtract(header, i);
           return;
         }
@@ -699,7 +694,7 @@ static inline void bucket_remove(const rydb_t *db, const rydb_index_t *idx, rydb
 static bool bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *bucket,  uint_fast8_t old_hashbits, uint_fast8_t transfer_from_old_bitlevel, uint_fast8_t remove_old_bucket) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   size_t                     sz = bucket_size(idx->config);
-  uint_fast8_t               new_hashbits = header->bucket.bitlevel.top.bits;
+  uint_fast8_t               new_hashbits = header->bucket.bitlevel[0].bits;
   uint64_t                   full_hash = bucket_hash(db, idx, bucket);
   uint64_t                   old_hash = btrim64(full_hash, 64 - old_hashbits);
   uint64_t                   new_hash = btrim64(full_hash, 64 - new_hashbits);
@@ -745,10 +740,10 @@ static bool bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *buck
     }
   }
   if(transfer_from_old_bitlevel) {
-    for(uint_fast8_t i=0, max = header->bucket.count.sub_bitlevels; i<max; i++) {
-      if(header->bucket.bitlevel.sub[i].bits == old_hashbits) {
+    for(uint_fast8_t i=0, max = header->bucket.count.bitlevels; i<max; i++) {
+      if(header->bucket.bitlevel[i].bits == old_hashbits) {
         hashtable_bitlevel_subtract(header, i);
-        header->bucket.bitlevel.top.count++;
+        header->bucket.bitlevel[0].count++;
         return true;
       }
     }
@@ -767,7 +762,7 @@ bool rydb_index_hashtable_rehash(rydb_t *db, rydb_index_t *idx, off_t last_possi
     last_possible_bucket = header->bucket.count.total;
   }
   if(current_hashbits == 0 && !store_hash) {
-    current_hashbits = header->bucket.bitlevel.top.bits;
+    current_hashbits = header->bucket.bitlevel[0].bits;
   }
   for(bucket = hashtable_bucket(idx, last_possible_bucket - 1); bucket >= buckets_start; bucket = bucket_next(idx, bucket, -1)) {
     if(bucket_is_empty(bucket)) {
@@ -788,7 +783,7 @@ bool rydb_index_hashtable_rehash(rydb_t *db, rydb_index_t *idx, off_t last_possi
 static bool hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   rydb_config_index_t       *cf = idx->config;
-  uint8_t                    current_hashbits = header->bucket.bitlevel.top.bits;
+  uint8_t                    current_hashbits = header->bucket.bitlevel[0].bits;
   uint64_t                   max_bucket = (1 << (current_hashbits + 1));
   size_t                     bucket_sz = bucket_size(cf);
   size_t                     new_data_sz = max_bucket * bucket_sz;
@@ -803,10 +798,12 @@ static bool hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   idx->index.data.end = idx->index.file.end;
   hashtable_reserve(header);
   if(current_hashbits>0 && !rehash_all) {
-    hashtable_bitlevel_push(header);
-    header->bucket.bitlevel.top.count = 0;
+    if(!hashtable_bitlevel_push(db, idx, header)) {
+      return false;
+    }
+    header->bucket.bitlevel[0].count = 0;
   }
-  header->bucket.bitlevel.top.bits++;
+  header->bucket.bitlevel[0].bits++;
   if(header->bucket.count.total > max_bucket) {
     max_bucket = header->bucket.count.total;
   }
@@ -837,6 +834,7 @@ bool rydb_index_hashtable_open(rydb_t *db,  rydb_index_t *idx) {
   if(!header->active) {
     //write out header
     header->active = 1;
+    header->bucket.count.bitlevels = 1;
   }
   switch(cf->type_config.hashtable.collision_resolution) {
     case RYDB_OPEN_ADDRESSING:
@@ -867,8 +865,9 @@ static rydb_hashbucket_t *hashtable_find_bucket(const rydb_t *db, const rydb_ind
   int_fast8_t                bitlevel_count = -1;
   const rydb_hashtable_bitlevel_count_t *bitlevel = NULL;
   
-  while((bitlevel = hashtable_bitlevel_next(header, bitlevel)) != NULL) {
-    current_level_hashvalue = btrim64(hashvalue, 64 - bitlevel->bits);
+
+  for(uint_fast8_t i=0, max = header->bucket.count.bitlevels; i<max; i++) {
+    current_level_hashvalue = btrim64(hashvalue, 64 - header->bucket.bitlevel[i].bits);
     bucket = hashtable_bucket(idx, current_level_hashvalue);
     while(bucket < buckets_end && !bucket_is_empty(bucket)) {
       if(bucket_compare(db, bucket, hashvalue, val, store_hash, store_value, data_start, data_len) == 0) {
@@ -935,8 +934,8 @@ bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
   }
 
-  DBG("adding rownum %"PRIu32" bits: %"PRIu8 " hashvalue %"PRIu64" trimmed to %"PRIu64" str: \"%.*s\"\n", rydb_row_to_rownum(db, row), header->bucket.bitlevel.top.bits, hashvalue, btrim64(hashvalue, 64 - header->bucket.bitlevel.top.bits), cf->len, &row->data[cf->start])
-  const uint_fast8_t       current_bits = header->bucket.bitlevel.top.bits;
+  DBG("adding rownum %"PRIu32" bits: %"PRIu8 " hashvalue %"PRIu64" trimmed to %"PRIu64" str: \"%.*s\"\n", rydb_row_to_rownum(db, row), header->bucket.bitlevel[0].bits, hashvalue, btrim64(hashvalue, 64 - header->bucket.bitlevel[0].bits), cf->len, &row->data[cf->start])
+  const uint_fast8_t       current_bits = header->bucket.bitlevel[0].bits;
   const uint64_t           top_level_hashvalue = btrim64(hashvalue, 64 - current_bits);
   rydb_hashbucket_t       *bucket = hashtable_bucket(idx, top_level_hashvalue);
   const rydb_hashbucket_t *buckets_end = hashtable_bucket(idx, header->bucket.count.total);
@@ -1004,7 +1003,7 @@ bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row
   bucket_write(db, idx, bucket, hashvalue, current_bits, row);
   
   header->bucket.count.used++;
-  header->bucket.bitlevel.top.count++;
+  header->bucket.bitlevel[0].count++;
   hashtable_release(header);
   return true;
 }
@@ -1074,9 +1073,9 @@ void rydb_hashtable_print(const rydb_t *db, const rydb_index_t *idx) {
          header->bucket.count.used,
          header->bucket.count.load_factor_max,
          (uint32_t) entry_sz,
-         header->bucket.bitlevel.top.bits,  header->bucket.bitlevel.top.count);
-  for(int i=0; i<header->bucket.count.sub_bitlevels; i++) {
-    rydb_printf("           %4d: bits: %2"PRIu8" n: %"PRIu32"\n", i+1, header->bucket.bitlevel.sub[i].bits, header->bucket.bitlevel.sub[i].count);
+         header->bucket.bitlevel[0].bits,  header->bucket.bitlevel[0].count);
+  for(int i=1; i<header->bucket.count.bitlevels; i++) {
+    rydb_printf("           %4d: bits: %2"PRIu8" n: %"PRIu32"\n", i+1, header->bucket.bitlevel[i].bits, header->bucket.bitlevel[i].count);
   }
   
   rydb_hashbucket_t         *bucket = hashtable_bucket(idx, 0);

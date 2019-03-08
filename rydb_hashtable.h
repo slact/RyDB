@@ -40,12 +40,9 @@ typedef struct {
       rydb_rownum_t   total;
       rydb_rownum_t   used;
       rydb_rownum_t   load_factor_max;
-      uint8_t         sub_bitlevels;
+      uint8_t         bitlevels;
     }               count;
-    struct {
-      rydb_hashtable_bitlevel_count_t top; //top bitlevel count
-      rydb_hashtable_bitlevel_count_t sub[RYDB_HASHTABLE_BUCKET_MAX_BITLEVELS];
-    }              bitlevel;
+    rydb_hashtable_bitlevel_count_t bitlevel[RYDB_HASHTABLE_BUCKET_MAX_BITLEVELS];
   }               bucket;
 } rydb_hashtable_header_t;
 
