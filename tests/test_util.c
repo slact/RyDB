@@ -238,9 +238,9 @@ void hashtable_header_count_check(const rydb_t *db, const rydb_index_t *idx, siz
   (void )(db);
   rydb_hashtable_header_t *header = (void *)idx->index.file.start;
   asserteq(header->bucket.count.used, count);
-  size_t levels_total = header->bucket.bitlevel.top.count;
-  for(int i = 0; i<header->bucket.count.sub_bitlevels; i++) {
-    levels_total += header->bucket.bitlevel.sub[i].count;
+  size_t levels_total = 0;
+  for(int i = 0; i<header->bucket.count.bitlevels; i++) {
+    levels_total += header->bucket.bitlevel[i].count;
   }
   asserteq(levels_total, count);
 }
