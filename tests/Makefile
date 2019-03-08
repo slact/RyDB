@@ -30,7 +30,7 @@ default: $(TARGET)
 all: default
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))
-HEADERS = $(wildcard *.h)
+HEADERS = $(wildcard *.h) $(wildcard ../*.h)
 
 $(OBJECTS): .compiler_flags
 
