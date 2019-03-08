@@ -126,8 +126,10 @@ const char *rydb_error_code_str(rydb_error_code_t code) {
     return "RYDB_ERROR_NOT_UNIQUE";
   case RYDB_ERROR_INDEX_NOT_FOUND:
     return "RYDB_ERROR_INDEX_NOT_FOUND";
-    case RYDB_ERROR_WRONG_INDEX_TYPE:
+  case RYDB_ERROR_WRONG_INDEX_TYPE:
     return "RYDB_ERROR_WRONG_INDEX_TYPE";
+  case RYDB_ERROR_LINK_NOT_FOUND:
+    return "RYDB_ERROR_LINK_NOT_FOUND";
   }
   return "???";
 }
@@ -252,7 +254,7 @@ static inline int row_link_config_compare(const void *v1, const void *v2) {
   return strcmp(idx1->next, idx2->next);
 }
 
-static int rydb_find_row_link_num(rydb_t *db, const char *next_name) {
+static off_t rydb_find_row_link_num(rydb_t *db, const char *next_name) {
   rydb_config_row_link_t match = {.next = next_name };;
   rydb_config_row_link_t *start = db->config.link, *found;
   if(!start) {
@@ -2020,6 +2022,54 @@ bool rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row) {
   return true;
 }
 
+void rydb_row_init(rydb_row_t *row) {
+  *row = (rydb_row_t ){0};
+}
+/*
+static bool get_link_num(rydb_t *db, const char *linkname, off_t *linknum) {
+  off_t n = rydb_find_row_link_num(db, linkname);
+  if(n == -1) {
+    rydb_set_error(db, RYDB_ERROR_LINK_NOT_FOUND, "Row link %s does not exist in this database", linkname);
+    return false;
+  }
+  *linknum = n;
+  return true;
+}
+
+static void row_set_linknum_rownum(rydb_row_t *row, off_t linknum, rydb_rownum_t linked_rownum) {
+  row->links.buf[linknum] = linked_rownum;
+  row->links.map |= (1<<linknum);
+}
+
+bool rydb_row_set_link(rydb_t *db, rydb_row_t *row, const char *link_name, rydb_row_t *linked_row) {
+  off_t        linknum;
+  if(!get_link_num(db, link_name, &linknum)) return false;
+  const char  *inverse_link_name = db->config.link[linknum].prev;
+  off_t        inverse_linknum;
+  if(!get_link_num(db, link_name, &inverse_linknum)) return false;
+  row_set_linknum_rownum(row, linknum, linked_row->num);
+  row_set_linknum_rownum(linked_row, inverse_linknum, row->num);
+  return true;
+}
+bool rydb_row_set_link_rownum(rydb_t *db, rydb_row_t *row, const char *link_name, rydb_rownum_t linked_rownum) {
+  off_t linknum;
+  if(!get_link_num(db, link_name, &linknum)) return false;
+  row_set_linknum_rownum(row, linknum, linked_rownum);
+  return true;
+}
+
+bool rydb_row_get_link(rydb_t *db, const rydb_row_t *row, const char *link_name, rydb_row_t *linked_row) {
+  off_t linknum;
+  if(!get_link_num(db, link_name, &linknum)) return false;
+  return true;
+}
+
+bool rydb_update_link_rownum(rydb_t *db, rydb_rownum_t rownum, const char *link_name, rydb_rownum_t linked_rownum) {
+  off_t linknum;
+  if(!get_link_num(db, link_name, &linknum)) return false;
+  return true;
+}
+*/
 void rydb_print_stored_data(rydb_t *db) {
   const char *rowtype;
   char header[RYDB_DATA_START_OFFSET + 1];

@@ -17,6 +17,8 @@ typedef uint32_t rydb_rownum_t;
 #define RYDB_ROWNUM_NEXT  ((rydb_rownum_t ) -2)
 
 #define RYDB_ROW_LINK_PAIRS_MAX 5
+#define rydb_link_bitmap_t      uint_fast8_t
+
 
 #define RYDB_NAME_MAX_LEN 64
 #define RYDB_INDICES_MAX 32
@@ -57,8 +59,10 @@ typedef struct {
   const char     *data;
   uint16_t        start;
   uint16_t        len;
-  rydb_rownum_t  *links;
-  rydb_rownum_t   linkbuf[RYDB_ROW_LINK_PAIRS_MAX * 2];
+  struct {
+    rydb_rownum_t      buf[RYDB_ROW_LINK_PAIRS_MAX * 2];
+    rydb_link_bitmap_t map;
+  }               links;
 } rydb_row_t;
 
 typedef struct {
@@ -182,7 +186,8 @@ typedef enum {
   RYDB_ERROR_DATABASE_OPEN        = 21,
   RYDB_ERROR_NOT_UNIQUE           = 22,
   RYDB_ERROR_INDEX_NOT_FOUND      = 23,
-  RYDB_ERROR_WRONG_INDEX_TYPE     = 24
+  RYDB_ERROR_WRONG_INDEX_TYPE     = 24,
+  RYDB_ERROR_LINK_NOT_FOUND       = 25,
 } rydb_error_code_t;
 const char *rydb_error_code_str(rydb_error_code_t code);
 
@@ -302,6 +307,8 @@ bool rydb_transaction_start(rydb_t *db);
 bool rydb_transaction_finish(rydb_t *db);
 bool rydb_transaction_cancel(rydb_t *db);
 
+void rydb_row_init(rydb_row_t *row); //clears the row
+
 //row by rownum
 bool rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row);
 
@@ -314,6 +321,8 @@ bool rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *str
 //row links
 bool rydb_row_set_link(rydb_t *db, rydb_row_t *row, const char *link_name, rydb_row_t *linked_row);
 bool rydb_row_set_link_rownum(rydb_t *db, rydb_row_t *row, const char *link_name, rydb_rownum_t linked_rownum);
+bool rydb_row_get_link(rydb_t *db, const rydb_row_t *row, const char *link_name, rydb_row_t *linked_row);
+bool rydb_row_get_link_rownum(rydb_t *db, rydb_rownum_t rownum, const char *link_name, rydb_rownum_t *linked_rownum);
 
 //index-specific stuff
 bool rydb_index_rehash(rydb_t *db, const char *index_name);
