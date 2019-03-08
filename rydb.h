@@ -186,8 +186,9 @@ typedef enum {
   RYDB_ERROR_DATABASE_OPEN        = 21,
   RYDB_ERROR_NOT_UNIQUE           = 22,
   RYDB_ERROR_INDEX_NOT_FOUND      = 23,
-  RYDB_ERROR_WRONG_INDEX_TYPE     = 24,
-  RYDB_ERROR_LINK_NOT_FOUND       = 25,
+  RYDB_ERROR_INDEX_INVALID        = 24,
+  RYDB_ERROR_WRONG_INDEX_TYPE     = 25,
+  RYDB_ERROR_LINK_NOT_FOUND       = 26,
 } rydb_error_code_t;
 const char *rydb_error_code_str(rydb_error_code_t code);
 
