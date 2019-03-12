@@ -1601,12 +1601,12 @@ bool rydb_insert(rydb_t *db, const char *data, uint16_t len) {
     len = db->config.row_len;
   }
   
-  if(!rydb_indices_check_unique(db, 0, data, 0, len, 1, tx_unique_callback_add)) {
-    return false;
-  }
-  
   int txstarted;
   rydb_transaction_start_oneshot_or_continue(db, &txstarted);
+  
+  if(!rydb_indices_check_unique(db, 0, data, 0, len, 1, txstarted ? NULL : tx_unique_callback_add)) {
+    return false;
+  }
   
   rydb_row_t rows[2] = {
     {.type = RYDB_ROW_CMD_SET, .data=data, .len = len, .num = db->transaction.future_data_rownum++},
@@ -1656,13 +1656,13 @@ bool rydb_update_rownum(rydb_t *db, const rydb_rownum_t rownum, const char *data
     return false;
   }
   
-  if(!rydb_indices_check_unique(db, rownum, data, start, len, 1, tx_unique_callback_update)) {
-    return false;
-  }
-  
   bool ret;
   int txstarted;
   rydb_transaction_start_oneshot_or_continue(db, &txstarted);
+  
+  if(!rydb_indices_check_unique(db, rownum, data, start, len, 1, txstarted ? NULL : tx_unique_callback_update)) {
+    return false;
+  }
   
   uint16_t max_sz_for_1cmd_update = db->config.row_len - sizeof(rydb_row_cmd_header_t);
   rydb_row_t rows[3];
