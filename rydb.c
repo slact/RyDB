@@ -2038,6 +2038,8 @@ bool rydb_cursor_next(rydb_cursor_t *cur, rydb_row_t *row) {
   }
   else {
     switch(cur->type) {
+      case RYDB_CURSOR_TYPE_NONE:
+        return false;
       case RYDB_CURSOR_TYPE_HASHTABLE:
         idx = cur->state.index.idx;
         rydb_index_cursor_detach(idx, cur);
