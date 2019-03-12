@@ -1661,7 +1661,6 @@ describe(indexing) {
                 sprintf(searchstr, fmt, j, j, j, j, j, j, j, j, j, j);
                 memset(&searchstr[ROW_LEN], '\00', 128 - ROW_LEN);
                 rydb_row_t found_row, found_row2;
-                //raise(SIGSTOP);
                 //printf("i: %i, j: %i, finding \"%s\"\n", i, j, &searchstr[start]);
                 int found = rydb_find_row_str(db, &searchstr[start], &found_row);
                 int found_secondary = rydb_index_find_row_str(db, "secondary", &searchstr[start], &found_row2);
@@ -1899,7 +1898,7 @@ describe(cursor) {
   }
 
   after_each() {
-    rydb_debug_hash_key = NULL;
+    //rydb_debug_hash_key = NULL;
     if(count) free(count);
     if(check) free(check);
     rydb_close(db);
@@ -1981,6 +1980,37 @@ describe(cursor) {
     assert_groupcheck(check, counts[2], numrows, groups);
     free(counts[1]);
     free(counts[2]);
+  }
+  
+  test("cursor for primary index") {
+    data_fill(str, 10, 1);
+    rydb_cursor_t   cur;
+    assert_db_ok(db, rydb_find_rows_str(db, str, &cur));
+    rydb_row_t row;
+    rydb_row_init(&row); //useless
+    int i=0;
+    while(rydb_cursor_next(&cur, &row)) {
+      i++;
+      asserteq(row.num, 1);
+    }
+    asserteq(i, 1);
+  }
+  
+  test("cursor_done functionality") {
+    rydb_cursor_t cur;
+    data_fill(str, 10, 1);
+    assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur));
+    rydb_cursor_done(&cur);
+    rydb_row_t row;
+    int i=0;
+    while(rydb_cursor_next(&cur, &row)) {
+      i++;
+    }
+    asserteq(i, 0);
+    //idempotence -- this shouldn't break anything
+    rydb_cursor_done(&cur);
+    rydb_cursor_done(&cur);
+    rydb_cursor_done(&cur);
   }
 }
 
