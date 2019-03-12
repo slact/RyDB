@@ -167,7 +167,7 @@ const char*rydb_debug_hash_key;
   if(head == cur) { \
     type *__next = cur->next; \
     head = __next; \
-    if(__next) __next->prev == NULL; \
+    if(__next) __next->prev = NULL; \
   } \
   else { \
     type *__prev = cur->prev; \
