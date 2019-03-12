@@ -274,10 +274,11 @@ typedef struct rydb_cursor_s{
   rydb_t            *db;
   off_t              step;
   enum {
-    RYDB_CURSOR_TYPE_DATA = 0,
-    RYDB_CURSOR_TYPE_HASHTABLE = 1,
-    RYDB_CURSOR_FINISHED = 10
+    RYDB_CURSOR_TYPE_NONE = 0,
+    RYDB_CURSOR_TYPE_DATA = 1,
+    RYDB_CURSOR_TYPE_HASHTABLE = 2,
   }                  type;
+  unsigned           finished:1;
   const char        *data;
   size_t             len;
   struct rydb_cursor_s *prev;
@@ -348,6 +349,9 @@ bool rydb_index_find_rows_str(rydb_t *db, const char *index_name, const char *st
 //cursor stuff
 bool rydb_cursor_next(rydb_cursor_t *cur, rydb_row_t *row);
 void rydb_cursor_done(rydb_cursor_t *cur);
+
+//all rows
+bool rydb_rows(rydb_t *db, rydb_cursor_t *cur);
 
 //row links
 bool rydb_row_set_link(rydb_t *db, rydb_row_t *row, const char *link_name, rydb_row_t *linked_row);

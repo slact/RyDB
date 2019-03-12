@@ -1843,72 +1843,98 @@ describe(storage) {
 describe(cursor) {
   static rydb_t    *db;
   static char       path[64];
-  static uint16_t  *count = NULL;
-  static uint16_t  *check = NULL;
-  static char       str[32];
-  static uint16_t   groups = 4;
-  static uint16_t   nongroups = 1;
-  static int        numrows;
-  before_each() {
-    //rydb_debug_hash_key = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
-    numrows = 5000 * repeat_multiplier;
-    db = rydb_new();
-    strcpy(path, "test.db.XXXXXX");
-    mkdtemp(path);
-    assert_db_ok(db, rydb_config_row(db, ROW_LEN, ROW_INDEX_LEN));
-    rydb_config_index_hashtable_t cf = {
-      .hash_function = RYDB_HASH_SIPHASH,
-      .store_value = 1,
-      .store_hash = 1,
-      .rehash = RYDB_REHASH_DEFAULT,
-      .collision_resolution = RYDB_OPEN_ADDRESSING
-    };
-    assert_db_ok(db, rydb_config_add_index_hashtable(db, "group", 10, 5, RYDB_INDEX_DEFAULT, &cf));
-    assert_db_ok(db, rydb_open(db, path, "test"));
-    srand(10);
-    count = calloc((numrows+1) * groups, sizeof(uint16_t));
-    check = calloc((numrows+1) * groups, sizeof(uint16_t));
-    assertneq(check, NULL);
-    assertneq(count, NULL);
-    
-    
-    for(int i=1; i<=numrows; i++) {
-      data_fill(str, 10, i);
-      int g = rand()%(groups + nongroups);
-      if(g>=groups) {
-        g = i+groups+10;
-      }
-      else {
-        check[g*numrows + i]++;
-      }
-      //printf("i=%i, g=%i, check[g][i]=%i\n", i, g, (int )check[g*numrows + i]);
-      data_fill(&str[10], 10, g);
-      assert_db_ok(db, rydb_insert_str(db, str));
-    }
-    /*
-    rydb_print_stored_data(db);
-    rydb_hashtable_print(db, &db->index[0]);
-    //rydb_hashtable_print(db, &db->index[1]);
-    for(int g=0; g<groups; g++) {
-      for(int i=1; i<numrows; i++) {
-        printf("check[%i][%i]=%i\n", g, i, (int)check[g*numrows + i]);
-      }
-    }
-    */
-  }
-
-  after_each() {
-    //rydb_debug_hash_key = NULL;
-    if(count) free(count);
-    if(check) free(check);
-    rydb_close(db);
-    db = NULL;
-    rmdir_recursive(path);
-  }
   
-  test("basic cursor usage") {
-    //rydb_close(db);
-    if(0) {
+  subdesc(hashtable) {
+    static uint16_t  *count = NULL;
+    static uint16_t  *check = NULL;
+    static char       str[32];
+    static uint16_t   groups = 4;
+    static uint16_t   nongroups = 1;
+    static int        numrows;
+    before_each() {
+      //rydb_debug_hash_key = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+      numrows = 5000 * repeat_multiplier;
+      db = rydb_new();
+      strcpy(path, "test.db.XXXXXX");
+      mkdtemp(path);
+      assert_db_ok(db, rydb_config_row(db, ROW_LEN, ROW_INDEX_LEN));
+      rydb_config_index_hashtable_t cf = {
+        .hash_function = RYDB_HASH_SIPHASH,
+        .store_value = 1,
+        .store_hash = 1,
+        .rehash = RYDB_REHASH_DEFAULT,
+        .collision_resolution = RYDB_OPEN_ADDRESSING
+      };
+      assert_db_ok(db, rydb_config_add_index_hashtable(db, "group", 10, 5, RYDB_INDEX_DEFAULT, &cf));
+      assert_db_ok(db, rydb_open(db, path, "test"));
+      srand(10);
+      count = calloc((numrows+1) * groups, sizeof(uint16_t));
+      check = calloc((numrows+1) * groups, sizeof(uint16_t));
+      assertneq(check, NULL);
+      assertneq(count, NULL);
+      
+      
+      for(int i=1; i<=numrows; i++) {
+        data_fill(str, 10, i);
+        int g = rand()%(groups + nongroups);
+        if(g>=groups) {
+          g = i+groups+10;
+        }
+        else {
+          check[g*numrows + i]++;
+        }
+        //printf("i=%i, g=%i, check[g][i]=%i\n", i, g, (int )check[g*numrows + i]);
+        data_fill(&str[10], 10, g);
+        assert_db_ok(db, rydb_insert_str(db, str));
+      }
+      /*
+      rydb_print_stored_data(db);
+      rydb_hashtable_print(db, &db->index[0]);
+      //rydb_hashtable_print(db, &db->index[1]);
+      for(int g=0; g<groups; g++) {
+        for(int i=1; i<numrows; i++) {
+          printf("check[%i][%i]=%i\n", g, i, (int)check[g*numrows + i]);
+        }
+      }
+      */
+    }
+
+    after_each() {
+      //rydb_debug_hash_key = NULL;
+      if(count) free(count);
+      if(check) free(check);
+      rydb_close(db);
+      db = NULL;
+      rmdir_recursive(path);
+    }
+    
+    test("basic cursor usage") {
+      //rydb_close(db);
+      if(0) {
+        for(int g=0; g<groups; g++) {
+          data_fill(str, 10, g);
+          rydb_cursor_t cur;
+          assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur));
+          rydb_row_t row;
+          //printf("CHECK GROUP %i\n", g);
+          while(rydb_cursor_next(&cur, &row)) {
+            int grp = atoi(&row.data[10]);
+            printf("rownum: %i, data: %s\n", row.num, row.data);
+            asserteq(grp, g);
+            count[g*numrows+row.num]++;
+          }
+        }
+        for(int g=0; g<groups; g++) {
+          for(int i=1; i<numrows; i++) {
+            printf("count[%i][%i]=%i\n", g, i, (int)count[g*numrows + i]);
+          }
+        }
+        
+        assert_groupcheck(check, count, numrows, groups);
+      }
+    }
+    
+    test("works when rows are deleted") {
       for(int g=0; g<groups; g++) {
         data_fill(str, 10, g);
         rydb_cursor_t cur;
@@ -1917,100 +1943,134 @@ describe(cursor) {
         //printf("CHECK GROUP %i\n", g);
         while(rydb_cursor_next(&cur, &row)) {
           int grp = atoi(&row.data[10]);
-          printf("rownum: %i, data: %s\n", row.num, row.data);
+          //printf("rownum: %i, data: %s\n", row.num, row.data);
           asserteq(grp, g);
           count[g*numrows+row.num]++;
-        }
-      }
-      for(int g=0; g<groups; g++) {
-        for(int i=1; i<numrows; i++) {
-          printf("count[%i][%i]=%i\n", g, i, (int)count[g*numrows + i]);
+          rydb_delete_rownum(db, row.num);
         }
       }
       
       assert_groupcheck(check, count, numrows, groups);
     }
-  }
-  
-  test("works when rows are deleted") {
-    for(int g=0; g<groups; g++) {
-      data_fill(str, 10, g);
-      rydb_cursor_t cur;
-      assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur));
-      rydb_row_t row;
-      //printf("CHECK GROUP %i\n", g);
-      while(rydb_cursor_next(&cur, &row)) {
-        int grp = atoi(&row.data[10]);
-        //printf("rownum: %i, data: %s\n", row.num, row.data);
-        asserteq(grp, g);
-        count[g*numrows+row.num]++;
-        rydb_delete_rownum(db, row.num);
+    
+    test("multiple cursors") {
+      uint16_t *counts[3];
+      counts[0] = count;
+      counts[1] = calloc((numrows+1) * groups, sizeof(uint16_t));
+      counts[2] = calloc((numrows+1) * groups, sizeof(uint16_t));
+      rydb_cursor_t cur[3];
+      for(int g=0; g<groups; g++) {
+        data_fill(str, 10, g);
+        assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur[0]));
+        assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur[1]));
+        assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur[2]));
+        rydb_row_t row;
+        int fin[3] = {0};
+        for(int i=0; (fin[0]+fin[1]+fin[2])<3; i=(i+1)%3) {
+          if(rydb_cursor_next(&cur[i], &row)) {
+            counts[i][g*numrows + row.num]++;
+            //rydb_delete_rownum(db, row.num);
+          }
+          else {
+            fin[i]=1;
+          }
+        }
       }
+        
+      assert_groupcheck(check, counts[0], numrows, groups);
+      assert_groupcheck(check, counts[1], numrows, groups);
+      assert_groupcheck(check, counts[2], numrows, groups);
+      free(counts[1]);
+      free(counts[2]);
     }
     
-    assert_groupcheck(check, count, numrows, groups);
-  }
-  
-  test("multiple cursors") {
-    uint16_t *counts[3];
-    counts[0] = count;
-    counts[1] = calloc((numrows+1) * groups, sizeof(uint16_t));
-    counts[2] = calloc((numrows+1) * groups, sizeof(uint16_t));
-    rydb_cursor_t cur[3];
-    for(int g=0; g<groups; g++) {
-      data_fill(str, 10, g);
-      assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur[0]));
-      assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur[1]));
-      assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur[2]));
+    test("cursor for primary index") {
+      data_fill(str, 10, 1);
+      rydb_cursor_t   cur;
+      assert_db_ok(db, rydb_find_rows_str(db, str, &cur));
       rydb_row_t row;
-      int fin[3] = {0};
-      for(int i=0; (fin[0]+fin[1]+fin[2])<3; i=(i+1)%3) {
-        if(rydb_cursor_next(&cur[i], &row)) {
-          counts[i][g*numrows + row.num]++;
-          //rydb_delete_rownum(db, row.num);
-        }
-        else {
-          fin[i]=1;
-        }
+      rydb_row_init(&row); //useless
+      int i=0;
+      while(rydb_cursor_next(&cur, &row)) {
+        i++;
+        asserteq(row.num, 1);
       }
+      asserteq(i, 1);
     }
-      
-    assert_groupcheck(check, counts[0], numrows, groups);
-    assert_groupcheck(check, counts[1], numrows, groups);
-    assert_groupcheck(check, counts[2], numrows, groups);
-    free(counts[1]);
-    free(counts[2]);
+    
+    test("cursor_done functionality") {
+      rydb_cursor_t cur;
+      data_fill(str, 10, 1);
+      assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur));
+      rydb_cursor_done(&cur);
+      rydb_row_t row;
+      int i=0;
+      while(rydb_cursor_next(&cur, &row)) {
+        i++;
+      }
+      asserteq(i, 0);
+      //idempotence -- this shouldn't break anything
+      rydb_cursor_done(&cur);
+      rydb_cursor_done(&cur);
+      rydb_cursor_done(&cur);
+    }
   }
   
-  test("cursor for primary index") {
-    data_fill(str, 10, 1);
-    rydb_cursor_t   cur;
-    assert_db_ok(db, rydb_find_rows_str(db, str, &cur));
-    rydb_row_t row;
-    rydb_row_init(&row); //useless
-    int i=0;
-    while(rydb_cursor_next(&cur, &row)) {
-      i++;
-      asserteq(row.num, 1);
+  subdesc(data) {
+    static char       str[32];
+    static int        numrows;
+    before_each() {
+      numrows = 5000 * repeat_multiplier;
+      db = rydb_new();
+      strcpy(path, "test.db.XXXXXX");
+      mkdtemp(path);
+      assert_db_ok(db, rydb_config_row(db, ROW_LEN, ROW_INDEX_LEN));
+      assert_db_ok(db, rydb_open(db, path, "test"));
     }
-    asserteq(i, 1);
-  }
-  
-  test("cursor_done functionality") {
-    rydb_cursor_t cur;
-    data_fill(str, 10, 1);
-    assert_db_ok(db, rydb_index_find_rows_str(db, "group", str, &cur));
-    rydb_cursor_done(&cur);
-    rydb_row_t row;
-    int i=0;
-    while(rydb_cursor_next(&cur, &row)) {
-      i++;
+    after_each() {
+      if(db) rydb_close(db);
     }
-    asserteq(i, 0);
-    //idempotence -- this shouldn't break anything
-    rydb_cursor_done(&cur);
-    rydb_cursor_done(&cur);
-    rydb_cursor_done(&cur);
+    
+    test("walk through all nonempty rows") {
+      int n = 0;
+      for(int i=1; i<=numrows; i++) {
+        sprintf(str,"%i", i);
+        assert_db_ok(db, rydb_insert_str(db, str));
+        n++;
+      }
+      for(int i=1; i<=numrows; i+= 10) {
+        rydb_delete_rownum(db, i);
+        n--;
+      }
+      for(int i=2; i<=numrows; i+= 10) {
+        rydb_delete_rownum(db, i);
+        n--;
+      }
+      rydb_row_t    row;
+      rydb_cursor_t cur;
+      rydb_rows(db, &cur);
+      int n_check=0;
+      while(rydb_cursor_next(&cur, &row)) {
+        n_check++;
+        int ii = atoi(row.data);
+        assertneq((ii-1)%10, 0);
+        assertneq((ii-2)%10, 0);
+      }
+      asserteq(n, n_check);
+    }
+    
+    test("finish cursor early") {
+      for(int i=1; i<=numrows; i++) {
+        sprintf(str,"%i", i);
+        assert_db_ok(db, rydb_insert_str(db, str));
+      }
+      rydb_row_t    row;
+      rydb_cursor_t cur;
+      rydb_rows(db, &cur);
+      rydb_cursor_done(&cur);
+      asserteq(rydb_cursor_next(&cur, &row), false);
+      asserteq(rydb_cursor_next(&cur, &row), false);
+    }
   }
 }
 

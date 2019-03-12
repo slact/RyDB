@@ -1092,7 +1092,7 @@ const rydb_hashbucket_t *cursor_step(rydb_cursor_t *cur) {
     } while(*lvl >= 0);
   }
   
-  cur->type = RYDB_CURSOR_FINISHED;
+  cur->finished = 1;
   return retbucket;
 }
 
