@@ -1,7 +1,7 @@
 #include "rydb_internal.h"
 #include <string.h>
 #include <assert.h>
-
+#include <signal.h>
 static bool rydb_cmd_rangecheck(rydb_t *db, const char *cmdname, rydb_stored_row_t *cmd, rydb_stored_row_t *dst) {
   if(!dst || !rydb_stored_row_in_range(db, dst)) {
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command %s [%i] failed: rownum out of range", cmdname, cmd->target_rownum);
@@ -32,12 +32,18 @@ bool rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) 
     switch(rows[i].type) {
       case RYDB_ROW_CMD_SET:
         memcpy(cur->data, row->data, rowlen > 0 ? rowlen : db->config.row_len);
+        if(row->links.map) {
+          memcpy(&cur->data[db->config.row_len], row->links.buf, sizeof(rydb_rownum_t) * db->config.link_pair_count * 2);
+        }
         break;
       case RYDB_ROW_CMD_UPDATE:
         header = (void *)cur->data;
         header->len = rowlen;
         header->start = row->start;
         memcpy((char *)&header[1], row->data, rowlen);
+        if(row->links.map) {
+          memcpy(&cur->data[db->config.row_len], row->links.buf, sizeof(rydb_rownum_t) * db->config.link_pair_count * 2);
+        }
         break;
       case RYDB_ROW_CMD_UPDATE1:
         header = (void *)cur->data;
@@ -46,6 +52,9 @@ bool rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) 
         break;
       case RYDB_ROW_CMD_UPDATE2:
         memcpy(cur->data, row->data, rowlen);
+        if(row->links.map) {
+          memcpy(&cur->data[db->config.row_len], row->links.buf, sizeof(rydb_rownum_t) * db->config.link_pair_count * 2);
+        }
         break;
       case RYDB_ROW_CMD_DELETE:
       case RYDB_ROW_CMD_SWAP1:
@@ -55,6 +64,7 @@ bool rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) 
         break;
       case RYDB_ROW_EMPTY:
       case RYDB_ROW_DATA:
+        //raise(SIGSTOP);
         rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Tried to append row %s to transaction log", rydb_rowtype_str(row->type));
         return false;
     }
@@ -103,9 +113,15 @@ static inline bool rydb_cmd_update(rydb_t *db, rydb_stored_row_t *cmd) {
     return false;
   }
   char *update_data = (char *)&header[1];
-  rydb_indices_update_row(db, dst, 0, header->start, header->len);
-  memcpy(&dst->data[header->start], update_data, header->len);
-  rydb_indices_update_row(db, dst, 1, header->start, header->len);
+  off_t end_offset = header->start + header->len;
+  size_t len = header->len;
+  if(offset > db->config.row_len) {
+    len -= offset - db->config.row_len;
+  }
+  rydb_indices_update_row(db, dst, 0, header->start, len);
+  memcpy(&dst->data[header->start], update_data, len);
+  //TODO
+  rydb_indices_update_row(db, dst, 1, header->start, len);
   cmd->type = RYDB_ROW_EMPTY;
   return true;
 }

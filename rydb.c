@@ -1630,7 +1630,7 @@ bool rydb_insert_row(rydb_t *db, const rydb_row_t *row) {
   if(linkmap) {
     rows[0].links.map = row->links.map;
     int i=0;
-    for(rydb_link_bitmap_t linkcur = (1<<1); linkcur <= 1<<(RYDB_ROW_LINK_PAIRS_MAX * 2); linkcur<<=1) {
+    for(rydb_link_bitmap_t linkcur = (1<<1); linkcur <= 1<<(db->config.link_pair_count * 2); linkcur<<=1) {
       if(linkmap & linkcur) {
         rows[0].links.buf[i]=row->links.buf[i];
       }
