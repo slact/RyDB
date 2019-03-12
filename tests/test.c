@@ -1875,7 +1875,7 @@ describe(cursor) {
     for(int i=1; i<=numrows; i++) {
       data_fill(str, 10, i);
       int g = rand()%(groups + nongroups);
-      if(g>groups) {
+      if(g>=groups) {
         g = i+groups+10;
       }
       else {
