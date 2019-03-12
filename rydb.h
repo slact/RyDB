@@ -147,11 +147,14 @@ typedef struct {
   uint8_t            flags;
 } rydb_config_index_t;
 
+struct rydb_cursor_s;
+
 typedef struct {
   rydb_file_t          index;
   rydb_file_t          map;
   rydb_config_index_t *config;
   rydb_index_state_t   state;
+  struct rydb_cursor_s *cursor;
 } rydb_index_t;
 
 typedef struct {
@@ -267,16 +270,34 @@ struct rydb_s {
   
 };// rydb_t
 
-typedef struct {
+typedef struct rydb_cursor_s{
   rydb_t            *db;
-  rydb_index_t      *idx;
-  off_t              rows_seen;
+  off_t              step;
+  enum {
+    RYDB_CURSOR_TYPE_DATA = 0,
+    RYDB_CURSOR_TYPE_HASHTABLE = 1,
+    RYDB_CURSOR_FINISHED = 10
+  }                  type;
+  const char        *data;
+  size_t             len;
+  struct rydb_cursor_s *prev;
+  struct rydb_cursor_s *next;
   union {
     struct {
-      uint64_t          hash;
-      uint64_t          bucketnum;
-      uint_fast8_t      hashbits;
-    }                 hashtable;
+      rydb_index_t     *idx;
+      rydb_config_index_t *config;
+      rydb_index_type_t type;
+      union {
+        struct {
+          uint64_t        hash;
+          uint64_t        bucketnum;
+          int_fast8_t     bitlevel;
+        }               hashtable;
+      }                 typedata;
+    }                 index;
+    struct {
+      rydb_rownum_t     rownum;
+    }                 data;
   }                 state;
 } rydb_cursor_t;
 
@@ -316,8 +337,17 @@ bool rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row);
 //find by primary index
 bool rydb_find_row(rydb_t *db, const char *val, size_t len, rydb_row_t *result);
 bool rydb_find_row_str(rydb_t *db, const char *str, rydb_row_t *result);
+bool rydb_find_rows(rydb_t *db, const char *val, size_t len, rydb_cursor_t *cur);
+bool rydb_find_rows_str(rydb_t *db, const char *str, rydb_cursor_t *cur);
+//find by named index
 bool rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_row_t *result);
 bool rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *str, rydb_row_t *result);
+bool rydb_index_find_rows(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_cursor_t *cur);
+bool rydb_index_find_rows_str(rydb_t *db, const char *index_name, const char *str, rydb_cursor_t *cur);
+
+//cursor stuff
+bool rydb_cursor_next(rydb_cursor_t *cur, rydb_row_t *row);
+void rydb_cursor_done(rydb_cursor_t *cur);
 
 //row links
 bool rydb_row_set_link(rydb_t *db, rydb_row_t *row, const char *link_name, rydb_row_t *linked_row);

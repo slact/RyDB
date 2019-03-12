@@ -1983,6 +1983,92 @@ bool rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, si
   return false;
 }
 
+void rydb_cursor_done(rydb_cursor_t *cur) {
+  rydb_index_t *idx;
+  switch(cur->type) {
+    case RYDB_CURSOR_FINISHED:
+      return;
+    case RYDB_CURSOR_TYPE_HASHTABLE:
+      idx = cur->state.index.idx;
+      rydb_index_cursor_detach(idx, cur);
+      cur->type = RYDB_CURSOR_FINISHED;
+      return;
+    case RYDB_CURSOR_TYPE_DATA:
+      assert(0);
+  }
+}
+bool rydb_cursor_next(rydb_cursor_t *cur, rydb_row_t *row) {
+  rydb_rownum_t      nextrownum = 0;
+  rydb_stored_row_t *nextstoredrow;
+  rydb_index_t      *idx;
+  switch(cur->type) {
+    case RYDB_CURSOR_TYPE_HASHTABLE:
+      nextrownum = rydb_hashtable_cursor_next(cur);
+      if(nextrownum == 0) {
+        idx = cur->state.index.idx;
+        cur->type = RYDB_CURSOR_FINISHED;
+        rydb_index_cursor_detach(idx, cur);
+        return false;
+      }
+      break;
+    case RYDB_CURSOR_FINISHED:
+      idx = cur->state.index.idx;
+      rydb_index_cursor_detach(idx, cur);
+      row->num = 0;
+      row->data = NULL;
+      row->len = 0;
+      return false;
+    default:
+      assert(0);
+  }
+  nextstoredrow = rydb_rownum_to_row(cur->db, nextrownum);
+  rydb_storedrow_to_row(cur->db, nextstoredrow, row);
+  return true;
+}
+
+bool rydb_find_rows_str(rydb_t *db, const char *str, rydb_cursor_t *cur) {
+  return rydb_find_rows(db, str, strlen(str), cur);
+}
+bool rydb_find_rows(rydb_t *db, const char *val, size_t len, rydb_cursor_t *cur) {
+  return rydb_index_find_rows(db, "primary", val, len, cur);
+}
+bool rydb_index_find_rows_str(rydb_t *db, const char *index_name, const char *str, rydb_cursor_t *cur) {
+  return rydb_index_find_rows(db, index_name, str, strlen(str), cur);
+}
+bool rydb_index_find_rows(rydb_t *db, const char *index_name, const char *val, size_t len, rydb_cursor_t *cur) {
+  rydb_index_t   *idx = rydb_get_index(db, index_name);
+  if(!idx) {
+    cur->type = RYDB_CURSOR_FINISHED;
+    return false;
+  }
+  
+  *cur = (rydb_cursor_t ){
+  .db = db,
+  .data = val,
+  .len = len,
+  .step = 0,
+  };
+  rydb_index_cursor_attach(idx, cur);
+  
+  bool ret;
+  switch(idx->config->type) {
+    case RYDB_INDEX_HASHTABLE:
+      cur->type = RYDB_CURSOR_TYPE_HASHTABLE;
+      cur->state.index.type = RYDB_INDEX_HASHTABLE;
+      cur->state.index.idx = idx;
+      cur->state.index.config = idx->config;
+      ret = rydb_hashtable_cursor_init(cur);
+      break;
+    default:
+      assert(0);
+  }
+  if(!ret) {
+    cur->type = RYDB_CURSOR_FINISHED;
+    return false;
+  }
+  return true;
+}
+
 bool rydb_index_rehash(rydb_t *db, const char *index_name) {
   rydb_index_t   *idx = rydb_get_index(db, index_name);
   if(!idx) return false;
