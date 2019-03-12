@@ -17,7 +17,7 @@ typedef uint32_t rydb_rownum_t;
 #define RYDB_ROWNUM_NEXT  ((rydb_rownum_t ) -2)
 
 #define RYDB_ROW_LINK_PAIRS_MAX 5
-#define rydb_link_bitmap_t      uint_fast8_t
+#define rydb_link_bitmap_t      uint16_t
 
 
 #define RYDB_NAME_MAX_LEN 64
@@ -322,6 +322,7 @@ bool rydb_open(rydb_t *db, const char *path, const char *name);
 
 bool rydb_insert(rydb_t *db, const char *data, uint16_t len);
 bool rydb_insert_str(rydb_t *db, const char *data);
+bool rydb_insert_row(rydb_t *db, const rydb_row_t *row);
 bool rydb_delete_rownum(rydb_t *db, rydb_rownum_t rownum);
 bool rydb_update_rownum(rydb_t *db, rydb_rownum_t rownum, const char *data, uint16_t start, uint16_t len);
 bool rydb_swap_rownum(rydb_t *db, rydb_rownum_t rownum1, rydb_rownum_t rownum2);

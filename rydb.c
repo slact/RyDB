@@ -1594,9 +1594,23 @@ void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_
 }
 
 bool rydb_insert(rydb_t *db, const char *data, uint16_t len) {
+  rydb_row_t row = {
+    .data = data, .start = 0, .len = len, .links.map = 0
+  };
+  return rydb_insert_row(db, &row);
+}
+
+bool rydb_insert_str(rydb_t *db, const char *data) {
+  return rydb_insert(db, data, strlen(data)+1);
+}
+
+bool rydb_insert_row(rydb_t *db, const rydb_row_t *row) {
   if(!rydb_ensure_open(db)) {
     return false;
   }
+  size_t       len = row->len;
+  const  char *data = row->data;
+  
   if(len == 0 || len > db->config.row_len) {
     len = db->config.row_len;
   }
@@ -1612,15 +1626,25 @@ bool rydb_insert(rydb_t *db, const char *data, uint16_t len) {
     {.type = RYDB_ROW_CMD_SET, .data=data, .len = len, .num = db->transaction.future_data_rownum++},
     {.type = RYDB_ROW_CMD_COMMIT, .num = 0}
   };
+  rydb_link_bitmap_t linkmap = row->links.map;
+  if(linkmap) {
+    rows[0].links.map = row->links.map;
+    int i=0;
+    for(rydb_link_bitmap_t linkcur = (1<<1); linkcur <= 1<<(RYDB_ROW_LINK_PAIRS_MAX * 2); linkcur<<=1) {
+      if(linkmap & linkcur) {
+        rows[0].links.buf[i]=row->links.buf[i];
+      }
+      else {
+        rows[0].links.buf[i] = RYDB_ROWNUM_NULL;
+      }
+      i++;
+    }
+  }
   if(!rydb_data_append_cmd_rows(db, rows, 1 + txstarted)) {
     if(txstarted) rydb_transaction_data_reset(db);
     return false;
   }
   return rydb_transaction_finish_or_continue(db, txstarted);
-}
-
-bool rydb_insert_str(rydb_t *db, const char *data) {
-  return rydb_insert(db, data, strlen(data)+1);
 }
 
 bool rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum) {
@@ -2154,7 +2178,7 @@ bool rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row) {
 void rydb_row_init(rydb_row_t *row) {
   *row = (rydb_row_t ){0};
 }
-/*
+
 static bool get_link_num(rydb_t *db, const char *linkname, off_t *linknum) {
   off_t n = rydb_find_row_link_num(db, linkname);
   if(n == -1) {
@@ -2198,7 +2222,7 @@ bool rydb_update_link_rownum(rydb_t *db, rydb_rownum_t rownum, const char *link_
   if(!get_link_num(db, link_name, &linknum)) return false;
   return true;
 }
-*/
+
 void rydb_print_stored_data(rydb_t *db) {
   const char *rowtype;
   char header[RYDB_DATA_START_OFFSET + 1];
