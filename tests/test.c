@@ -733,7 +733,6 @@ describe(rydb_open) {
       }
     }
     subdesc(mismatch) {
-      static rydb_t *db;
       before_each() {
         db = rydb_new();
         strcpy(path, "test.db.XXXXXX");
