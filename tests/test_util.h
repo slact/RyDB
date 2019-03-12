@@ -66,6 +66,15 @@ void cmd_rownum_out_of_range_check(rydb_t *db, struct cmd_rownum_out_of_range_ch
 
 void hashtable_header_count_check(const rydb_t *db, const rydb_index_t *idx, size_t count);
 
+#define assert_groupcheck(check, count, numrows, groups) do { \
+  for(int __g=0; __g<groups; __g++) { \
+    for(int __i=1; __i<=numrows; __i++) { \
+      if(count[__g*numrows + __i] != check[__g*numrows + __i]) { \
+        fail("row %i should be in group %i %"PRIu16" times, was %"PRIu16, __i, __g, check[__g*numrows + __i], count[__g*numrows + __i]); \
+      } \
+    } \
+  } \
+} while(0)
 
 char *argv_extract2(int *argc, char **argv, off_t i);
 
@@ -81,10 +90,11 @@ do { \
 #define assert_db_ok(db, cmd) \
   do { \
     char ___buf[MAXERRLEN]; \
-    int ___rc = (cmd);\
-    rydb_error_snprint(db, ___buf, MAXERRLEN); \
-    if(___rc != 1) \
+    bool ___rc = (cmd);\
+    if(!___rc) { \
+      rydb_error_snprint(db, ___buf, MAXERRLEN); \
       fail("%s", ___buf); \
+    } \
   } while(0)
 
 #define assert_db_fail(db, cmd, expected_error, ...) \
