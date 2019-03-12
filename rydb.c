@@ -1941,7 +1941,7 @@ bool rydb_find_row(rydb_t *db, const char *val, size_t len, rydb_row_t *result) 
   return rydb_index_find_row(db, "primary", val, len, result);
 }
 bool rydb_find_row_str(rydb_t *db, const char *str, rydb_row_t *result) {
-  return rydb_index_find_row_str(db, "primary", str, result);
+  return rydb_find_row(db, str, strlen(str), result);
 }
 
 bool rydb_index_find_row_str(rydb_t *db, const char *index_name, const char *val, rydb_row_t *row) {
@@ -2004,12 +2004,6 @@ bool rydb_cursor_next(rydb_cursor_t *cur, rydb_row_t *row) {
   switch(cur->type) {
     case RYDB_CURSOR_TYPE_HASHTABLE:
       nextrownum = rydb_hashtable_cursor_next(cur);
-      if(nextrownum == 0) {
-        idx = cur->state.index.idx;
-        cur->type = RYDB_CURSOR_FINISHED;
-        rydb_index_cursor_detach(idx, cur);
-        return false;
-      }
       break;
     case RYDB_CURSOR_FINISHED:
       idx = cur->state.index.idx;

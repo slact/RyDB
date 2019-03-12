@@ -1115,7 +1115,7 @@ void rydb_hashtable_cursors_update(UNUSED(const rydb_t *db), const rydb_index_t 
   uint64_t bucketnum = hashtable_bucketnum(idx, sz, bucket);
   for(rydb_cursor_t *cur = idx->cursor; cur != NULL; cur = cur->next) {
     if(cur->state.index.typedata.hashtable.bucketnum == bucketnum) {
-      if(dst && idx->config->type_config.hashtable.rehash == RYDB_REHASH_ALL_AT_ONCE) {
+      if(dst && idx->config->type_config.hashtable.rehash != RYDB_REHASH_INCREMENTAL) {
         cur->state.index.typedata.hashtable.bucketnum = hashtable_bucketnum(idx, sz, dst);
       }
       else if(dst < bucket) {
