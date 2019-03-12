@@ -76,11 +76,15 @@ bool rydb_data_append_cmd_rows(rydb_t *db, rydb_row_t *rows, const off_t count) 
   return true;
 }
 
-static tx_update_links(rydb_t *db, rydb_stored_row_t *dst) {
+static bool data_write_links(rydb_t *db, rydb_stored_row_t *dst) {
   rydb_stored_row_t *cur = dst->data[db->config.row_len];
   rydb_stored_row_t *end = &cur[db->config.link_pair_count*2];
   while(cur < end) {
-    if(*cur)
+    rydb_rownum_t linkrownum = *cur;
+    assert(linkrownum != RYDB_ROWNUM_PREV && linkrownum != RYDB_ROWNUM_NEXT);
+    if(linkrownum) {
+      rydb_stored_row *row = rydb_rownum_to_row(db, linkrownum);
+    }
       //TODO: range check etc.
     cur++;
   }
@@ -133,7 +137,7 @@ static inline bool rydb_cmd_update(rydb_t *db, rydb_stored_row_t *cmd) {
   rydb_indices_update_row(db, dst, 0, header->start, len);
   memcpy(&dst->data[header->start], update_data, len);
   if(have_links) {
-    tx_update_links(db, dst);
+    data_update_links(db, dst, &update_data[]);
   }
   rydb_indices_update_row(db, dst, 1, header->start, len);
   cmd->type = RYDB_ROW_EMPTY;
