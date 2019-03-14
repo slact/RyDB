@@ -649,7 +649,7 @@ static inline void bucket_set_hash_bits(rydb_hashbucket_t *bucket, uint_fast8_t 
 static inline void bucket_write(const rydb_t *db, const rydb_index_t *idx, rydb_hashbucket_t *bucket, uint64_t hashvalue, uint_fast8_t bitlevel, const rydb_stored_row_t *row) {
   rydb_config_index_t       *cf = idx->config;
   BUCKET_STORED_ROWNUM(bucket) = rydb_row_to_rownum(db, row);
-  DBG("writing rownum %"PRIu32" to %p (check: %"PRIu32")\n", rydb_row_to_rownum(db, row), (void *)bucket, BUCKET_STORED_ROWNUM(bucket))
+  DBG("writing rownum %"RYPRIrn" to %p (check: %"RYPRIrn")\n", rydb_row_to_rownum(db, row), (void *)bucket, BUCKET_STORED_ROWNUM(bucket))
   if(cf->type_config.hashtable.store_hash) {
     assert(bitlevel < 64);
     uint64_t stored_bitlevel_and_hash = btrim64(hashvalue, 6);
@@ -960,7 +960,7 @@ bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
   }
 
-  DBG("adding rownum %"PRIu32" bits: %"PRIu8 " hashvalue %"PRIu64" trimmed to %"PRIu64" str: \"%.*s\"\n", rydb_row_to_rownum(db, row), header->bucket.bitlevel[0].bits, hashvalue, btrim64(hashvalue, 64 - header->bucket.bitlevel[0].bits), cf->len, &row->data[cf->start])
+  DBG("adding rownum %"RYPRIrn" bits: %"PRIu8 " hashvalue %"PRIu64" trimmed to %"PRIu64" str: \"%.*s\"\n", rydb_row_to_rownum(db, row), header->bucket.bitlevel[0].bits, hashvalue, btrim64(hashvalue, 64 - header->bucket.bitlevel[0].bits), cf->len, &row->data[cf->start])
   const uint_fast8_t       current_bits = header->bucket.bitlevel[0].bits;
   const uint64_t           top_level_hashvalue = btrim64(hashvalue, 64 - current_bits);
   size_t                   bucket_sz = bucket_size(cf);
@@ -1149,12 +1149,12 @@ bool rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_
 
 void rydb_bucket_print(const rydb_index_t *idx, const rydb_hashbucket_t *bucket) {
   rydb_config_index_t *cf = idx->config;
-  rydb_printf("  %p [%3"PRIu32"] ", (void *)bucket, (uint32_t )hashtable_bucketnum(idx, bucket_size(idx->config), bucket));
+  rydb_printf("  %p [%3"PRIu64"] ", (void *)bucket, (uint64_t )hashtable_bucketnum(idx, bucket_size(idx->config), bucket));
   if(bucket_is_empty(bucket)) {
     rydb_printf("<EMPTY> ");
   }
   else {
-    rydb_printf("<%5"PRIu32"> ", BUCKET_STORED_ROWNUM(bucket));
+    rydb_printf("<%5"RYPRIrn"> ", BUCKET_STORED_ROWNUM(bucket));
   }
   if(cf->type_config.hashtable.store_hash) {
     uint_fast8_t bits;
