@@ -749,19 +749,19 @@ bool rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
   rydb_filename(db, what, path, 2048);
   
   if((f->path = rydb_strdup(path)) == NULL) { //useful for debugging
-    rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for file path %s", path);
+    rydb_set_error(db, RYDB_ERROR_NOMEMORY, "Failed to allocate memory for file path %.900s", path);
     return false;
   }
   
   mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP;
   if((f->fd = open(path, O_RDWR | O_CREAT, mode)) == -1) {
-    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to open file %s", path);
+    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to open file %.900s", path);
     rydb_file_close(db, f);
     return false;
   }
   
   if((f->fp = fdopen(f->fd, "r+")) == NULL) {
-    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to fdopen file %s", path);
+    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to fdopen file %.900s", path);
     rydb_file_close(db, f);
     return false;
   }
@@ -769,7 +769,7 @@ bool rydb_file_open(rydb_t *db, const char *what, rydb_file_t *f) {
   sz = RYDB_DEFAULT_MMAP_SIZE;
   f->mmap.start = mmap(NULL, sz, PROT_READ | PROT_WRITE, MAP_SHARED, f->fd, 0);
   if(f->mmap.start == MAP_FAILED) {
-    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to mmap file %s", path);
+    rydb_set_error(db, RYDB_ERROR_FILE_ACCESS, "Failed to mmap file %.900s", path);
     rydb_file_close(db, f);
     return false;
   }
@@ -1374,7 +1374,7 @@ bool rydb_open(rydb_t *db, const char *path, const char *name) {
       }
       
       if(!rydb_meta_load(loaded_db, &db->meta)) {
-        rydb_set_error(db, loaded_db->error.code, "Failed to load database: %s", loaded_db->error.str);
+        rydb_set_error(db, loaded_db->error.code, "Failed to load database: %.900s", loaded_db->error.str);
         rydb_close(loaded_db);
         return rydb_open_abort(db);
       }
