@@ -75,7 +75,16 @@ bool rydb_file_close_data(rydb_t *db, rydb_index_t *idx);
 bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t desired_min_sz, ptrdiff_t *realloc_offset);
 bool rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz);
 
-void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
+#ifdef RYDB_DEBUG
+#define rydb_set_error(db, errcode, ...) \
+  snprintf((db)->error.str, RYDB_ERROR_MAX_LEN - 1, __VA_ARGS__); \
+  __rydb_set_error(db, errcode, __VA_ARGS__)
+  
+void __rydb_set_error
+#else
+void rydb_set_error
+#endif
+(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
 
 bool rydb_ensure_open(rydb_t *db);
 bool rydb_ensure_closed(rydb_t *db, const char *msg);

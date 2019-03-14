@@ -193,13 +193,20 @@ bool rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, voi
   return true;
 }
 
-void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...) {
+#ifdef RYDB_DEBUG
+void __rydb_set_error
+#else
+void rydb_set_error
+#endif
+(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...) {
+#ifndef RYDB_DEBUG  
   va_list ap;
   va_start(ap, err_fmt);
   vsnprintf(db->error.str, RYDB_ERROR_MAX_LEN - 1, err_fmt, ap);
+  va_end(ap);
+#endif
   db->error.code = code;
   db->error.errno_val = errno;
-  va_end(ap);
   if(db->error_handler.function) {
     db->error_handler.function(db, &db->error, db->error_handler.privdata);
   }
