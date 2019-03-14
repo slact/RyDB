@@ -373,7 +373,7 @@ bool rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *cf,
   }
   else {
     if(advanced_config->load_factor_max >= 1 || advanced_config->load_factor_max < 0) {
-      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid load_factor_max value %f for hashtable \"%s\", must be between 0 and 1", cf->name, advanced_config->load_factor_max);
+      rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Invalid load_factor_max for hashtable \"%s\", value %f must be between 0 and 1", cf->name, advanced_config->load_factor_max);
       return false;
     }
     uint8_t rehash = advanced_config->rehash;

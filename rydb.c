@@ -194,12 +194,9 @@ bool rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, voi
 }
 
 #ifdef RYDB_DEBUG
-void __rydb_set_error
+void __rydb_set_error(rydb_t *db, rydb_error_code_t code) {
 #else
-void rydb_set_error
-#endif
-(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...) {
-#ifndef RYDB_DEBUG  
+void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...) {
   va_list ap;
   va_start(ap, err_fmt);
   vsnprintf(db->error.str, RYDB_ERROR_MAX_LEN - 1, err_fmt, ap);
@@ -250,7 +247,7 @@ bool rydb_config_revision(rydb_t *db, unsigned revision) {
     return false;
   }
   if(revision > RYDB_REVISION_MAX) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Revision number cannot exceed %"PRIu64, RYDB_REVISION_MAX);
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Revision number cannot exceed %i", RYDB_REVISION_MAX);
     return false;
   }
   db->config.revision = revision;
@@ -1042,7 +1039,7 @@ static bool rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   
   if(rownum_width != sizeof(rydb_rownum_t)) {
     //TODO: convert data to host rownum size
-    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Rownum is a %" PRIu16"-bit integer, expected %i-bit", rownum_width * 8, sizeof(rydb_rownum_t) * 8);
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Rownum is a %" PRIu16"-bit integer, expected %"PRIu16"-bit", rownum_width * 8, (uint16_t )(sizeof(rydb_rownum_t) * 8));
     return false;
   }
   
@@ -2274,7 +2271,7 @@ void rydb_print_stored_data(rydb_t *db) {
       datalen = 60;
       trail = "...";
     }
-    rydb_printf("[%3"PRIu32"]%s%7s%s <%3"PRIu32"> %s%.*s%s\n", rydb_row_to_rownum(db, cur), rowtype_symbol, rowtype, command, cur->target_rownum, dataheader, datalen, data, trail);
+    rydb_printf("[%3"RYPRIrn"]%s%7s%s <%3"RYPRIrn"> %s%.*s%s\n", rydb_row_to_rownum(db, cur), rowtype_symbol, rowtype, command, cur->target_rownum, dataheader, datalen, data, trail);
     prev = cur;
   }
 }

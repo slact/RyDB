@@ -15,10 +15,11 @@
 #define ry_align_ptr(p, a)                                                   \
     (u_char *) (((uintptr_t) (p) + ((uintptr_t) a - 1)) & ~((uintptr_t) a - 1))
 
-
+#define RYPRIrn PRIu32
+    
 #define RYDB_DATA_HEADER_STRING "rydb data"
 #define RYDB_ROW_DATA_OFFSET offsetof(rydb_stored_row_t, data)
-#define RYDB_DATA_START_OFFSET ry_align(RYDB_ROW_DATA_OFFSET + strlen(RYDB_DATA_HEADER_STRING), 8)
+#define RYDB_DATA_START_OFFSET ((unsigned )ry_align(RYDB_ROW_DATA_OFFSET + strlen(RYDB_DATA_HEADER_STRING), 8))
 
 #ifdef RYDB_DEBUG
   extern int rydb_debug_refuse_to_run_transaction_without_commit;
@@ -77,14 +78,13 @@ bool rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz);
 
 #ifdef RYDB_DEBUG
 #define rydb_set_error(db, errcode, ...) \
-  snprintf((db)->error.str, RYDB_ERROR_MAX_LEN - 1, __VA_ARGS__); \
-  __rydb_set_error(db, errcode, __VA_ARGS__)
+  (snprintf((db)->error.str, RYDB_ERROR_MAX_LEN - 1, __VA_ARGS__), \
+  __rydb_set_error(db, errcode))
   
-void __rydb_set_error
+void __rydb_set_error(rydb_t *db, rydb_error_code_t code);
 #else
-void rydb_set_error
+void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
 #endif
-(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...);
 
 bool rydb_ensure_open(rydb_t *db);
 bool rydb_ensure_closed(rydb_t *db, const char *msg);

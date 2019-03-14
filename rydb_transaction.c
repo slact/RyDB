@@ -112,7 +112,7 @@ static inline bool rydb_cmd_update(rydb_t *db, rydb_stored_row_t *cmd) {
 
 static inline bool rydb_cmd_update1(rydb_t *db, rydb_stored_row_t *cmd1, rydb_stored_row_t *cmd2) {
   if(!cmd2 || cmd2->type != RYDB_ROW_CMD_UPDATE2) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%i] failed: second command row has the wrong type or is missing");
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%"RYPRIrn"] failed: second command row has the wrong type or is missing", cmd2 ? rydb_row_to_rownum(db, cmd2) : 0);
     cmd1->type = RYDB_ROW_EMPTY;
     if(cmd2) {
       cmd2->type = RYDB_ROW_EMPTY;
@@ -124,13 +124,13 @@ static inline bool rydb_cmd_update1(rydb_t *db, rydb_stored_row_t *cmd1, rydb_st
 }
 static inline bool rydb_cmd_update2(rydb_t *db, rydb_stored_row_t *cmd1, rydb_stored_row_t *cmd2) {
   if(!cmd1) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%i] failed: one of the UPDATE2 rows is missing");
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%"RYPRIrn"] failed: one of the UPDATE2 rows is missing", rydb_row_to_rownum(db, cmd2));
     cmd2->type = RYDB_ROW_EMPTY;
     return false;
   }
   rydb_row_cmd_header_t    *header = (rydb_row_cmd_header_t *)(void *)cmd1->data;
   if(cmd1->type != RYDB_ROW_CMD_UPDATE1 || cmd2->type != RYDB_ROW_CMD_UPDATE2) {
-    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%i] failed: one of the UPDATE rows has the wrong type");
+    rydb_set_error(db, RYDB_ERROR_TRANSACTION_FAILED, "Command UPDATE2 [%"RYPRIrn"] failed: one of the UPDATE rows has the wrong type", rydb_row_to_rownum(db, cmd2));
     cmd1->type = RYDB_ROW_EMPTY;
     cmd2->type = RYDB_ROW_EMPTY;
     return false;
