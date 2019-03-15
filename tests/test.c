@@ -1784,12 +1784,12 @@ describe(storage) {
   static rydb_t *db;
   static char path[64];
   static char *data;
-  static int  maxlen = 12000;
+  static int  maxlen = 0;
   before_each() {
     db = rydb_new();
     strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
-    data = malloc(maxlen);
+    data = malloc(maxlen+1);
   }
   after_each() {
     rydb_close(db);
@@ -1798,12 +1798,21 @@ describe(storage) {
   }
   
   static char testname[128];
+  maxlen = RYDB_ROW_LEN_MAX - RYDB_ROW_DATA_OFFSET;
+  static int rowlens[] = {1, 2 , 8, 15, 16, 32, 64, 100, 1000, 5000, 10000, 20000, 50000, 60000, 65500};
+  static unsigned rowlen_n;
   static int rowlen;
 
   static int max_rownum = 500;
   max_rownum *= repeat_multiplier;
+
+  test("row length cannot exceed UINT16_MAX") {
+    assert_db_fail(db, rydb_config_row(db, maxlen+1, 5), RYDB_ERROR_BAD_CONFIG, "length [0-9]+ cannot exceed");
+    assert_db_ok(db, rydb_config_row(db, maxlen-8, 5));
+  }
   
-  for(rowlen = 1; rowlen < maxlen; rowlen+=rowlen< 15 ? 1 : (rowlen<50 ? 9 : 613)) {
+  for(rowlen_n = 0; rowlen_n < sizeof(rowlens)/sizeof(int); rowlen_n++) {
+    rowlen = rowlens[rowlen_n];
     sprintf(testname, "storage with row length %i", rowlen);
     test(testname) {
       config_testdb(db, rowlen);

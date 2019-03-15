@@ -221,12 +221,18 @@ rydb_t *rydb_new(void) {
   return db;
 }
 
+static size_t calculate_stored_row_size(size_t row_len, unsigned link_pair_count) {
+  size_t sz = RYDB_ROW_DATA_OFFSET + row_len + link_pair_count * sizeof(rydb_rownum_t);
+  return ry_align(sz, 8); //let's make sure the data
+}
+
 bool rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len) {
   if(!rydb_ensure_closed(db, "and cannot be configured")) {
     return false;
   }
-  if(row_len > RYDB_ROW_LEN_MAX) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row length %u cannot exceed %"PRIu16, row_len, RYDB_ROW_LEN_MAX);
+  uint64_t sz = calculate_stored_row_size(row_len, db->config.link_pair_count);
+  if(sz > RYDB_ROW_LEN_MAX) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Total row data length %"PRIu64" cannot exceed %"PRIu16, sz, RYDB_ROW_LEN_MAX);
     return false;
   }
   if(id_len > row_len) {
@@ -316,6 +322,12 @@ bool rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *rev
   }
   if(rydb_find_row_link_num(db, reverse_link_name) != -1) {
     rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Row-link with name \"%s\" already exists.", reverse_link_name);
+    return false;
+  }
+  
+  size_t sz = calculate_stored_row_size(db->config.row_len, db->config.link_pair_count + 1);
+  if(sz > RYDB_ROW_LEN_MAX) {
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Total row data length %"PRIu64" cannot exceed %"PRIu16, sz, RYDB_ROW_LEN_MAX);
     return false;
   }
   
@@ -1457,8 +1469,7 @@ bool rydb_open(rydb_t *db, const char *path, const char *name) {
       }
     }
   }
-  size_t stored_row_size = RYDB_ROW_DATA_OFFSET + db->config.row_len + db->config.link_pair_count * sizeof(rydb_rownum_t);
-  db->stored_row_size = ry_align(stored_row_size, 8); //let's make sure the data 
+  db->stored_row_size = calculate_stored_row_size(db->config.row_len, db->config.link_pair_count);
   if(new_db) {
     if(!rydb_debug_hash_key) {
       db->config.hash_key.quality = getrandombytes(db->config.hash_key.value, sizeof(db->config.hash_key.value));
