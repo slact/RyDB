@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.0)
-project("RyDB" VERSION 0.0.1 DESCRIPTION "fixed-size row database")
+project("RyDB"
+	LANGUAGES "C"
+	VERSION 0.0.1
+	DESCRIPTION "fixed-size row database")
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
