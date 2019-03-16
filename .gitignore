@@ -1,6 +1,8 @@
 rydb_test
 *.o
 *.a
+*.so
+*.so.*.*.*
 coredump/*
 vgcore.*
 .compiler_flags
