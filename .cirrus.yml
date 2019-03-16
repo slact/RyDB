@@ -23,7 +23,7 @@ linux_task:
   #  - pip install --user pyYAML
   #  - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
   #  - /root/.local/bin/coveralls --exclude tests --gcov-options '\-lp'
-  test_cmake_script: cd dev && make cmake_test
+  test_cmake_script: cd dev && make cmake-test
   codecov_script:
     - cd dev
     - make CC=gcc coverage-gcc-create
@@ -49,5 +49,5 @@ freebsd_task:
   setup_script: pkg install -y gmake cmake
   test_script: cd dev && gmake CCACHE="" test
   test_optimized_script: cd  dev && gmake CCACHE="" O=3 test
-  test_cmake_script: cd dev && gmake CCACHE="" cmake_test
+  test_cmake_script: cd dev && gmake CCACHE="" cmake-test
  
