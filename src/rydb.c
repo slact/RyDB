@@ -2167,7 +2167,13 @@ bool rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row) {
 }
 
 void rydb_row_init(rydb_row_t *row) {
-  *row = (rydb_row_t ){0};
+  *row = (rydb_row_t ){
+    .num = 0,
+    .type = RYDB_ROW_EMPTY,
+    .data = NULL,
+    .start = 0,
+    .len = 0
+  };
 }
 /*
 static bool get_link_num(rydb_t *db, const char *linkname, off_t *linknum) {
