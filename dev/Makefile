@@ -90,7 +90,7 @@ cmake:
 	cd ../ && cmake ./ && $(MAKE)
 
 cmake-test: cmake
-	$(MAKE) -C $(TEST_DIR)
+	$(MAKE) -C $(TEST_DIR) RYDB_DEBUG=
 	$(MAKE) -C $(TEST_DIR) run
 
 coverage-gcc-create: O = 0

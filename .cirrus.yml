@@ -35,13 +35,13 @@ osx_task:
   test_script:
     - cd dev
     - make CCACHE="" all
-    - make CCACHE="" -C tests static
-    - make CCACHE="" -C tests run
+    - make CCACHE="" -C ../tests static
+    - make CCACHE="" -C ../tests run
   test_optimized_script:
     - cd dev
     - make CCACHE="" O=3 all
-    - make CCACHE="" -C tests static
-    - make CCACHE="" -C tests run
+    - make CCACHE="" -C ../tests static
+    - make CCACHE="" -C ../tests run
   test_cmake_script:
     - cmake ./
     - cd tests
