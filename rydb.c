@@ -327,7 +327,7 @@ bool rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *rev
   
   size_t sz = calculate_stored_row_size(db->config.row_len, db->config.link_pair_count + 1);
   if(sz > RYDB_ROW_LEN_MAX) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Total row data length %"PRIu64" cannot exceed %i", sz, RYDB_ROW_LEN_MAX);
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Total row data length %"PRIu64" cannot exceed %i", (uint64_t )sz, RYDB_ROW_LEN_MAX);
     return false;
   }
   
