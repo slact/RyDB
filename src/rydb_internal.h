@@ -4,11 +4,8 @@
 #include "configure.h"
 #ifdef RYDB_HAVE_MREMAP
 #define _GNU_SOURCE
-#include <sys/mman.h>
-#undef _GNU_SOURCE
-#else
-#include <sys/mman.h>
 #endif
+#include <sys/mman.h>
 
 #include "rydb.h"
 
