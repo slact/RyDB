@@ -90,10 +90,10 @@ test:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR) run
 
 $(CMakeCache):
-	if [[ -z "$(RYDB_DEBUG)" ]]; then \
-		cd ../ && ./configure --enable-rydb-debug; \
-	else \
+	if test -z "$(RYDB_DEBUG)"; then \
 		cd ../ && ./configure --disable-rydb-debug; \
+	else \
+		cd ../ && ./configure --enable-rydb-debug; \
 	fi
 
 cmake:
