@@ -194,15 +194,6 @@ uint64_t crc32(const uint8_t *data, size_t data_len) {
     v1 ^= v2;                                                              \
     v2 = ROTL(v2, 32);                                                     \
   } while (0)
-
-  
-#if defined(__GNUC__) && !defined(__clang__) //don't warn about implicit fallthrough
-#define SWITCHLEFT_CASE(n, b, in) \
-  case n: b |= ((uint64_t)in[n-1]) << (8*(n-1)); __attribute__((fallthrough))
-#else
-#define SWITCHLEFT_CASE(n, b, in) \
-  case n: b |= ((uint64_t)in[n-1]) << (8*(n-1))
-#endif
     
 uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
 #ifndef UNALIGNED_LE_CPU
@@ -235,12 +226,12 @@ uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
   }
 
   switch (left) {
-    SWITCHLEFT_CASE(7, b, in);
-    SWITCHLEFT_CASE(6, b, in);
-    SWITCHLEFT_CASE(5, b, in);
-    SWITCHLEFT_CASE(4, b, in);
-    SWITCHLEFT_CASE(3, b, in);
-    SWITCHLEFT_CASE(2, b, in);
+    case 7: b |= ((uint64_t)in[6]) << (8*6); //fall-through
+    case 6: b |= ((uint64_t)in[5]) << (8*5); //fall-through
+    case 5: b |= ((uint64_t)in[4]) << (8*4); //fall-through
+    case 4: b |= ((uint64_t)in[3]) << (8*3); //fall-through
+    case 3: b |= ((uint64_t)in[2]) << (8*2); //fall-through
+    case 2: b |= ((uint64_t)in[1]) << (8*1); //fall-through
     case 1: b |= ((uint64_t)in[0]); break;
     case 0: break;
   }
