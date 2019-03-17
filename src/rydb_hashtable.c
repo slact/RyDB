@@ -198,7 +198,7 @@ uint64_t crc32(const uint8_t *data, size_t data_len) {
   
 #if defined(__GNUC__) && !defined(__clang__) //don't warn about implicit fallthrough
 #define SWITCHLEFT_CASE(n, b, in) \
-  case n: b |= ((uint64_t)in[n-1]) << (8*(n-1)); __attribute__((fallthrough));
+  case n: b |= ((uint64_t)in[n-1]) << (8*(n-1)); __attribute__((fallthrough))
 #else
 #define SWITCHLEFT_CASE(n, b, in) \
   case n: b |= ((uint64_t)in[n-1]) << (8*(n-1));
