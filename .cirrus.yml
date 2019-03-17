@@ -38,26 +38,27 @@ linux_task:
 osx_task:
   osx_instance:
     image: mojave-xcode-10.1
-  test_script:
-    - cd dev
-    - make CC=cc O=2 CCACHE="" all
-    - make CC=cc O=2 CCACHE="" -C ../tests static
-    - make CC=cc O=2 CCACHE="" -C ../tests run
-  test_optimized_script:
-    - cd dev
-    - make CC=cc O=3 CCACHE="" all
-    - make CC=cc O=3 CCACHE="" -C ../tests static
-    - make CC=cc O=3 CCACHE="" -C ../tests run
-  test_cmake_nodebug_script:
-    - ./configure --disable-rydb-debug
-    - cd tests
-    - make CC=cc O=3 CCACHE="" static
-    - make CC=cc O=3 CCACHE="" run
-  test_cmake_debug_script:
+  test_cmake_script:
     - ./configure --enable-rydb-debug
+    - make
     - cd tests
     - make CC=cc CCACHE="" static
     - make CC=cc CCACHE="" run
+    - cd ../dev && make clean
+  test_cmake_nodebug_script:
+    - ./configure --disable-rydb-debug
+    - make
+    - cd tests
+    - make CC=cc O=3 CCACHE="" static
+    - make CC=cc O=3 CCACHE="" run
+    - cd ../dev && make clean
+  test_cmake_release_script:
+    - ./configure --disable-rydb-debug --with-build-type=Release
+    - make
+    - cd tests
+    - make CC=cc O=3 CCACHE="" static
+    - make CC=cc O=3 CCACHE="" run
+    - cd ../dev && make clean
 
 freebsd_task:
   freebsd_instance:
