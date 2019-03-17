@@ -201,7 +201,7 @@ uint64_t crc32(const uint8_t *data, size_t data_len) {
   case n: b |= ((uint64_t)in[n-1]) << (8*(n-1)); __attribute__((fallthrough))
 #else
 #define SWITCHLEFT_CASE(n, b, in) \
-  case n: b |= ((uint64_t)in[n-1]) << (8*(n-1));
+  case n: b |= ((uint64_t)in[n-1]) << (8*(n-1))
 #endif
     
 uint64_t siphash(const uint8_t *in, const size_t inlen, const uint8_t *k) {
