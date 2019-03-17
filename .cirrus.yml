@@ -42,6 +42,11 @@ osx_task:
     - make CCACHE="" O=3 all
     - make CCACHE="" -C tests static
     - make CCACHE="" -C tests run
+  test_cmake_script:
+    - cmake ./
+    - cd tests
+    - make CCACHE="" static
+    - make CCACHE="" run
 
 freebsd_task:
   freebsd_instance:
