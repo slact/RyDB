@@ -2,5 +2,5 @@ ignore:
   - tests/snow.h
   - tests/test_util.c
   - tests/test.c
-  - rbtree.c
-  - rbtree.h
+  - src/rbtree.c
+  - src/rbtree.h
