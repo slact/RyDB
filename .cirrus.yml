@@ -8,23 +8,24 @@ linux_task:
     - apt-get install -y --no-install-recommends valgrind ccache clang cmake
   build_script:
     - cd dev
-    - make CC=cc all
+    - make CC=gcc all
   test_script:
     - cd dev
-    - make CC=cc test
+    - make CC=gcc test
   test_optimized_script:
     - cd dev
-    - make CC=cc O=3 test
+    - make CC=gcc O=3 test
   test_nodebug_script:
+    - ./configure --disable-rydb-debug
     - cd dev
-    - make CC=cc O=2 RYDB_DEBUG= test
+    - make CC=gcc O=2 RYDB_DEBUG= test
     - make clean
   test_valgrind_script:
     - cd dev
-    - make CC=cc O=1 valgrind
+    - make CC=gcc O=1 valgrind
   test_clang_sanitize_script:
     - cd dev
-    - make O=2 SANITIZE_ADDRESS_USE="" sanitize
+    - make O=2 CC=clang SANITIZE_ADDRESS_USE="" sanitize
   test_cmake_nodebug_script:
     - ./configure --disable-rydb-debug
     - cd dev
@@ -65,17 +66,19 @@ freebsd_task:
     image: freebsd-12-0-release-amd64
   setup_script: pkg install -y gmake cmake ccache
   test_script:
+    - ./configure --enable-rydb-debug
     - cd dev
     - gmake test
   test_optimized_script:
+    - ./configure --enable-rydb-debug
     - cd dev
     - gmake CCACHE="" O=3 test
-  test_cmake_nodebug_script:
-    - ./configure --disable-rydb-debug
-    - cd dev
-    - gmake CCACHE="" cmake-test
   test_cmake_debug_script:
     - ./configure --enable-rydb-debug
+    - cd dev
+    - gmake CCACHE="" cmake-test
+  test_cmake_release_script:
+    - ./configure --disable-rydb-debug --with-build-type=Release
     - cd dev
     - gmake CCACHE="" cmake-test
  
