@@ -8,21 +8,12 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <time.h>
 
 #include <signal.h>
 #include <assert.h>
-
-#if defined _WIN32 || defined __CYGWIN__
-#define PATH_SLASH_CHAR '\\'
-#define PATH_SLASH "\\"
-#else
-#define PATH_SLASH_CHAR '/'
-#define PATH_SLASH "/"
-#endif
 
 #ifdef RYDB_DEBUG
 int rydb_debug_refuse_to_run_transaction_without_commit = 1; //turning this off lets us test more invalid inputs to commands
@@ -512,7 +503,7 @@ bool rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned star
 static off_t rydb_filename(const rydb_t *db, const char *what, char *buf, off_t maxlen) {
   return snprintf(buf, maxlen, "%s%srydb.%s%s%s",
                   db->path,
-                  strlen(db->path) > 0 ? PATH_SLASH : "",
+                  strlen(db->path) > 0 ? RYDB_PATH_SEPARATOR : "",
                   db->name,
                   strlen(db->name) > 0 ? "." : "",
                   what);
@@ -615,7 +606,7 @@ bool rydb_file_ensure_size(rydb_t *db, rydb_file_t *f, size_t min_sz, ptrdiff_t 
     size_t new_mmap_sz = current_mmap_sz;
     while(new_mmap_sz < min_sz) new_mmap_sz *= 2;
     char *remapped;
-#if HAVE_MREMAP
+#ifdef RYDB_HAVE_MREMAP
     remapped = mremap(f->mmap.start, current_mmap_sz, new_mmap_sz, MREMAP_MAYMOVE);
 #else
     //TODO: thoroughly understand if msync() needs to be called here. Probably not.
@@ -1334,7 +1325,7 @@ bool rydb_open(rydb_t *db, const char *path, const char *name) {
   }
   
   size_t sz = strlen(db->path);
-  if(sz > 0 && db->path[sz - 1] == PATH_SLASH_CHAR) { // remove trailing slash
+  if(sz > 0 && db->path[sz - 1] == RYDB_PATH_SEPARATOR_CHAR) { // remove trailing slash
     *(char *)&db->path[sz - 1] = '\00';
   }
   

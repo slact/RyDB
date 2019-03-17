@@ -23,3 +23,4 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 Makefile
+src/configure.h

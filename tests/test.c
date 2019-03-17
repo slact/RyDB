@@ -463,7 +463,7 @@ describe(errors_and_debug) {
     err = rydb_error(db);
     asserteq(err, NULL);
   }
-#if RYDB_DEBUG
+#ifdef RYDB_DEBUG
   it("prints errors as one would expect") {
     asserteq(rydb_config_row(db, 0, 0), 0);
     rydb_error_t *err = rydb_error(db);
@@ -592,7 +592,7 @@ describe(rydb_open) {
     assert_db_ok(db, rydb_open(db, path, "test"));
     assert(memcmp(db->config.hash_key.value, "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00", 16) != 0);
   }
-#if RYDB_DEBUG
+#ifdef RYDB_DEBUG
   it("initializes the hash key without /dev/urandom") {
     rydb_debug_disable_urandom = 1;
     rydb_config_row(db, 20, 5);

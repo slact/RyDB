@@ -1,14 +1,16 @@
 #ifndef _RYDB_INTERNAL_H
 #define _RYDB_INTERNAL_H
-#ifdef __linux__
-#define HAVE_MREMAP 1
+
+#include "configure.h"
+#ifdef RYDB_HAVE_MREMAP
 #define _GNU_SOURCE
+#include <sys/mman.h>
+#undef _GNU_SOURCE
+#else
+#include <sys/mman.h>
 #endif
 
 #include "rydb.h"
-
-//thanks, Nginx
-#define RY_ALIGNMENT   sizeof(unsigned long)    /* platform word */
 
 //works only for a = 2^n
 #define ry_align(d, a)     (((d) + (a - 1)) & ~(a - 1))
@@ -42,15 +44,14 @@
 #define member_type(type, member) const void
 #endif
 
+#define container_of(ptr, type, member) ((type *)( \
+    (char *)(member_type(type, member) *){ ptr } - offsetof(type, member)))
+#endif
+
 #ifdef __GNUC__
 #  define UNUSED(x) x __attribute__((__unused__))
 #else
 #  define UNUSED(x) x
-#endif
-
-    
-#define container_of(ptr, type, member) ((type *)( \
-    (char *)(member_type(type, member) *){ ptr } - offsetof(type, member)))
 #endif
 
 #define RYDB_LOCK_READ    0x01

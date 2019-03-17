@@ -9,8 +9,8 @@ O=0
 CCACHE = ccache
 COLOR = always
 COLOR_OPT = -fdiagnostics-color=${COLOR}
-RYDB_DEBUG =  -DRYDB_DEBUG
-CFLAGS = -ggdb -I $(SRC_DIR) -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC $(RYDB_DEBUG)
+RYDB_DEBUG = 1
+CFLAGS = -ggdb -I $(SRC_DIR) -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC
 VALGRIND_FLAGS = --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
 SANITIZE_ADDRESS_USE = -fsanitize-address-use-after-scope
 SANITIZE_FLAGS = $(SANITIZE_ADDRESS_USE) -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum -fstack-protector
@@ -20,6 +20,8 @@ CLANG_TIDY_CHECKS = bugprone-*, readability-*, performance-*, google-*, cert-*, 
 TEST_DIR = ../tests
 SRC_DIR = ../src
 .PHONY: default all clean force valgrind callgrind tidy sanitize cmake
+
+CMakeCache = ../CMakeCache.txt
 
 default: all
 all: $(SNAME) $(DNAME) $(BINARY)
@@ -35,20 +37,22 @@ $(OBJECTS): .compiler_flags
 
 .PRECIOUS: $(BINARY) $(OBJECTS) $(SNAME) $(DNAME)
 
-$(SNAME): $(OBJECTS)
+$(SNAME): $(CMakeCache) $(OBJECTS)
 	$(AR) $(ARFLAGS) ../$(SNAME) $^
 
 $(DNAME): LDFLAGS += -shared
-$(DNAME): $(OBJECTS)
+$(DNAME): $(CMakeCache) $(OBJECTS)
 	$(CCACHE) $(CC) $(OBJECTS) $(LIBS) $(LDFLAGS) -o ../$(DNAME)
 
 clean:
+	-rm -Rf ../CMakeFiles
+	-rm -f ../CMakeCache.txt
+	-rm -f $(SRC_DIR)/configure.h
 	-rm -f $(SRC_DIR)/*.o
 	-rm -f $(SRC_DIR)/*.gcda
 	-rm -f $(SRC_DIR)/*.gcno
 	-rm -f $(TEST_DIR)/*.gcda
 	-rm -f $(TEST_DIR)/*.gcno
-	-rm -f $(SRC_DIR)/$(BINARY)
 	-rm -f $(SRC_DIR)/*.so
 	-rm -f $(SRC_DIR)/*.a
 	-rm -f $(TEST_DIR)/*.o
@@ -81,16 +85,22 @@ tidy:   clean default
 
 lib:	$(DNAME)
 
-test:   CFLAGS += -DRYDB_DEBUG
 test:	$(DNAME)
 	$(MAKE) -C $(TEST_DIR)
 	$(MAKE) -C $(TEST_DIR) run
+
+$(CMakeCache):
+	if [[ -z "$(RYDB_DEBUG)" ]]; then \
+		cd ../ && ./configure --enable-rydb-debug; \
+	else \
+		cd ../ && ./configure --disable-rydb-debug; \
+	fi
 
 cmake:
 	cd ../ && cmake ./ && $(MAKE)
 
 cmake-test: cmake
-	$(MAKE) -C $(TEST_DIR) RYDB_DEBUG=
+	$(MAKE) -C $(TEST_DIR)
 	$(MAKE) -C $(TEST_DIR) run
 
 coverage-gcc-create: O = 0

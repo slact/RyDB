@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <ftw.h>
 
-#if RYDB_DEBUG
+#ifdef RYDB_DEBUG
 char intercepted_printf_buf[4096];
 
 int intercepted_printf( const char * format, ... ) {

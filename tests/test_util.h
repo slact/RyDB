@@ -41,7 +41,7 @@ int count_files(const char *path);
 int rmdir_recursive(const char *path);
 void rydb_print_stored_data(rydb_t *db);
 
-#if RYDB_DEBUG
+#ifdef RYDB_DEBUG
 char intercepted_printf_buf[4096];
 int rydb_intercept_printfs(void);
 int rydb_unintercept_printfs(void);

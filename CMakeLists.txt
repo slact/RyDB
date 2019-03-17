@@ -1,10 +1,9 @@
 cmake_minimum_required(VERSION 3.0)
-project("RyDB")
+project("RyDB" "C")
 set(DESCRIPTION "fixed-size row database")
 set(VERSION 0.0.1)
-set(LANGUAGES "C")
 
-set(CMAKE_VERBOSE_MAKEFILE ON)
+#set(CMAKE_VERBOSE_MAKEFILE ON)
 set(libsrc 
   src/rydb.c
   src/rydb_hashtable.c
@@ -19,3 +18,19 @@ set_target_properties(RyDB_static PROPERTIES OUTPUT_NAME RyDB)
 
 set_target_properties(RyDB PROPERTIES VERSION ${VERSION})
 target_include_directories(RyDB PRIVATE src)
+
+include(CheckSymbolExists)
+include(TestBigEndian)
+include(CMakePushCheckState)
+include(GNUInstallDirs)
+
+cmake_push_check_state(RESET)
+set(CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
+check_symbol_exists(mremap "sys/mman.h" RYDB_HAVE_MREMAP)
+cmake_reset_check_state()
+
+TEST_BIG_ENDIAN(RYDB_BIG_ENDIAN)
+
+file(TO_NATIVE_PATH "/" RYDB_PATH_SEPARATOR)
+
+configure_file(src/configure.h.tmpl src/configure.h)
