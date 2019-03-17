@@ -232,7 +232,7 @@ bool rydb_config_row(rydb_t *db, unsigned row_len, unsigned id_len) {
   }
   uint64_t sz = calculate_stored_row_size(row_len, db->config.link_pair_count);
   if(sz > RYDB_ROW_LEN_MAX) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Total row data length %"PRIu64" cannot exceed %"PRIu16, sz, RYDB_ROW_LEN_MAX);
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Total row data length %"PRIu64" cannot exceed %i", sz, RYDB_ROW_LEN_MAX);
     return false;
   }
   if(id_len > row_len) {
@@ -327,7 +327,7 @@ bool rydb_config_add_row_link(rydb_t *db, const char *link_name, const char *rev
   
   size_t sz = calculate_stored_row_size(db->config.row_len, db->config.link_pair_count + 1);
   if(sz > RYDB_ROW_LEN_MAX) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Total row data length %"PRIu64" cannot exceed %"PRIu16, sz, RYDB_ROW_LEN_MAX);
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Total row data length %"PRIu64" cannot exceed %i", sz, RYDB_ROW_LEN_MAX);
     return false;
   }
   
@@ -411,7 +411,7 @@ static bool rydb_config_add_index(rydb_t *db, rydb_config_index_t *idx) {
     return false;
   }
   if(idx->start + idx->len > db->config.row_len) {
-    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" is out of bounds: row length is %"PRIu16", but index is set to end at %"PRIu16, idx->name, db->config.row_len, idx->start + idx->len);
+    rydb_set_error(db, RYDB_ERROR_BAD_CONFIG, "Index \"%s\" is out of bounds: row length is %"PRIu16", but index is set to end at %i", idx->name, db->config.row_len, idx->start + idx->len);
     return false;
   }
   if(rydb_find_index_num(db, idx->name) != -1) {
@@ -1051,7 +1051,7 @@ static bool rydb_meta_load(rydb_t *db, rydb_file_t *ryf) {
   
   if(rownum_width != sizeof(rydb_rownum_t)) {
     //TODO: convert data to host rownum size
-    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Rownum is a %" PRIu16"-bit integer, expected %"PRIu16"-bit", rownum_width * 8, (uint16_t )(sizeof(rydb_rownum_t) * 8));
+    rydb_set_error(db, RYDB_ERROR_FILE_INVALID, "Rownum is a %i-bit integer, expected %"PRIu16"-bit", rownum_width * 8, (uint16_t )(sizeof(rydb_rownum_t) * 8));
     return false;
   }
   
@@ -2167,7 +2167,7 @@ bool rydb_find_row_at(rydb_t *db, rydb_rownum_t rownum, rydb_row_t *row) {
 }
 
 void rydb_row_init(rydb_row_t *row) {
-  *row = (rydb_row_t ){
+  *row = (rydb_row_t ) {
     .num = 0,
     .type = RYDB_ROW_EMPTY,
     .data = NULL,
