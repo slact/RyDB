@@ -1,7 +1,6 @@
-NAME	:= rydb
+NAME	:= RyDB
 SNAME	:= lib$(NAME).a
 DNAME	:= lib$(NAME).so
-BINARY	:= rydb_test
 
 LIBS	:=
 LDFLAGS	:= -rdynamic
@@ -11,24 +10,24 @@ CCACHE = ccache
 COLOR = always
 COLOR_OPT = -fdiagnostics-color=${COLOR}
 RYDB_DEBUG =  -DRYDB_DEBUG
-CFLAGS = -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC $(RYDB_DEBUG)
+CFLAGS = -ggdb -I $(SRC_DIR) -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC $(RYDB_DEBUG)
 VALGRIND_FLAGS = --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free
 SANITIZE_ADDRESS_USE = -fsanitize-address-use-after-scope
 SANITIZE_FLAGS = $(SANITIZE_ADDRESS_USE) -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=shift -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=bounds -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=enum -fstack-protector
 CALLGRIND_FLAGS = --tool=callgrind --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=callgrind-rydb-%p.out
 ANALYZE_FLAGS = -maxloop 100 -enable-checker alpha.clone -enable-checker alpha.core -enable-checker alpha.deadcode -enable-checker alpha.security -enable-checker alpha.unix -enable-checker nullability
 CLANG_TIDY_CHECKS = bugprone-*, readability-*, performance-*, google-*, cert-*, -cert-err34-c, -google-readability-todo, -clang-diagnostic-unused-function
-TEST_DIR = ./tests
-
-.PHONY: default all clean force valgrind callgrind tidy sanitize
+TEST_DIR = ../tests
+SRC_DIR = ../src
+.PHONY: default all clean force valgrind callgrind tidy sanitize cmake
 
 default: all
 all: $(SNAME) $(DNAME) $(BINARY)
 
-OBJECTS := $(patsubst %.c, %.o, $(filter-out rydb_test.c, $(wildcard *.c)))
-HEADERS := $(wildcard *.h)
-ENTRY_OBJECTS:= rydb_test.o
 
+OBJECTS := $(patsubst $(SRC_DIR)/%.c, $(SRC_DIR)/%.o, $(filter-out rydb_test.c, $(wildcard $(SRC_DIR)/*.c)))
+HEADERS := $(wildcard $(SRC_DIR)/*.h)
+# 
 $(OBJECTS): .compiler_flags
 
 %.o: %.c $(HEADERS)
@@ -36,31 +35,28 @@ $(OBJECTS): .compiler_flags
 
 .PRECIOUS: $(BINARY) $(OBJECTS) $(SNAME) $(DNAME)
 
-rydb_test: $(OBJECTS) $(ENTRY_OBJECTS)
-	$(CCACHE) $(CC) $(OBJECTS) $(ENTRY_OBJECTS) $(LIBS) $(LDFLAGS) -o $@
-
 $(SNAME): $(OBJECTS)
-	$(AR) $(ARFLAGS) $@ $^
+	$(AR) $(ARFLAGS) ../$(SNAME) $^
 
 $(DNAME): LDFLAGS += -shared
 $(DNAME): $(OBJECTS)
-	$(CCACHE) $(CC) $(OBJECTS) $(LIBS) $(LDFLAGS) -o $@
+	$(CCACHE) $(CC) $(OBJECTS) $(LIBS) $(LDFLAGS) -o ../$(DNAME)
 
 clean:
-	-rm -f *.o
-	-rm -f *.gcda
-	-rm -f *.gcno
-	-rm -f tests/*.gcda
-	-rm -f tests/*.gcno
-	-rm -f $(BINARY)
-	-rm -f $(SNAME)
-	-rm -f $(DNAME)
-	-rm -f tests/*.o
-	-rm -f tests/test
+	-rm -f $(SRC_DIR)/*.o
+	-rm -f $(SRC_DIR)/*.gcda
+	-rm -f $(SRC_DIR)/*.gcno
+	-rm -f $(TEST_DIR)/*.gcda
+	-rm -f $(TEST_DIR)/*.gcno
+	-rm -f $(SRC_DIR)/$(BINARY)
+	-rm -f $(SRC_DIR)/*.so
+	-rm -f $(SRC_DIR)/*.a
+	-rm -f $(TEST_DIR)/*.o
+	-rm -f $(TEST_DIR)/test
 	-rm -f coverage.*
-	-rm -Rf tests/test.db.*
-	-rm -f *.profraw
-	-rm -f tests/*.profraw
+	-rm -Rf $(TEST_DIR)/test.db.*
+	-rm -f $(SRC_DIR)/*.profraw
+	-rm -f $(TEST_DIR)/*.profraw
 	-rm -Rf coverage-report
 
 .compiler_flags: force
@@ -87,6 +83,13 @@ lib:	$(DNAME)
 
 test:   CFLAGS += -DRYDB_DEBUG
 test:	$(DNAME)
+	$(MAKE) -C $(TEST_DIR)
+	$(MAKE) -C $(TEST_DIR) run
+
+cmake:
+	cd ../ && cmake ./ && $(MAKE)
+
+cmake-test: cmake
 	$(MAKE) -C $(TEST_DIR)
 	$(MAKE) -C $(TEST_DIR) run
 

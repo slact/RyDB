@@ -1,12 +1,13 @@
 rydb_test
 *.o
+*.a
+*.so
+*.so.*.*.*
 coredump/*
 vgcore.*
 .compiler_flags
 callgrind*.out
 compile_commands.json
-librydb.a
-librydb.so
 *.gcda
 *.gcno
 *.gcov
@@ -18,3 +19,7 @@ tests/test
 .profdata
 coverage-report/*
 tests/.profraw
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile

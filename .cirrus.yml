@@ -5,13 +5,14 @@ linux_task:
     CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
   setup_script:
     - apt-get update
-    - apt-get install -y --no-install-recommends valgrind ccache clang
-  build_script: make CC=gcc all
-  test_script: make CC=gcc test
-  test_optimized_script: make CC=gcc O=3 test
-  test_nodebug_script: make CC=gcc O=2 RYDB_DEBUG= test
-  test_valgrind_script: make CC=gcc O=1 valgrind
+    - apt-get install -y --no-install-recommends valgrind ccache clang cmake
+  build_script: cd dev && make CC=gcc all
+  test_script: cd dev && make CC=gcc test
+  test_optimized_script: cd dev && make CC=gcc O=3 test
+  test_nodebug_script: cd dev && make CC=gcc O=2 RYDB_DEBUG= test
+  test_valgrind_script: cd dev && make CC=gcc O=1 valgrind
   test_clang_sanitize_script:
+    - cd dev
     - make O=2 SANITIZE_ADDRESS_USE="" sanitize
   #coveralls_script:
   #  - apt-get update
@@ -22,7 +23,9 @@ linux_task:
   #  - pip install --user pyYAML
   #  - make CCACHE="" CC=gcc COVERAGE_VIEW="" coverage-gcc-create
   #  - /root/.local/bin/coveralls --exclude tests --gcov-options '\-lp'
+  test_cmake_script: cd dev && make cmake-test
   codecov_script:
+    - cd dev
     - make CC=gcc coverage-gcc-create
     - bash <(curl -s https://codecov.io/bash)
 
@@ -30,19 +33,21 @@ osx_task:
   osx_instance:
     image: mojave-xcode-10.1
   test_script:
+    - cd dev
     - make CCACHE="" all
     - make CCACHE="" -C tests static
     - make CCACHE="" -C tests run
   test_optimized_script:
+    - cd dev
     - make CCACHE="" O=3 all
     - make CCACHE="" -C tests static
     - make CCACHE="" -C tests run
 
-
 freebsd_task:
   freebsd_instance:
     image: freebsd-12-0-release-amd64
-  setup_script: pkg install -y gmake
-  test_script: gmake CCACHE="" test
-  test_optimized_script: gmake CCACHE="" O=3 test
+  setup_script: pkg install -y gmake cmake
+  test_script: cd dev && gmake CCACHE="" test
+  test_optimized_script: cd  dev && gmake CCACHE="" O=3 test
+  test_cmake_script: cd dev && gmake CCACHE="" cmake-test
  
