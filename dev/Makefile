@@ -3,7 +3,7 @@ SNAME	:= lib$(NAME).a
 DNAME	:= lib$(NAME).so
 
 LIBS	:=
-LDFLAGS	:= -rdynamic
+LDFLAGS	:= -rdynamic -latomic_ops
 CC = clang
 O=0
 CCACHE = ccache

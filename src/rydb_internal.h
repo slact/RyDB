@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 
 #include "rydb.h"
+#include <atomic_ops.h>
 
 //works only for a = 2^n
 #define ry_align(d, a)     (((d) + (a - 1)) & ~(a - 1))

@@ -18,19 +18,30 @@ set_target_properties(RyDB_static PROPERTIES OUTPUT_NAME RyDB)
 
 set_target_properties(RyDB PROPERTIES VERSION ${VERSION})
 target_include_directories(RyDB PRIVATE src)
+target_include_directories(RyDB_static PRIVATE src)
 
 include(CheckSymbolExists)
 include(TestBigEndian)
 include(CMakePushCheckState)
 include(GNUInstallDirs)
 
+set(CMAKE_MODULE_PATH "./")
+
 cmake_push_check_state(RESET)
 set(CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
 check_symbol_exists(mremap "sys/mman.h" RYDB_HAVE_MREMAP)
 cmake_reset_check_state()
 
+find_package(atomic_ops MODULE REQUIRED)
+
 TEST_BIG_ENDIAN(RYDB_BIG_ENDIAN)
 
 file(TO_NATIVE_PATH "/" RYDB_PATH_SEPARATOR)
+
+target_include_directories(RyDB PUBLIC "${LIBATOMIC_OPS_INCLUDE_DIR}")
+target_link_libraries(RyDB "${LIBATOMIC_OPS_LIBRARY}")
+
+target_include_directories(RyDB_static PUBLIC "${LIBATOMIC_OPS_INCLUDE_DIR}")
+target_link_libraries(RyDB_static "${LIBATOMIC_OPS_LIBRARY}")
 
 configure_file(src/configure.h.tmpl src/configure.h)
