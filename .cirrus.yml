@@ -69,18 +69,21 @@ freebsd_task:
     - ./configure --enable-rydb-debug
     - gmake
     - cd tests
+    - gmake clean
     - gmake test
     - gmake run
   test_optimized_script:
     - ./configure --enable-rydb-debug --with-build-type=Release
     - gmake
     - cd tests
+    - gmake clean
     - gmake O=3 test
     - gmake run
   test_cmake_release_script:
     - ./configure --disable-rydb-debug --with-build-type=Release
     - gmake
     - cd tests
+    - gmake clean
     - gmake O=3 test
     - gmake run
  
