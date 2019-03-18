@@ -280,6 +280,7 @@ bool rydb_transaction_run(rydb_t *db, rydb_stored_row_t *last_row_to_run) {
     rydb_set_error(db, RYDB_ERROR_TRANSACTION_INCOMPLETE, "Refused to run a transaction that doesn't end with a COMMIT");
     return false;
   }
+  rydb_modcount_incr(db);
   bool ret = true;
   rydb_stored_row_t *commit_row = NULL;
   RYDB_EACH_CMD_ROW(db, cur) {

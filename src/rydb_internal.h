@@ -18,9 +18,12 @@
 #define RYPRIrn PRIu32
 
 typedef struct {
-  AO_t  write;
-  AO_t  read;
-  AO_t  client;
+  struct {
+    AO_t read;
+    AO_t write;
+    AO_t count;
+  }     client;
+  AO_t  modcount;
 } rydb_lockdata_t;
 
 #define RYDB_DATA_HEADER_STRING "rydb data"
@@ -201,6 +204,12 @@ const char*rydb_debug_hash_key;
 #define rydb_index_cursor_detach(index, cur) \
   rydb_ll_remove(rydb_cursor_t, index->cursor, cur, prev, next)
 
+void rydb_modcount_incr(rydb_t *db);
+int64_t rydb_modcount(rydb_t *db);
+bool rydb_modcount_changed(rydb_t *db, int64_t *prev_modcount);
+
+#define RYDB_WHILE_MODCOUNT_CHANGES(db) \
+for(int64_t cur_modcount = rydb_modcount(db), prev_modcount = cur_modcount; prev_modcount != (cur_modcount = rydb_modcount(db)); cur_modcount = prev_modcount)
 
 const char *rydb_overlay_data_on_row_for_index(const rydb_t *db, char *dst, rydb_rownum_t rownum, const rydb_stored_row_t **cached_row, const char *overlay, off_t ostart, off_t oend, off_t istart, off_t iend);
 //debug stuff?

@@ -261,7 +261,9 @@ struct rydb_s {
     void               *privdata;
   }                   error_handler;
   rydb_error_t        error;
-  
+#ifdef RYDB_DEBUG
+  uint64_t            modcount_changed;
+#endif
 };// rydb_t
 
 typedef struct rydb_cursor_s{

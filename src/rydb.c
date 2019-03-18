@@ -548,18 +548,18 @@ static bool rydb_lock(rydb_t *db, uint8_t lockflags) {
   lock = (void *)db->lock.file.start;
   // we only support single-user mode for now
   if(lockflags & RYDB_LOCK_WRITE) {
-    if(!AO_compare_and_swap(&lock->write, 0, 1)) {
+    if(!AO_compare_and_swap(&lock->client.write, 0, 1)) {
       rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Failed to acquire write-lock");
       return false;
     }
     db->lock_state |= RYDB_LOCK_WRITE;
   }
   if(lockflags & RYDB_LOCK_READ) {
-    AO_fetch_and_add(&lock->read, 1);
+    AO_fetch_and_add(&lock->client.read, 1);
     db->lock_state |= RYDB_LOCK_READ;
   }
   if(lockflags & RYDB_LOCK_CLIENT) {
-    AO_fetch_and_add(&lock->client, 1);
+    AO_fetch_and_add(&lock->client.count, 1);
     db->lock_state |= RYDB_LOCK_CLIENT;
   }
   //don't care about the rest for now
@@ -570,15 +570,15 @@ static bool rydb_unlock(rydb_t *db, uint8_t lockflags) {
   rydb_lockdata_t *lock = (void *)db->lock.file.start;
   // we only support single-user mode for now
   if(db->lock_state & lockflags & RYDB_LOCK_WRITE) {
-    AO_fetch_and_add(&lock->write, -1);
+    AO_fetch_and_add(&lock->client.write, -1);
     db->lock_state &= ~RYDB_LOCK_WRITE;
   }
   if(db->lock_state & lockflags & RYDB_LOCK_READ) {
-    AO_fetch_and_add(&lock->read, -1);
+    AO_fetch_and_add(&lock->client.read, -1);
     db->lock_state &= ~RYDB_LOCK_READ;
   }
   if(db->lock_state & lockflags & RYDB_LOCK_CLIENT) {
-    AO_fetch_and_add(&lock->client, -1);
+    AO_fetch_and_add(&lock->client.count, -1);
     db->lock_state &= ~RYDB_LOCK_CLIENT;
   }
   return true;
@@ -592,9 +592,31 @@ bool rydb_force_unlock(rydb_t *db) {
     return true;
   }
   lock = (void *)db->lock.file.start;
-  lock->write = 0;
-  lock->read = 0;
-  lock->client = 0;
+  lock->client.write = 0;
+  lock->client.read = 0;
+  lock->client.count = 0;
+  return true;
+}
+
+void rydb_modcount_incr(rydb_t *db) {
+  rydb_lockdata_t *lock = (void *)db->lock.file.start;
+  AO_fetch_and_add(&lock->modcount, 1);
+}
+
+int64_t rydb_modcount(rydb_t *db) {
+  rydb_lockdata_t *lock = (void *)db->lock.file.start;
+  return AO_load(&lock->modcount);
+}
+
+bool rydb_modcount_changed(rydb_t *db, int64_t *prev_modcount) {
+  int64_t cur_modcount = rydb_modcount(db);
+  if(*prev_modcount == cur_modcount) {
+    return false;
+  }
+#ifdef RYDB_DEBUG
+  db->modcount_changed++;
+#endif
+  *prev_modcount = cur_modcount;
   return true;
 }
 
@@ -1971,21 +1993,23 @@ bool rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, si
   else {
     searchval = val;
   }
-  bool ret;
-  switch(idx->config->type) {
-    case RYDB_INDEX_HASHTABLE:
-      ret = rydb_index_hashtable_find_row(db, idx, searchval, result);
-      if(allocd_searchval) free(allocd_searchval);
-      return ret;
-    case RYDB_INDEX_BTREE:
-      assert(0); //not implemented
-      break;
-    case RYDB_INDEX_INVALID:
-      assert(0); //not supported
-      break;
-  }
+  bool ret = false;
+  int64_t cur_modcount = rydb_modcount(db);
+  do {
+    switch(idx->config->type) {
+      case RYDB_INDEX_HASHTABLE:
+        ret = rydb_index_hashtable_find_row(db, idx, searchval, result);
+        break;
+      case RYDB_INDEX_BTREE:
+        assert(0); //not implemented
+        break;
+      case RYDB_INDEX_INVALID:
+        assert(0); //not supported
+        break;
+    }
+  } while(rydb_modcount_changed(db, &cur_modcount) == true);
   if(allocd_searchval) free(allocd_searchval);
-  return false;
+  return ret;
 }
 
 static rydb_rownum_t data_cursor_step(rydb_cursor_t *cur) {
