@@ -77,14 +77,9 @@ freebsd_task:
     - cd test
     - gmake O=3 test
     - gmake run
-  test_cmake_debug_script:
-    - ./configure --enable-rydb-debug
-    - gmake
-    - cd test
-    - gmake O=3 test
-    - gmake run
   test_cmake_release_script:
     - ./configure --disable-rydb-debug --with-build-type=Release
+    - gmake
     - cd test
     - gmake O=3 test
     - gmake run
