@@ -5,7 +5,7 @@ linux_task:
     CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
   setup_script:
     - apt-get update
-    - apt-get install -y --no-install-recommends valgrind ccache clang cmake libatomic_ops
+    - apt-get install -y --no-install-recommends valgrind ccache clang cmake libatomic-ops libatomic-ops-dev
   build_script:
     - cd dev
     - make CC=gcc all
