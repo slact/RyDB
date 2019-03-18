@@ -67,18 +67,25 @@ freebsd_task:
   setup_script: pkg install -y gmake cmake ccache
   test_script:
     - ./configure --enable-rydb-debug
-    - cd dev
+    - gmake
+    - cd test
     - gmake test
+    - gmake run
   test_optimized_script:
-    - ./configure --enable-rydb-debug
-    - cd dev
-    - gmake CCACHE="" O=3 test
+    - ./configure --enable-rydb-debug --with-build-type=Release
+    - gmake
+    - cd test
+    - gmake O=3 test
+    - gmake run
   test_cmake_debug_script:
     - ./configure --enable-rydb-debug
-    - cd dev
-    - gmake CCACHE="" cmake-test
+    - gmake
+    - cd test
+    - gmake O=3 test
+    - gmake run
   test_cmake_release_script:
     - ./configure --disable-rydb-debug --with-build-type=Release
-    - cd dev
-    - gmake CCACHE="" cmake-test
+    - cd test
+    - gmake O=3 test
+    - gmake run
  
