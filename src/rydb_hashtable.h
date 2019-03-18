@@ -14,7 +14,7 @@ typedef struct {
 #define RYDB_HASHTABLE_BUCKET_MAX_BITLEVELS (4*sizeof(rydb_rownum_t) + 1)
 
 typedef struct {
-  int8_t          reserved; //reserved for writing
+  AO_t            writelock;
   uint8_t         active;
   struct {
     struct {
@@ -40,9 +40,12 @@ bool rydb_config_index_hashtable_set_config(rydb_t *db, rydb_config_index_t *idx
 
 bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
 bool rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
+bool rydb_index_hashtable_add_row_locked(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
+bool rydb_index_hashtable_remove_row_locked(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row);
 
-void rydb_hashtable_reserve(const rydb_index_t *idx);
-void rydb_hashtable_release(const rydb_index_t *idx);
+
+void rydb_hashtable_lock(const rydb_index_t *idx);
+void rydb_hashtable_unlock(const rydb_index_t *idx);
 
 bool rydb_index_hashtable_contains(const rydb_t *db, const rydb_index_t *idx, const char *val);
 

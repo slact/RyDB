@@ -477,20 +477,18 @@ static inline rydb_hashtable_header_t *hashtable_header(const rydb_index_t *idx)
   return (void *)idx->index.file.start;
 }
 
-static inline void hashtable_reserve(rydb_hashtable_header_t *header) {
-  assert(header->reserved < INT8_MAX);
-  header->reserved++;
+static inline void hashtable_lock(rydb_hashtable_header_t *header) {
+  assert(AO_compare_and_swap(&header->writelock, 0, 1));
 }
-static inline void hashtable_release(rydb_hashtable_header_t *header) {
-  header->reserved--;
-  assert(header->reserved >= 0);
+static inline void hashtable_unlock(rydb_hashtable_header_t *header) {
+  assert(AO_compare_and_swap(&header->writelock, 1, 0));
 }
 
-void rydb_hashtable_reserve(const rydb_index_t *idx) {
-  hashtable_reserve(hashtable_header(idx));
+void rydb_hashtable_lock(const rydb_index_t *idx) {
+  hashtable_lock(hashtable_header(idx));
 }
-void rydb_hashtable_release(const rydb_index_t *idx) {
-  hashtable_release(hashtable_header(idx));
+void rydb_hashtable_unlock(const rydb_index_t *idx) {
+  hashtable_unlock(hashtable_header(idx));
 }
 
 
@@ -768,13 +766,13 @@ static bool bucket_rehash(rydb_t *db, rydb_index_t *idx, rydb_hashbucket_t *buck
   return true;
 }
 
-bool rydb_index_hashtable_rehash(rydb_t *db, rydb_index_t *idx, off_t last_possible_bucket, uint_fast8_t current_hashbits, int reserve) {
+bool rydb_index_hashtable_rehash(rydb_t *db, rydb_index_t *idx, off_t last_possible_bucket, uint_fast8_t current_hashbits, int lock) {
   rydb_hashbucket_t         *bucket;
   size_t                     bucket_sz = bucket_size(idx->config);
   rydb_hashbucket_t         *buckets_start = hashtable_bucket(idx, bucket_sz, 0);
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   const bool                 store_hash = idx->config->type_config.hashtable.store_hash;
-  if(reserve) hashtable_reserve(header);
+  if(lock) hashtable_lock(header);
   if(last_possible_bucket == 0) {
     last_possible_bucket = header->bucket.count.total;
   }
@@ -789,15 +787,15 @@ bool rydb_index_hashtable_rehash(rydb_t *db, rydb_index_t *idx, off_t last_possi
       current_hashbits = bucket_stored_hash_bits(bucket);
     }
     if(!bucket_rehash(db, idx, bucket, current_hashbits, 0, 1)) {
-      if(reserve) hashtable_release(hashtable_header(idx));
+      if(lock) hashtable_unlock(hashtable_header(idx));
       return false;
     }
   }
-  if(reserve) hashtable_release(hashtable_header(idx));
+  if(lock) hashtable_unlock(hashtable_header(idx));
   return true;
 }
 
-static bool hashtable_grow(rydb_t *db, rydb_index_t *idx) {
+static bool hashtable_grow_locked(rydb_t *db, rydb_index_t *idx) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   rydb_config_index_t       *cf = idx->config;
   uint8_t                    current_hashbits = header->bucket.bitlevel[0].bits;
@@ -813,7 +811,6 @@ static bool hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   header = hashtable_header(idx); //get the header again -- the mmap address may have changed
   
   idx->index.data.end = idx->index.file.end;
-  hashtable_reserve(header);
   if(current_hashbits>0 && !rehash_all) {
     if(!hashtable_bitlevel_push(db, idx, header)) {
       return false;
@@ -830,8 +827,6 @@ static bool hashtable_grow(rydb_t *db, rydb_index_t *idx) {
   if(current_hashbits>0 && rehash_all) {
     rydb_index_hashtable_rehash(db, idx, prev_total_buckets, current_hashbits, 0);
   }
-  
-  hashtable_release(hashtable_header(idx));
   return true;
 }
 
@@ -927,25 +922,25 @@ bool rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *va
   }
   
   if(bitlevel_count >= 0 && (idx->config->type_config.hashtable.rehash & RYDB_REHASH_INCREMENTAL_ON_READ)) {
-    hashtable_reserve(hashtable_header(idx));
+    hashtable_lock(hashtable_header(idx));
     DBG("let's rehash!\n")
     DBG_HASHTABLE(db, idx)
     bucket_rehash(db, idx, bucket, bucket_stored_hash_bits(bucket), 1, 1);
     DBG("after rehash\n")
     DBG_HASHTABLE(db, idx)
-    hashtable_release(hashtable_header(idx));
+    hashtable_unlock(hashtable_header(idx));
   }
   return true;
 }
 
-bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
+bool rydb_index_hashtable_add_row_locked(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
   rydb_hashtable_header_t   *header = hashtable_header(idx);
   const rydb_config_index_t *cf = idx->config;
   const uint64_t             hashvalue = hash_value(db, cf, &row->data[cf->start], 0);
   
   DBG_HASHTABLE(db, idx)
   if(header->bucket.count.used+1 > header->bucket.count.load_factor_max) {
-    if(!hashtable_grow(db, idx)) {
+    if(!hashtable_grow_locked(db, idx)) {
       return false;
     }
     header = hashtable_header(idx); //file might have gotten remapped, get the header again
@@ -970,16 +965,13 @@ bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row
       if(rehash_candidate_bits != current_bits
         && old_bitlevel_hashvalue != btrim64(rehash_candidate_hashvalue, 64 - current_bits)) {
         //this bucket should be rehashed!
-        hashtable_reserve(header);
         DBG("rehash bucket on add_row\n")
         DBG_HASHTABLE(db, idx)
         if(!bucket_rehash(db, idx, bucket, rehash_candidate_bits, 1, 0)) {
           header = hashtable_header(idx); //just in case we got remapped
-          hashtable_release(header);
         }
         else {
           header = hashtable_header(idx); //just in case we got remapped
-          hashtable_release(header);
           if(bucket_is_empty(bucket)) {
             //make sure it didn't rehash to the same slot
             break; //ok, we can use this slot for the insertion
@@ -1011,7 +1003,6 @@ bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row
     DBG_BUCKET("nonempty! ", idx, bucket)
   }
   assert(bucket_is_empty(bucket));
-  hashtable_reserve(header);
   if(bucket >= buckets_end) {
     header->bucket.count.total++; //record bucket overflow
   }
@@ -1020,9 +1011,15 @@ bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row
   
   header->bucket.count.used++;
   header->bucket.bitlevel[0].count++;
-  hashtable_release(header);
   DBG_HASHTABLE(db, idx)
   return true;
+}
+
+bool rydb_index_hashtable_add_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
+  hashtable_lock(hashtable_header(idx));
+  bool ret = rydb_index_hashtable_add_row_locked(db, idx, row);
+  hashtable_unlock(hashtable_header(idx));
+  return ret;
 }
 
 const rydb_hashbucket_t *cursor_step(rydb_cursor_t *cur) {
@@ -1119,7 +1116,7 @@ void rydb_hashtable_cursors_update(UNUSED(const rydb_t *db), const rydb_index_t 
   }
 }
 
-bool rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
+bool rydb_index_hashtable_remove_row_locked(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
   DBG("remove row\n")
   DBG_HASHTABLE(db, idx)
   rydb_rownum_t             rownum_to_remove = rydb_row_to_rownum(db, row);
@@ -1132,11 +1129,16 @@ bool rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_
   const size_t               bucket_sz = bucket_size(idx->config);
   const rydb_hashbucket_t   *buckets_end = hashtable_bucket(idx, bucket_sz, header->bucket.count.total);
   
-  hashtable_reserve(header);
   bucket_remove(db, idx, header, bucket, buckets_end, bucket_sz, 1);
-  hashtable_release(header);
   return true;
 }
+bool rydb_index_hashtable_remove_row(rydb_t *db, rydb_index_t *idx, rydb_stored_row_t *row) {
+  hashtable_lock(hashtable_header(idx));
+  bool ret = rydb_index_hashtable_remove_row_locked(db, idx, row);
+  hashtable_unlock(hashtable_header(idx));
+  return ret;
+}
+
 
 void rydb_bucket_print(const rydb_index_t *idx, const rydb_hashbucket_t *bucket) {
   rydb_config_index_t *cf = idx->config;
@@ -1170,7 +1172,7 @@ void rydb_hashtable_print(const rydb_t *db, const rydb_index_t *idx) {
   hexbuf[sizeof(db->config.hash_key.value)*2]='\00';
   const char *fmt = "\nhashtable %s\n"
     "  key: %s\n"
-    "  reserved:             %"PRIi8"\n"
+    "  writelock             %"PRIu64"\n"
     "  active:               %"PRIu8"\n"
     "  bucket count total:   %"PRIu32"\n"
     "  bucket count used:    %"PRIu32"\n"
@@ -1180,7 +1182,7 @@ void rydb_hashtable_print(const rydb_t *db, const rydb_index_t *idx) {
     
   
   rydb_printf(fmt, idx->config->name, hexbuf, 
-         header->reserved,
+         (uint64_t )AO_load(&header->writelock),
          header->active,
          header->bucket.count.total,
          header->bucket.count.used,

@@ -548,19 +548,18 @@ static bool rydb_lock(rydb_t *db, uint8_t lockflags) {
   lock = (void *)db->lock.file.start;
   // we only support single-user mode for now
   if(lockflags & RYDB_LOCK_WRITE) {
-    if(++lock->write > 1) {
-      lock->write--;
+    if(!AO_compare_and_swap(&lock->write, 0, 1)) {
       rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Failed to acquire write-lock");
       return false;
     }
     db->lock_state |= RYDB_LOCK_WRITE;
   }
   if(lockflags & RYDB_LOCK_READ) {
-    lock->read++;
+    AO_fetch_and_add(&lock->read, 1);
     db->lock_state |= RYDB_LOCK_READ;
   }
   if(lockflags & RYDB_LOCK_CLIENT) {
-    lock->client++;
+    AO_fetch_and_add(&lock->client, 1);
     db->lock_state |= RYDB_LOCK_CLIENT;
   }
   //don't care about the rest for now
@@ -571,15 +570,15 @@ static bool rydb_unlock(rydb_t *db, uint8_t lockflags) {
   rydb_lockdata_t *lock = (void *)db->lock.file.start;
   // we only support single-user mode for now
   if(db->lock_state & lockflags & RYDB_LOCK_WRITE) {
-    lock->write--;
+    AO_fetch_and_add(&lock->write, -1);
     db->lock_state &= ~RYDB_LOCK_WRITE;
   }
   if(db->lock_state & lockflags & RYDB_LOCK_READ) {
-    lock->read--;
+    AO_fetch_and_add(&lock->read, -1);
     db->lock_state &= ~RYDB_LOCK_READ;
   }
   if(db->lock_state & lockflags & RYDB_LOCK_CLIENT) {
-    lock->client--;
+    AO_fetch_and_add(&lock->client, -1);
     db->lock_state &= ~RYDB_LOCK_CLIENT;
   }
   return true;
@@ -1864,12 +1863,12 @@ bool rydb_indices_update_row(rydb_t *db, rydb_stored_row_t *row, uint_fast8_t st
       switch(idx->config->type) {
         case RYDB_INDEX_HASHTABLE:
           if(step == 0) { //remove old row
-            rydb_hashtable_reserve(idx);
-            ret = rydb_index_hashtable_remove_row(db, idx, row);
+            rydb_hashtable_lock(idx);
+            ret = rydb_index_hashtable_remove_row_locked(db, idx, row);
           }
           else { //remove
-            ret = rydb_index_hashtable_add_row(db, idx, row);
-            rydb_hashtable_release(idx);
+            ret = rydb_index_hashtable_add_row_locked(db, idx, row);
+            rydb_hashtable_unlock(idx);
           }
           break;
         case RYDB_INDEX_BTREE:

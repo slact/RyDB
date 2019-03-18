@@ -207,12 +207,6 @@ typedef struct {
 } rydb_error_t;
 
 typedef struct {
-  uint8_t  write;
-  uint8_t  read;
-  uint8_t  client;
-} rydb_lockdata_t;
-
-typedef struct {
   void          *(*malloc)(size_t);
   void          *(*realloc)(void *, size_t);
   void           (*free)(void *);

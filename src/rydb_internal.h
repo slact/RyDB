@@ -16,7 +16,13 @@
     (u_char *) (((uintptr_t) (p) + ((uintptr_t) a - 1)) & ~((uintptr_t) a - 1))
 
 #define RYPRIrn PRIu32
-    
+
+typedef struct {
+  AO_t  write;
+  AO_t  read;
+  AO_t  client;
+} rydb_lockdata_t;
+
 #define RYDB_DATA_HEADER_STRING "rydb data"
 #define RYDB_ROW_DATA_OFFSET offsetof(rydb_stored_row_t, data)
 #define RYDB_DATA_START_OFFSET ((unsigned )ry_align(RYDB_ROW_DATA_OFFSET + strlen(RYDB_DATA_HEADER_STRING), 8))
