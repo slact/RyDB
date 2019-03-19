@@ -212,7 +212,7 @@ rydb_t *rydb_new(void) {
   memset(db, '\00', sizeof(*db));
   db->data.fd = -1;
   db->meta.fd = -1;
-  db->lock.fd = -1;
+  db->state.fd = -1;
   return db;
 }
 
@@ -544,26 +544,26 @@ static void rydb_free(rydb_t *db) {
 }
 
 static bool rydb_lock(rydb_t *db, uint8_t lockflags) {
-  rydb_lockdata_t *lock;
-  if (!rydb_file_ensure_size(db, &db->lock, sizeof(*lock), NULL)) {
+  rydb_state_t *state;
+  if (!rydb_file_ensure_size(db, &db->state, sizeof(*state), NULL)) {
     rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Failed to grow lockfile");
     return false;
   }
-  lock = (void *)db->lock.file.start;
+  state = (void *)db->state.file.start;
   // we only support single-writer mode for now
   if(lockflags & RYDB_LOCK_WRITE && !db->privileges.write) {
-    if(!AO_compare_and_swap(&lock->client.write, 0, 1)) {
+    if(!AO_compare_and_swap(&state->lock.write, 0, 1)) {
       rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Failed to acquire write-lock");
       return false;
     }
     db->privileges.write = 1;
   }
   if(lockflags & RYDB_LOCK_READ && !db->privileges.read) {
-    AO_fetch_and_add(&lock->client.read, 1);
+    AO_fetch_and_add(&state->lock.read, 1);
     db->privileges.read = 1;
   }
   if(lockflags & RYDB_LOCK_CLIENT && !db->privileges.client) {
-    AO_fetch_and_add(&lock->client.count, 1);
+    AO_fetch_and_add(&state->lock.client, 1);
     db->privileges.client = 1;
   }
   //don't care about the rest for now
@@ -571,34 +571,34 @@ static bool rydb_lock(rydb_t *db, uint8_t lockflags) {
 }
 
 static bool rydb_unlock(rydb_t *db) {
-  rydb_lockdata_t *lock = (void *)db->lock.file.start;
+  rydb_state_t *state = (void *)db->state.file.start;
   // we only support single-writer mode for now
   if(db->privileges.write) {
-    AO_fetch_and_add(&lock->client.write, -1);
+    AO_fetch_and_add(&state->lock.write, -1);
     db->privileges.write = 0;
   }
   if(db->privileges.read) {
-    AO_fetch_and_add(&lock->client.read, -1);
+    AO_fetch_and_add(&state->lock.read, -1);
     db->privileges.read = 0;
   }
   if(db->privileges.client) {
-    AO_fetch_and_add(&lock->client.count, -1);
+    AO_fetch_and_add(&state->lock.client, -1);
     db->privileges.client = 0;
   }
   return true;
 }
 
 bool rydb_force_unlock(rydb_t *db) {
-  rydb_lockdata_t *lock;
-  if (!rydb_file_ensure_size(db, &db->lock, sizeof(*lock), NULL)) {
+  rydb_state_t *state;
+  if (!rydb_file_ensure_size(db, &db->state, sizeof(*state), NULL)) {
     //file's too small to have been a valid lockfile.... probably?....
     //TODO: this is a copout. flesh out the possibility of a corrupt/partial lockfile
     return true;
   }
-  lock = (void *)db->lock.file.start;
-  lock->client.write = 0;
-  lock->client.read = 0;
-  lock->client.count = 0;
+  state = (void *)db->state.file.start;
+  state->lock.write = 0;
+  state->lock.read = 0;
+  state->lock.client = 0;
   return true;
 }
 
@@ -611,13 +611,13 @@ bool rydb_ensure_write_privilege(rydb_t *db) {
 }
 
 void rydb_modcount_incr(rydb_t *db) {
-  rydb_lockdata_t *lock = (void *)db->lock.file.start;
-  AO_fetch_and_add(&lock->modcount, 1);
+  rydb_state_t *state = (void *)db->state.file.start;
+  AO_fetch_and_add(&state->modcount, 1);
 }
 
 int64_t rydb_modcount(rydb_t *db) {
-  rydb_lockdata_t *lock = (void *)db->lock.file.start;
-  return AO_load(&lock->modcount);
+  rydb_state_t *state = (void *)db->state.file.start;
+  return AO_load(&state->modcount);
 }
 
 bool rydb_modcount_changed(rydb_t *db, int64_t *prev_modcount) {
@@ -709,14 +709,14 @@ bool rydb_file_shrink_to_size(rydb_t *db, rydb_file_t *f, size_t desired_sz) {
 
 
 bool rydb_ensure_open(rydb_t *db) {
-  if(db->state != RYDB_STATE_OPEN) {
+  if(db->status != RYDB_STATUS_OPEN) {
     rydb_set_error(db, RYDB_ERROR_DATABASE_CLOSED, "Database is not open");
     return false;
   }
   return true;
 }
 bool rydb_ensure_closed(rydb_t *db, const char *msg) {
-  if(db->state != RYDB_STATE_CLOSED) {
+  if(db->status != RYDB_STATUS_CLOSED) {
     rydb_set_error(db, RYDB_ERROR_DATABASE_OPEN, "Database is open %s", msg ? msg : "");
     return false;
   }
@@ -1319,7 +1319,7 @@ static bool rydb_data_file_exists(const rydb_t *db) {
 static void rydb_close_nofree(rydb_t *db) {
   rydb_file_close(db, &db->data);
   rydb_file_close(db, &db->meta);
-  rydb_file_close(db, &db->lock);
+  rydb_file_close(db, &db->state);
   if(db->index) {
     for(int i = 0; i < db->config.index_count; i++) {
       rydb_file_close(db, &db->index[i].index);
@@ -1337,7 +1337,7 @@ static bool rydb_open_abort(rydb_t *db) {
   rydb_subfree(&db->unique_index);
   rydb_subfree(&db->index_scratch);
   rydb_subfree(&db->index_scratch_buffer);
-  db->state = RYDB_STATE_CLOSED;
+  db->status = RYDB_STATUS_CLOSED;
   return false;
 }
 
@@ -1362,7 +1362,7 @@ static bool rydb_open_with_privileges(rydb_t *db, const char *path, const char *
     *(char *)&db->path[sz - 1] = '\00';
   }
   
-  if(!rydb_file_open(db, "lock", &db->lock)) {
+  if(!rydb_file_open(db, "state", &db->state)) {
     return rydb_open_abort(db);
   }
   
@@ -1519,7 +1519,7 @@ static bool rydb_open_with_privileges(rydb_t *db, const char *path, const char *
     return rydb_open_abort(db);
   }
   
-  db->state = RYDB_STATE_OPEN;
+  db->status = RYDB_STATUS_OPEN;
   return true;
 }
 
@@ -1542,7 +1542,7 @@ static bool rydb_file_delete(rydb_t *db, rydb_file_t *f) {
 bool rydb_delete(rydb_t *db) {
   if(!rydb_file_delete(db, &db->data)) return false;
   if(!rydb_file_delete(db, &db->meta)) return false;
-  if(!rydb_file_delete(db, &db->lock)) return false;
+  if(!rydb_file_delete(db, &db->state)) return false;
   if(db->index) {
     for(int i = 0; i < db->config.index_count; i++) {
       if(!rydb_file_delete(db, &db->index[i].index)) return false;

@@ -19,12 +19,13 @@
 
 typedef struct {
   struct {
-    AO_t read;
-    AO_t write;
-    AO_t count;
-  }     client;
-  AO_t  modcount;
-} rydb_lockdata_t;
+    AO_t            read;
+    AO_t            write;
+    AO_t            client;
+  }               lock;
+  AO_t            modcount;
+  
+} rydb_state_t;
 
 #define RYDB_DATA_HEADER_STRING "rydb data"
 #define RYDB_ROW_DATA_OFFSET offsetof(rydb_stored_row_t, data)

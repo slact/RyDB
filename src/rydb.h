@@ -197,9 +197,9 @@ typedef enum {
 const char *rydb_error_code_str(rydb_error_code_t code);
 
 typedef enum {
-  RYDB_STATE_CLOSED = 0,
-  RYDB_STATE_OPEN = 1,
-} rydb_state_t;
+  RYDB_STATUS_CLOSED = 0,
+  RYDB_STATUS_OPEN = 1,
+} rydb_status_t;
 
 typedef struct {
   rydb_error_code_t    code;
@@ -230,7 +230,7 @@ typedef struct {
 
 typedef struct rydb_s rydb_t;
 struct rydb_s {
-  rydb_state_t        state;
+  rydb_status_t       status;
   const char         *path;
   const char         *name;
   uint16_t            stored_row_size;
@@ -239,7 +239,7 @@ struct rydb_s {
   rydb_stored_row_t  *cmd_next_row; //row after last for RYDB_ROW_CMD_*, also the next after the last row (of any type) in the data file
   rydb_file_t         data;
   rydb_file_t         meta;
-  rydb_file_t         lock;
+  rydb_file_t         state;
   rydb_config_t       config;
   rydb_index_t       *index;
   char               *index_scratch_buffer;
