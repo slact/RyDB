@@ -31,6 +31,12 @@ typedef struct {
 #define RYDB_DATA_START_OFFSET ((unsigned )ry_align(RYDB_ROW_DATA_OFFSET + strlen(RYDB_DATA_HEADER_STRING), 8))
 
 #ifdef RYDB_DEBUG
+  typedef struct {
+    void (*interrupt_read)(rydb_t *db, void *pd);
+    void *pd;
+  } rydb_debug_hooks_t;
+  rydb_debug_hooks_t rydb_debug_hook;
+
   extern int rydb_debug_refuse_to_run_transaction_without_commit;
   extern int rydb_debug_disable_urandom;
   extern const char *rydb_debug_hash_key;
@@ -96,6 +102,7 @@ void rydb_set_error(rydb_t *db, rydb_error_code_t code, const char *err_fmt, ...
 
 bool rydb_ensure_open(rydb_t *db);
 bool rydb_ensure_closed(rydb_t *db, const char *msg);
+bool rydb_ensure_write_privilege(rydb_t *db);
 
 bool rydb_stored_row_in_range(rydb_t *db, rydb_stored_row_t *row);
 bool rydb_rownum_in_data_range(rydb_t *db, rydb_rownum_t rownum); //save an error on failure

@@ -2,6 +2,7 @@
 #include <rydb_hashtable.h>
 #include <math.h>
 #include "test_util.h"
+#include <pthread.h>
 
 double repeat_multiplier = 1.0;
 
@@ -830,6 +831,16 @@ describe(files) {
   }
 }
 
+static void interrupt_read_for_concurrency_test(rydb_t *db, void *pd) {
+  int *n = pd;
+  char buf[21];
+  if(*n > 0) {
+    sprintf(buf, "+%i", *n);
+    rydb_insert_str(db, buf);
+    (*n)--;
+  }
+}
+
 describe(concurrency) {
   static rydb_t *db;
   static char path[64];
@@ -841,6 +852,10 @@ describe(concurrency) {
   }
   after_each() {
     rmdir_recursive(path);
+#ifdef RYDB_DEBUG
+    rydb_debug_hook.interrupt_read = NULL;
+    rydb_debug_hook.pd = NULL;
+#endif
   }
   it("clears locks when database is closed") {
     assert_db_ok(db, rydb_open(db, path, "test"));
@@ -865,6 +880,44 @@ describe(concurrency) {
     rydb_close(db);
     rydb_close(db2);
   }
+  it("allows one writer, many readers") {
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    rydb_t *rdb[10];
+    for(int i=0; i<10; i++) {
+      rdb[i]= rydb_new();
+      config_testdb(rdb[i], 0);
+      assert_db_ok(rdb[i], rydb_open_reader(rdb[i], path, "test"));
+    }
+    for(int i=0; i < 10; i++) {
+      rydb_close(rdb[i]);
+    }
+  }
+#ifdef RYDB_DEBUG
+  it("re-reads if written to during read") {
+    int numrows = 100;
+    char buf[21];
+    assert_db_ok(db, rydb_open(db, path, "test"));
+    rydb_t *rdb = rydb_new();
+    config_testdb(rdb, 0);
+    for(int i=0; i<numrows; i++) {
+      sprintf(buf, "%i", i);
+      assert_db_ok(db, rydb_insert_str(db, buf));
+    }
+    int retries = 10;
+    int retries_countdown = retries;
+    rydb_debug_hook.interrupt_read = interrupt_read_for_concurrency_test;
+    rydb_debug_hook.pd = &retries_countdown;
+    asserteq(db->modcount_changed, 0);
+    
+    rydb_row_t row;
+    sprintf(buf, "%i", 10);
+    assert_db_ok(db, rydb_find_row_str(db, buf, &row));
+    asserteq(retries_countdown, 0);
+    asserteq(db->modcount_changed, 10);
+    asserteq(row.num, 11);
+    rydb_close(rdb);
+  }
+#endif
 }
 
 describe(row_operations) {

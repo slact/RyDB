@@ -192,6 +192,7 @@ typedef enum {
   RYDB_ERROR_INDEX_INVALID        = 24,
   RYDB_ERROR_WRONG_INDEX_TYPE     = 25,
   RYDB_ERROR_LINK_NOT_FOUND       = 26,
+  RYDB_ERROR_NO_WRITE_PRIVILEGE   = 27,
 } rydb_error_code_t;
 const char *rydb_error_code_str(rydb_error_code_t code);
 
@@ -245,7 +246,11 @@ struct rydb_s {
   const char        **index_scratch;
   uint8_t             unique_index_count;
   rydb_index_t      **unique_index;
-  uint8_t             lock_state;
+  struct {
+    unsigned            read:1;
+    unsigned            write:1;
+    unsigned            client:1;
+  }                   privileges;
   struct {
     rydb_rownum_t       future_data_rownum;
     struct {
@@ -315,6 +320,7 @@ bool rydb_config_add_index_hashtable(rydb_t *db, const char *name, unsigned star
 bool rydb_set_error_handler(rydb_t *db, void (*fn)(rydb_t *, rydb_error_t *, void *), void *pd);
 
 bool rydb_open(rydb_t *db, const char *path, const char *name);
+bool rydb_open_reader(rydb_t *db, const char *path, const char *name);
 
 bool rydb_insert(rydb_t *db, const char *data, uint16_t len);
 bool rydb_insert_str(rydb_t *db, const char *data);

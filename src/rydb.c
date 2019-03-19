@@ -21,6 +21,8 @@ int rydb_debug_disable_urandom = 0;
 int (*rydb_printf)( const char * format, ... ) = printf;
 int (*rydb_fprintf)( FILE * stream, const char * format, ... ) = fprintf;
 const char *rydb_debug_hash_key = NULL;
+
+rydb_debug_hooks_t rydb_debug_hook = {0};
 #endif
 
 rydb_allocator_t rydb_mem = {
@@ -123,6 +125,8 @@ const char *rydb_error_code_str(rydb_error_code_t code) {
     return "RYDB_ERROR_WRONG_INDEX_TYPE";
   case RYDB_ERROR_LINK_NOT_FOUND:
     return "RYDB_ERROR_LINK_NOT_FOUND";
+  case RYDB_ERROR_NO_WRITE_PRIVILEGE:
+    return "RYDB_ERROR_NO_WRITE_PRIVILEGE";
   }
   return "???";
 }
@@ -546,40 +550,40 @@ static bool rydb_lock(rydb_t *db, uint8_t lockflags) {
     return false;
   }
   lock = (void *)db->lock.file.start;
-  // we only support single-user mode for now
-  if(lockflags & RYDB_LOCK_WRITE) {
+  // we only support single-writer mode for now
+  if(lockflags & RYDB_LOCK_WRITE && !db->privileges.write) {
     if(!AO_compare_and_swap(&lock->client.write, 0, 1)) {
       rydb_set_error(db, RYDB_ERROR_LOCK_FAILED, "Failed to acquire write-lock");
       return false;
     }
-    db->lock_state |= RYDB_LOCK_WRITE;
+    db->privileges.write = 1;
   }
-  if(lockflags & RYDB_LOCK_READ) {
+  if(lockflags & RYDB_LOCK_READ && !db->privileges.read) {
     AO_fetch_and_add(&lock->client.read, 1);
-    db->lock_state |= RYDB_LOCK_READ;
+    db->privileges.read = 1;
   }
-  if(lockflags & RYDB_LOCK_CLIENT) {
+  if(lockflags & RYDB_LOCK_CLIENT && !db->privileges.client) {
     AO_fetch_and_add(&lock->client.count, 1);
-    db->lock_state |= RYDB_LOCK_CLIENT;
+    db->privileges.client = 1;
   }
   //don't care about the rest for now
   return true;
 }
 
-static bool rydb_unlock(rydb_t *db, uint8_t lockflags) {
+static bool rydb_unlock(rydb_t *db) {
   rydb_lockdata_t *lock = (void *)db->lock.file.start;
-  // we only support single-user mode for now
-  if(db->lock_state & lockflags & RYDB_LOCK_WRITE) {
+  // we only support single-writer mode for now
+  if(db->privileges.write) {
     AO_fetch_and_add(&lock->client.write, -1);
-    db->lock_state &= ~RYDB_LOCK_WRITE;
+    db->privileges.write = 0;
   }
-  if(db->lock_state & lockflags & RYDB_LOCK_READ) {
+  if(db->privileges.read) {
     AO_fetch_and_add(&lock->client.read, -1);
-    db->lock_state &= ~RYDB_LOCK_READ;
+    db->privileges.read = 0;
   }
-  if(db->lock_state & lockflags & RYDB_LOCK_CLIENT) {
+  if(db->privileges.client) {
     AO_fetch_and_add(&lock->client.count, -1);
-    db->lock_state &= ~RYDB_LOCK_CLIENT;
+    db->privileges.client = 0;
   }
   return true;
 }
@@ -595,6 +599,14 @@ bool rydb_force_unlock(rydb_t *db) {
   lock->client.write = 0;
   lock->client.read = 0;
   lock->client.count = 0;
+  return true;
+}
+
+bool rydb_ensure_write_privilege(rydb_t *db) {
+  if(!db->privileges.write) {
+    rydb_set_error(db, RYDB_ERROR_NO_WRITE_PRIVILEGE, "No write privilege");
+    return false;
+  }
   return true;
 }
 
@@ -1317,7 +1329,7 @@ static void rydb_close_nofree(rydb_t *db) {
 }
 
 static bool rydb_open_abort(rydb_t *db) {
-  rydb_unlock(db, RYDB_LOCK_CLIENT | RYDB_LOCK_READ | RYDB_LOCK_WRITE);
+  rydb_unlock(db);
   rydb_subfree(&db->path);
   rydb_subfree(&db->name);
   rydb_close_nofree(db);
@@ -1330,7 +1342,7 @@ static bool rydb_open_abort(rydb_t *db) {
 }
 
 
-bool rydb_open(rydb_t *db, const char *path, const char *name) {
+static bool rydb_open_with_privileges(rydb_t *db, const char *path, const char *name, uint8_t privileges) {
   int           new_db = 0;
   if(!rydb_ensure_closed(db, "and cannot be reopened")) {
     return rydb_open_abort(db);
@@ -1499,7 +1511,7 @@ bool rydb_open(rydb_t *db, const char *path, const char *name) {
     return rydb_open_abort(db);
   }
   
-  if(!rydb_lock(db, RYDB_LOCK_CLIENT | RYDB_LOCK_READ | RYDB_LOCK_WRITE)) {
+  if(!rydb_lock(db, privileges)) {
     return rydb_open_abort(db);
   }
   
@@ -1509,6 +1521,14 @@ bool rydb_open(rydb_t *db, const char *path, const char *name) {
   
   db->state = RYDB_STATE_OPEN;
   return true;
+}
+
+bool rydb_open(rydb_t *db, const char *path, const char *name) {
+  return rydb_open_with_privileges(db, path, name, RYDB_LOCK_CLIENT | RYDB_LOCK_READ | RYDB_LOCK_WRITE);
+}
+
+bool rydb_open_reader(rydb_t *db, const char *path, const char *name) {
+  return rydb_open_with_privileges(db, path, name, RYDB_LOCK_CLIENT | RYDB_LOCK_READ);
 }
 
 static bool rydb_file_delete(rydb_t *db, rydb_file_t *f) {
@@ -1534,7 +1554,7 @@ bool rydb_delete(rydb_t *db) {
 
 bool rydb_close(rydb_t *db) {
   if(db->name && db->path) {
-    if(!rydb_unlock(db, RYDB_LOCK_READ | RYDB_LOCK_WRITE | RYDB_LOCK_CLIENT)) {
+    if(!rydb_unlock(db)) {
       return false;
     }
   }
@@ -1622,6 +1642,9 @@ void rydb_data_update_last_nonempty_data_row(rydb_t *db, rydb_stored_row_t *row_
 
 bool rydb_insert(rydb_t *db, const char *data, uint16_t len) {
   if(!rydb_ensure_open(db)) {
+    return false;
+  }
+  if(!rydb_ensure_write_privilege(db)) {
     return false;
   }
   if(len == 0 || len > db->config.row_len) {

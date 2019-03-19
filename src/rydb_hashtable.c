@@ -909,6 +909,11 @@ bool rydb_index_hashtable_find_row(rydb_t *db, rydb_index_t *idx, const char *va
   if((bucket = hashtable_find_bucket(db, idx, 0, val, &bitlevel_count, NULL)) == NULL) {
     return false;
   }
+#ifdef RYDB_DEBUG
+  if(rydb_debug_hook.interrupt_read) {
+    rydb_debug_hook.interrupt_read(db, rydb_debug_hook.pd);
+  }
+#endif
   if((rownum = BUCKET_STORED_ROWNUM(bucket)) == 0) {
     return false;
   }
