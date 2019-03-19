@@ -834,8 +834,9 @@ describe(files) {
 static void interrupt_read_for_concurrency_test(rydb_t *db, void *pd) {
   int *n = pd;
   char buf[21];
+  buf[0]='+';
   if(*n > 0) {
-    sprintf(buf, "+%i", *n);
+    data_fill(&buf[1], 20, *n);
     rydb_insert_str(db, buf);
     (*n)--;
   }
@@ -843,15 +844,20 @@ static void interrupt_read_for_concurrency_test(rydb_t *db, void *pd) {
 
 describe(concurrency) {
   static rydb_t *db;
+  static rydb_t *db2;
   static char path[64];
   before_each() {
     db = rydb_new();
+    db2 = rydb_new();
     strcpy(path, "test.db.XXXXXX");
     mkdtemp(path);
     config_testdb(db, 0);
+    config_testdb(db2, 0);
   }
   after_each() {
     rmdir_recursive(path);
+    if(db)  rydb_close(db);
+    if(db2) rydb_close(db2);
 #ifdef RYDB_DEBUG
     rydb_debug_hook.interrupt_read = NULL;
     rydb_debug_hook.pd = NULL;
@@ -862,23 +868,15 @@ describe(concurrency) {
     rydb_close(db);
     db = rydb_new();
     assert_db_ok(db, rydb_open(db, path, "test"));
-    rydb_close(db);
   }
   it("allows only one writer") {
     assert_db_ok(db, rydb_open(db, path, "test"));
-    rydb_t *db2 = rydb_new();
-    config_testdb(db2, 0);
     assert_db_fail(db2, rydb_open(db2, path, "test"), RYDB_ERROR_LOCK_FAILED);
-    rydb_close(db);
-    rydb_close(db2);
   }
   it("can be forced unlocked") {
     assert_db_ok(db, rydb_open(db, path, "test"));
-    rydb_t *db2 = rydb_new();
     rydb_force_unlock(db);
     assert_db_ok(db2, rydb_open(db2, path, "test"));
-    rydb_close(db);
-    rydb_close(db2);
   }
   it("allows one writer, many readers") {
     assert_db_ok(db, rydb_open(db, path, "test"));
@@ -897,10 +895,8 @@ describe(concurrency) {
     int numrows = 100;
     char buf[21];
     assert_db_ok(db, rydb_open(db, path, "test"));
-    rydb_t *rdb = rydb_new();
-    config_testdb(rdb, 0);
-    for(int i=0; i<numrows; i++) {
-      sprintf(buf, "%i", i);
+    for(int i=1; i<=numrows; i++) {
+      data_fill(buf, 20, i);
       assert_db_ok(db, rydb_insert_str(db, buf));
     }
     int retries = 10;
@@ -910,12 +906,11 @@ describe(concurrency) {
     asserteq(db->modcount_changed, 0);
     
     rydb_row_t row;
-    sprintf(buf, "%i", 10);
+    data_fill(buf, 20, 10);
     assert_db_ok(db, rydb_find_row_str(db, buf, &row));
     asserteq(retries_countdown, 0);
     asserteq(db->modcount_changed, 10);
-    asserteq(row.num, 11);
-    rydb_close(rdb);
+    asserteq(row.num, 10);
   }
 #endif
 }
