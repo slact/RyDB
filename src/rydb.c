@@ -2017,8 +2017,8 @@ bool rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, si
     searchval = val;
   }
   bool ret = false;
-  int64_t cur_modcount = rydb_modcount(db);
-  do {
+  //raise(SIGSTOP);
+  RYDB_WHILE_MODCOUNT_CHANGES(db) {
     switch(idx->config->type) {
       case RYDB_INDEX_HASHTABLE:
         ret = rydb_index_hashtable_find_row(db, idx, searchval, result);
@@ -2030,7 +2030,7 @@ bool rydb_index_find_row(rydb_t *db, const char *index_name, const char *val, si
         assert(0); //not supported
         break;
     }
-  } while(rydb_modcount_changed(db, &cur_modcount) == true);
+  }
   if(allocd_searchval) free(allocd_searchval);
   return ret;
 }

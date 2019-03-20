@@ -217,7 +217,10 @@ int64_t rydb_modcount(rydb_t *db);
 bool rydb_modcount_changed(rydb_t *db, int64_t *prev_modcount);
 
 #define RYDB_WHILE_MODCOUNT_CHANGES(db) \
-for(int64_t cur_modcount = rydb_modcount(db), prev_modcount = cur_modcount; prev_modcount != (cur_modcount = rydb_modcount(db)); cur_modcount = prev_modcount)
+for( \
+  int64_t __first = 1, __cur_modcount = rydb_modcount(db); \
+  __first || rydb_modcount_changed(db, &__cur_modcount); \
+  __first = 0)
 
 const char *rydb_overlay_data_on_row_for_index(const rydb_t *db, char *dst, rydb_rownum_t rownum, const rydb_stored_row_t **cached_row, const char *overlay, off_t ostart, off_t oend, off_t istart, off_t iend);
 //debug stuff?
