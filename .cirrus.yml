@@ -38,7 +38,7 @@ linux_task:
 
 osx_task:
   osx_instance:
-    image: mojave-xcode-10.1
+    image: catalina-xcode
   setup_script:
     - ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)" < /dev/null
     - brew install libatomic_ops
@@ -67,7 +67,7 @@ osx_task:
 
 freebsd_task:
   freebsd_instance:
-    image: freebsd-12-0-release-amd64
+    image: freebsd-12-1-release-amd64
   setup_script: pkg install -y gmake cmake ccache libatomic_ops
   test_script:
     - ./configure --enable-rydb-debug
