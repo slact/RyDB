@@ -42,7 +42,7 @@ int rmdir_recursive(const char *path);
 void rydb_print_stored_data(rydb_t *db);
 
 #ifdef RYDB_DEBUG
-char intercepted_printf_buf[4096];
+extern char intercepted_printf_buf[4096];
 int rydb_intercept_printfs(void);
 int rydb_unintercept_printfs(void);
 #endif
@@ -221,12 +221,12 @@ do { \
   
   
   
-const uint8_t vectors_siphash_2_4_64[64][8];
+extern const uint8_t vectors_siphash_2_4_64[64][8];
 struct vector_crc32_s {
   const char *in;
   uint64_t out;
 };
-const struct vector_crc32_s vector_crc32[32];
+extern const struct vector_crc32_s vector_crc32[32];
 
 off_t filesize(const char *filename);
 

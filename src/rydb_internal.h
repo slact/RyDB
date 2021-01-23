@@ -24,7 +24,6 @@ typedef struct {
     AO_t            client;
   }               lock;
   AO_t            modcount;
-  
 } rydb_state_t;
 
 #define RYDB_DATA_HEADER_STRING "rydb data"
@@ -36,9 +35,9 @@ typedef struct {
     void (*interrupt_read)(rydb_t *db, void *pd);
     void *pd;
   } rydb_debug_hooks_t;
-  rydb_debug_hooks_t rydb_debug_hook;
+  extern rydb_debug_hooks_t rydb_debug_hook;
 
-  extern int rydb_debug_refuse_to_run_transaction_without_commit;
+  extern int rydb_debug_refuse_to_run_transaction_without_commit;  //turning this off lets us test more invalid inputs to commands
   extern int rydb_debug_disable_urandom;
   extern const char *rydb_debug_hash_key;
   extern int (*rydb_printf)( const char * format, ... );
@@ -159,20 +158,6 @@ typedef struct {
 #define rydb_row_next(row, sz, n) (void *)((char *)(row) + (off_t )(sz) * (n))
 #define rydb_row_next_rownum(db, row, n) rydb_row_to_rownum(db, rydb_row_next(row, db->stored_row_size, n))
 
-#ifdef RYDB_DEBUG
-int rydb_debug_refuse_to_run_transaction_without_commit; //turning this off lets us test more invalid inputs to commands
-int rydb_debug_disable_urandom;
-int (*rydb_printf)( const char * format, ... );
-int (*rydb_fprintf)( FILE * stream, const char * format, ... );
-const char*rydb_debug_hash_key;
-#else
-#define rydb_debug_refuse_to_run_transaction_without_commit 1
-#define rydb_debug_disable_urandom 0
-#define rydb_printf printf
-#define rydb_fprintf fprintf
-#define rydb_debug_hash_key 0
-#endif
-
 #define rydb_ll_push(type, head, cur, prev, next) do { \
   type *__head = head; \
   if(__head) { \
@@ -216,8 +201,7 @@ void rydb_modcount_incr(rydb_t *db);
 int64_t rydb_modcount(rydb_t *db);
 bool rydb_modcount_changed(rydb_t *db, int64_t *prev_modcount);
 
-#define RYDB_WHILE_MODCOUNT_CHANGES(db) \
-for( \
+#define RYDB_WHILE_MODCOUNT_CHANGES(db) for( \
   int64_t __first = 1, __cur_modcount = rydb_modcount(db); \
   __first || rydb_modcount_changed(db, &__cur_modcount); \
   __first = 0)
