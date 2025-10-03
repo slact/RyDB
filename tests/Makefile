@@ -15,7 +15,8 @@ CCACHE = ccache
 COLOR = always
 TIMESTAMP = `date +'%y-%m-%d-%H.%M.%S'`
 COLOR_OPT = -fdiagnostics-color=${COLOR}
-CFLAGS = -DSNOW_ENABLED -I $(SRC_DIR) -I /usr/local/include -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC
+EXTRA_CFLAGS=
+CFLAGS = -DSNOW_ENABLED -I $(SRC_DIR) -I /usr/local/include -ggdb -O${O} -Wall -Wextra $(COLOR_OPT) -Wpointer-sign -Wpointer-arith -Wshadow  -Wnested-externs -Wsign-compare -Wpedantic -fPIC $(EXTRA_CFLAGS)
 VALGRIND_FLAGS = --trace-children=no --tool=memcheck --track-origins=yes --read-var-info=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=all --keep-stacktraces=alloc-and-free --errors-for-leak-kinds=all --error-exitcode=2
 CALLGRIND_OUTFILE = callgrind-rydb-$(TIMESTAMP).out
 CALLGRIND_FLAGS = --tool=callgrind --dump-instr=yes --collect-jumps=yes  --collect-systime=yes --branch-sim=yes --cache-sim=yes --simulate-hwpref=yes --simulate-wb=yes --callgrind-out-file=$(CALLGRIND_OUTFILE)

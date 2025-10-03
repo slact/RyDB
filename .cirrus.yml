@@ -1,11 +1,11 @@
 linux_task:
   container:
-    image: gcc:latest
+    image: ubuntu:24.04
   env:
     CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
-  setup_script:
+  package_install_script:
     - apt-get update
-    - apt-get install -y --no-install-recommends valgrind ccache clang cmake libatomic-ops-dev
+    - apt-get install -y --no-install-recommends build-essential gcc gdb clang clang-tools libclang-rt-18-dev cmake ninja-build ccache valgrind curl git libatomic-ops-dev
   build_script:
     - cd dev
     - make CC=gcc all
@@ -37,37 +37,47 @@ linux_task:
     - bash <(curl -s https://codecov.io/bash)
 
 osx_task:
-  osx_instance:
-    image: catalina-xcode
-  setup_script:
-    - brew install libatomic_ops
-    - brew install ccache
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-runner:sonoma
+  package_install_script:
+    - HOMEBREW_NO_AUTO_UPDATE=1 brew install libatomic_ops cmake
   test_cmake_script:
-    - ./configure --enable-rydb-debug
-    - make
-    - cd tests
-    - make CC=cc static
-    - make CC=cc run
-    - cd ../dev && make clean
+    - |
+      export HOMEBREW_PREFIX=$(brew --prefix)
+      eval `brew shellenv`
+      ./configure  --enable-rydb-debug
+      make
+      cd tests
+      make CCACHE="" EXTRA_CFLAGS="-I$HOMEBREW_PREFIX/include" CC=cc static
+      make CCACHE="" EXTRA_CFLAGS="-I$HOMEBREW_PREFIX/include" CC=cc run
+      cd ../dev && make clean
+
   test_cmake_nodebug_script:
-    - ./configure --disable-rydb-debug
-    - make
-    - cd tests
-    - make CC=cc O=3 static
-    - make CC=cc O=3 run
-    - cd ../dev && make clean
+    - |
+      export HOMEBREW_PREFIX=$(brew --prefix)
+      eval `brew shellenv`
+      ./configure --disable-rydb-debug
+      make
+      cd tests
+      make CCACHE="" EXTRA_CFLAGS="-I$HOMEBREW_PREFIX/include" CC=cc O=3 static
+      make run
+      cd ../dev && make clean
+
   test_cmake_release_script:
-    - ./configure --disable-rydb-debug --with-build-type=Release
-    - make
-    - cd tests
-    - make CC=cc O=3 static
-    - make CC=cc O=3 run
-    - cd ../dev && make clean
+    - |
+      export HOMEBREW_PREFIX=$(brew --prefix)
+      eval `brew shellenv`
+      ./configure --disable-rydb-debug --with-build-type=Release
+      make
+      cd tests
+      make CCACHE="" EXTRA_CFLAGS="-I$HOMEBREW_PREFIX/include" CC=cc O=3 static
+      make run
+      cd ../dev && make clean
 
 freebsd_task:
   freebsd_instance:
-    image: freebsd-12-1-release-amd64
-  setup_script: pkg install -y gmake cmake ccache libatomic_ops
+    image_family: freebsd-14-2
+  package_install_script: pkg install -y gmake cmake ccache libatomic_ops
   test_script:
     - ./configure --enable-rydb-debug
     - gmake
