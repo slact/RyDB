@@ -3,6 +3,8 @@ project("RyDB" "C")
 set(DESCRIPTION "fixed-size row database")
 set(VERSION 0.0.1)
 
+option(BUILD_TESTING "Build tests" ON)
+
 #set(CMAKE_VERBOSE_MAKEFILE ON)
 set(libsrc 
   src/rydb.c
@@ -25,7 +27,7 @@ include(TestBigEndian)
 include(CMakePushCheckState)
 include(GNUInstallDirs)
 
-set(CMAKE_MODULE_PATH "./")
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}")
 
 cmake_push_check_state(RESET)
 set(CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
@@ -45,3 +47,13 @@ target_include_directories(RyDB_static PUBLIC "${LIBATOMIC_OPS_INCLUDE_DIR}")
 target_link_libraries(RyDB_static "${LIBATOMIC_OPS_LIBRARY}")
 
 configure_file(src/configure.h.tmpl src/configure.h)
+
+# Tests
+if(BUILD_TESTING)
+    enable_testing()
+    add_executable(rydb_test tests/test.c tests/test_util.c)
+    target_link_libraries(rydb_test RyDB_static)
+    target_include_directories(rydb_test PRIVATE src tests)
+    target_compile_definitions(rydb_test PRIVATE SNOW_ENABLED)
+    add_test(NAME rydb_tests COMMAND rydb_test --color)
+endif()

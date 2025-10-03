@@ -7,8 +7,8 @@ linux_task:
     - apt-get update
     - apt-get install -y --no-install-recommends build-essential gcc gdb clang clang-tools libclang-rt-18-dev cmake ninja-build ccache valgrind curl git libatomic-ops-dev
   build_script:
-    - cd dev
-    - make CC=gcc all
+    - ./configure
+    - make
   test_script:
     - cd dev
     - make CC=gcc test
@@ -47,10 +47,7 @@ osx_task:
       eval `brew shellenv`
       ./configure  --enable-rydb-debug
       make
-      cd tests
-      make CCACHE="" EXTRA_CFLAGS="-I$HOMEBREW_PREFIX/include" CC=cc static
-      make CCACHE="" EXTRA_CFLAGS="-I$HOMEBREW_PREFIX/include" CC=cc run
-      cd ../dev && make clean
+      ctest --verbose
 
   test_cmake_nodebug_script:
     - |
@@ -58,10 +55,7 @@ osx_task:
       eval `brew shellenv`
       ./configure --disable-rydb-debug
       make
-      cd tests
-      make CCACHE="" EXTRA_CFLAGS="-I$HOMEBREW_PREFIX/include" CC=cc O=3 static
-      make run
-      cd ../dev && make clean
+      ctest --verbose
 
   test_cmake_release_script:
     - |
@@ -69,10 +63,7 @@ osx_task:
       eval `brew shellenv`
       ./configure --disable-rydb-debug --with-build-type=Release
       make
-      cd tests
-      make CCACHE="" EXTRA_CFLAGS="-I$HOMEBREW_PREFIX/include" CC=cc O=3 static
-      make run
-      cd ../dev && make clean
+      ctest --verbose
 
 freebsd_task:
   freebsd_instance:

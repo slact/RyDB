@@ -1,4 +1,4 @@
-TARGET = test
+TARGET = rydb_test
 LDFLAGS_D	:= -L.. -L. -Wl,-rpath=. -Wl,-rpath=..
 LDLIBS_D	:= -lRyDB -rdynamic
 LDFLAGS_S	:= ../libRyDB.a
