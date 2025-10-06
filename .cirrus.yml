@@ -1,8 +1,4 @@
-linux_task:
-  container:
-    image: ubuntu:24.04
-  env:
-    CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
+linux_tests_template: &LINUX_TESTS
   package_install_script:
     - apt-get update
     - apt-get install -y --no-install-recommends build-essential gcc gdb clang clang-tools libclang-rt-18-dev cmake ninja-build ccache valgrind curl git libatomic-ops-dev
@@ -30,40 +26,24 @@ linux_task:
     - ./configure --disable-rydb-debug
     - cd dev
     - make O=2 cmake-test
+
+
+linux_task:
+  container:
+    image: ubuntu:24.04
+  env:
+    CODECOV_TOKEN: f0a2eca9-3983-4103-a6f4-02b1caf4cbb5
+  << : *LINUX_TESTS
   codecov_script:
     - cd dev
     - make clean
     - make CC=gcc coverage-gcc-create
     - bash <(curl -s https://codecov.io/bash)
 
-osx_task:
-  macos_instance:
-    image: ghcr.io/cirruslabs/macos-runner:sonoma
-  package_install_script:
-    - HOMEBREW_NO_AUTO_UPDATE=1 brew install libatomic_ops cmake
-  test_cmake_script:
-    - |
-      export HOMEBREW_PREFIX=$(brew --prefix)
-      eval `brew shellenv`
-      ./configure  --enable-rydb-debug
-      make
-      ctest --verbose
-
-  test_cmake_nodebug_script:
-    - |
-      export HOMEBREW_PREFIX=$(brew --prefix)
-      eval `brew shellenv`
-      ./configure --disable-rydb-debug
-      make
-      ctest --verbose
-
-  test_cmake_release_script:
-    - |
-      export HOMEBREW_PREFIX=$(brew --prefix)
-      eval `brew shellenv`
-      ./configure --disable-rydb-debug --with-build-type=Release
-      make
-      ctest --verbose
+linux_arm_task:
+  arm_container:
+    image: ubuntu:24.04
+  << : *LINUX_TESTS
 
 freebsd_task:
   freebsd_instance:
